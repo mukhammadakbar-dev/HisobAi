@@ -85,6 +85,60 @@ export interface AuthResponse {
   expiresAt: string;
 }
 
+// Catalog Contracts
+export interface CreateProductDto {
+  category: string;
+  brand: string;
+  model: string;
+  storage?: string;
+  color?: string;
+  isSerialized?: boolean;
+  defaultSalePrice: number;
+  minStockAlert?: number;
+}
+
+export interface ProductDto {
+  id: string;
+  category: string;
+  brand: string;
+  model: string;
+  storage?: string | null;
+  color?: string | null;
+  isSerialized: boolean;
+  defaultSalePrice: number;
+  minStockAlert: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Inventory Contracts
+export interface ReceiveStockDto {
+  productId: string;
+  imei?: string;
+  serialNumber?: string;
+  costPrice: number;
+  quantity?: number; // Used if isSerialized = false
+  receivedAt?: string;
+}
+
+export interface InventoryItemDto {
+  id: string;
+  productId: string;
+  product?: ProductDto;
+  imei?: string | null;
+  serialNumber?: string | null;
+  costPrice: number;
+  status: InventoryItemStatus;
+  receivedAt: string;
+  createdAt: string;
+}
+
+export interface LowStockAlertDto {
+  product: ProductDto;
+  availableQuantity: number;
+  minStockAlert: number;
+}
+
 // Dashboard Contracts
 export interface SalesDynamicsPoint {
   date: string;

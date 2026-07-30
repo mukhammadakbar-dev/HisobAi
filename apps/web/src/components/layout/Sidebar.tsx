@@ -1,52 +1,115 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import {
+  LayoutDashboard,
+  Tags,
+  Package,
+  Users,
+  ShoppingBag,
+  CalendarClock,
+  CreditCard,
+  Wallet,
+  BarChart3,
+  Settings,
+} from 'lucide-react';
 
-/**
- * Sidebar Skeleton Component Placeholder
- * Desktop: Left vertical sidebar
- * Mobile: Bottom navigation bar structure
- */
+interface NavItem {
+  label: string;
+  href: string;
+  icon: React.ElementType;
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { label: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { label: 'Katalog', href: '/catalog', icon: Tags },
+  { label: 'Ombor', href: '/inventory', icon: Package },
+  { label: 'Mijozlar', href: '/customers', icon: Users },
+  { label: 'Savdo', href: '/sales', icon: ShoppingBag },
+  { label: 'Nasiya', href: '/installments', icon: CalendarClock },
+  { label: 'To\'lovlar', href: '/payments', icon: CreditCard },
+  { label: 'Kassa', href: '/cashbook', icon: Wallet },
+  { label: 'Hisobotlar', href: '/reports', icon: BarChart3 },
+  { label: 'Sozlamalar', href: '/settings', icon: Settings },
+];
+
 export function Sidebar() {
+  const pathname = usePathname();
+
   return (
     <>
-      {/* Desktop Sidebar Placeholder */}
-      <aside className="hidden md:flex flex-col w-64 glass-panel h-screen fixed left-0 top-0 z-40 p-4 border-r">
-        {/* Brand Logo Placeholder */}
-        <div className="h-12 flex items-center px-2 gap-2 border-b border-slate-200/50 dark:border-slate-800/50 pb-3">
-          <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center text-white font-bold text-lg">
+      {/* Desktop Left Sidebar */}
+      <aside className="hidden md:flex flex-col w-64 glass-panel h-screen fixed left-0 top-0 z-40 p-4 border-r border-slate-800">
+        {/* Brand Logo Header */}
+        <Link href="/" className="h-14 flex items-center px-2 gap-3 border-b border-slate-800/80 pb-3 group">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-emerald-400 flex items-center justify-center text-white font-black text-xl shadow-md shadow-emerald-500/20 group-hover:scale-105 transition-transform">
             H
           </div>
           <div className="flex flex-col">
-            <span className="font-bold text-slate-900 dark:text-slate-100 leading-none">HisobAI</span>
-            <span className="text-xs text-slate-500 dark:text-slate-400">Mobile CRM</span>
+            <span className="font-bold text-slate-100 leading-tight">
+              Hisob<span className="text-emerald-400">AI</span>
+            </span>
+            <span className="text-[11px] text-slate-400">Mobile CRM</span>
           </div>
-        </div>
+        </Link>
 
-        {/* Navigation Links Placeholder Skeleton */}
-        <div className="flex-1 py-4 space-y-2 overflow-y-auto">
-          {[...Array(6)].map((_, i) => (
-            <div
-              key={i}
-              className="h-10 w-full rounded-xl bg-slate-100 dark:bg-slate-800/50 animate-pulse"
-            />
-          ))}
-        </div>
+        {/* Navigation Menu List */}
+        <nav className="flex-1 py-4 space-y-1.5 overflow-y-auto custom-scrollbar">
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const isActive =
+              item.href === '/'
+                ? pathname === '/'
+                : pathname?.startsWith(item.href);
 
-        {/* Footer Info Placeholder */}
-        <div className="pt-4 border-t border-slate-200/50 dark:border-slate-800/50">
-          <div className="h-4 w-28 bg-slate-200 dark:bg-slate-800 rounded animate-pulse" />
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                  isActive
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+                }`}
+              >
+                <Icon className={`w-4 h-4 ${isActive ? 'text-emerald-400' : 'text-slate-400'}`} />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Footer App Info */}
+        <div className="pt-3 border-t border-slate-800/80 text-[11px] text-slate-500 flex items-center justify-between px-2">
+          <span>HisobAI v0.1</span>
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Tizim faol" />
         </div>
       </aside>
 
-      {/* Mobile Bottom Navigation Placeholder */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 glass-header border-t border-slate-200 dark:border-slate-800 z-40 flex items-center justify-around px-2">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="flex flex-col items-center gap-1">
-            <div className="w-5 h-5 rounded bg-slate-300 dark:bg-slate-700 animate-pulse" />
-            <div className="w-10 h-2 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
-          </div>
-        ))}
+      {/* Mobile Bottom Navigation Bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 glass-header border-t border-slate-800 z-40 flex items-center justify-around px-1 overflow-x-auto">
+        {NAV_ITEMS.slice(0, 5).map((item) => {
+          const Icon = item.icon;
+          const isActive =
+            item.href === '/'
+              ? pathname === '/'
+              : pathname?.startsWith(item.href);
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex flex-col items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors ${
+                isActive ? 'text-emerald-400 font-semibold' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Icon className="w-5 h-5" />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
       </nav>
     </>
   );
