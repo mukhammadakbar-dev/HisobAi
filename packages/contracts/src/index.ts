@@ -85,6 +85,38 @@ export interface AuthResponse {
   expiresAt: string;
 }
 
+// Dashboard Contracts
+export interface SalesDynamicsPoint {
+  date: string;
+  revenue: number;
+  salesCount: number;
+}
+
+export interface RecentActivityItem {
+  id: string;
+  title: string;
+  description: string;
+  timestamp: string;
+  type: 'sale' | 'payment' | 'inventory' | 'customer';
+}
+
+export interface DashboardSummary {
+  todaySalesCount: number;
+  todayRevenue: number;
+  todayCashSales: number;
+  todayInstallmentSales: number;
+  todayCashIn: number;
+  todayCashOut: number;
+  todayGrossProfit: number;
+  totalOutstandingReceivables: number;
+  todayDueReceivables: number;
+  overdueReceivables: number;
+  inventoryTotalValue: number;
+  lowStockCount: number;
+  salesDynamics: SalesDynamicsPoint[];
+  recentActivities: RecentActivityItem[];
+}
+
 export interface ApiResponse<T = any> {
   success: boolean;
   message?: string;
