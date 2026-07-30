@@ -1,8 +1,6 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
 import { apiRequest } from '@/lib/api';
 import {
   ProductDto,
@@ -17,16 +15,9 @@ import {
   Layers,
   Barcode,
   RefreshCw,
-  CheckCircle2,
-  XCircle,
-  Tag,
-  DollarSign,
 } from 'lucide-react';
 
 export default function InventoryPage() {
-  const { admin, isLoading: isAuthLoading } = useAuth();
-  const router = useRouter();
-
   // State
   const [products, setProducts] = useState<ProductDto[]>([]);
   const [inventory, setInventory] = useState<InventoryItemDto[]>([]);
@@ -83,14 +74,8 @@ export default function InventoryPage() {
   }, [searchQuery, statusFilter]);
 
   useEffect(() => {
-    if (!isAuthLoading) {
-      if (!admin) {
-        router.push('/login');
-      } else {
-        fetchData();
-      }
-    }
-  }, [admin, isAuthLoading, router, fetchData]);
+    fetchData();
+  }, [fetchData]);
 
   // Handle Product Template Submit
   const handleCreateProduct = async (e: React.FormEvent) => {

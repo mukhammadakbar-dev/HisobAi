@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
 import { apiRequest } from '@/lib/api';
 import { DashboardSummary } from '@baraka/contracts';
 import { SalesChart } from '@/components/dashboard/SalesChart';
@@ -21,13 +20,12 @@ import {
 } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { admin, isLoading: isAuthLoading } = useAuth();
-  const router = useRouter();
+  const { admin } = useAuth();
   const [data, setData] = useState<DashboardSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchDashboard = async () => {
+  const fetchDashboard = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
@@ -38,23 +36,17 @@ export default function DashboardPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    if (!isAuthLoading) {
-      if (!admin) {
-        router.push('/login');
-      } else {
-        fetchDashboard();
-      }
-    }
-  }, [admin, isAuthLoading, router]);
+    fetchDashboard();
+  }, [fetchDashboard]);
 
-  if (isAuthLoading || (isLoading && !data)) {
+  if (isLoading && !data) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
         <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm text-slate-400">Dashboard yuklanmoqda...</p>
+        <p className="text-sm text-slate-400">Dashboard ma'lumotlari yuklanmoqda...</p>
       </div>
     );
   }
@@ -244,7 +236,7 @@ export default function DashboardPage() {
 
       {/* Charts & Activity Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Sales Dynamics Chart (2 cols on large screen) */}
+        {/* Sales Dynamics Chart */}
         <div className="lg:col-span-2 p-6 rounded-3xl glass-panel border border-slate-800 space-y-4">
           <div className="flex items-center justify-between">
             <div>
@@ -263,7 +255,7 @@ export default function DashboardPage() {
           <SalesChart data={data?.salesDynamics || []} />
         </div>
 
-        {/* Recent Activity List (1 col) */}
+        {/* Recent Activity List */}
         <div className="p-6 rounded-3xl glass-panel border border-slate-800 space-y-4">
           <h2 className="text-base font-bold text-slate-100">So'nggi Amallar</h2>
           

@@ -85,6 +85,33 @@ export interface AuthResponse {
   expiresAt: string;
 }
 
+// Customer Contracts
+export interface CreateCustomerDto {
+  fullName: string;
+  phone: string;
+  address?: string;
+  note?: string;
+}
+
+export interface CustomerDto {
+  id: string;
+  fullName: string;
+  phoneE164: string;
+  address?: string | null;
+  note?: string | null;
+  totalDebt: number;
+  salesCount: number;
+  activeContractsCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomerDetailDto extends CustomerDto {
+  sales: any[];
+  payments: any[];
+  installmentContracts: any[];
+}
+
 // Catalog Contracts
 export interface CreateProductDto {
   category: string;
@@ -117,7 +144,7 @@ export interface ReceiveStockDto {
   imei?: string;
   serialNumber?: string;
   costPrice: number;
-  quantity?: number; // Used if isSerialized = false
+  quantity?: number;
   receivedAt?: string;
 }
 
