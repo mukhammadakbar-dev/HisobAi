@@ -1,0 +1,333 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum InventoryItemStatus {
+  AVAILABLE
+  RESERVED
+  SOLD
+  RETURNED
+}
+
+enum StockMovementType {
+  RECEIVE
+  SALE
+  RETURN
+  ADJUSTMENT
+}
+
+enum SaleKind {
+  CASH
+  INSTALLMENT
+  MIXED
+}
+
+enum SaleStatus {
+  DRAFT
+  CONFIRMED
+  REVERSED
+  CANCELLED
+}
+
+enum InstallmentStatus {
+  ACTIVE
+  CLOSED
+  OVERDUE
+  CANCELLED
+}
+
+enum ScheduleStatus {
+  PENDING
+  PAID
+  PARTIAL
+  OVERDUE
+}
+
+enum PaymentMethod {
+  CASH
+  CARD_TRANSFER
+  MIXED
+}
+
+enum PaymentStatus {
+  PENDING_VERIFICATION
+  CONFIRMED
+  REJECTED
+  REVERSED
+}
+
+enum CashDirection {
+  CASH_IN
+  CASH_OUT
+}
+
+enum NotificationChannel {
+  WEB_PUSH
+  SMS
+}
+
+enum NotificationStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+}
+
+model Admin {
+  id                String             @id @default(uuid())
+  email             String             @unique
+  passwordHash      String             @map("password_hash")
+  displayName       String             @map("display_name")
+  theme             String             @default("system")
+  sessions          Session[]
+  pushSubscriptions PushSubscription[]
+  auditLogs         AuditLog[]
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  @@map("admins")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  adminId   String   @map("admin_id")
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  admin     Admin    @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("sessions")
+}
+
+model Product {
+  id               String          @id @default(uuid())
+  category         String
+  brand            String
+  model            String
+  storage          String?
+  color            String?
+  isSerialized     Boolean         @default(true) @map("is_serialized")
+  defaultSalePrice Decimal         @map("default_sale_price") @db.Decimal(14, 2)
+  minStockAlert    Int             @default(2) @map("min_stock_alert")
+  inventoryItems   InventoryItem[]
+  stockMovements   StockMovement[]
+  saleItems        SaleItem[]
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  @@map("products")
+}
+
+model InventoryItem {
+  id             String              @id @default(uuid())
+  productId      String              @map("product_id")
+  imei           String?             @unique
+  serialNumber   String?             @unique @map("serial_number")
+  costPrice      Decimal             @map("cost_price") @db.Decimal(14, 2)
+  status         InventoryItemStatus @default(AVAILABLE)
+  receivedAt     DateTime            @default(now()) @map("received_at")
+  product        Product             @relation(fields: [productId], references: [id])
+  stockMovements StockMovement[]
+  saleItem       SaleItem?
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+
+  @@map("inventory_items")
+}
+
+model StockMovement {
+  id              String            @id @default(uuid())
+  inventoryItemId String?           @map("inventory_item_id")
+  productId       String?           @map("product_id")
+  type            StockMovementType
+  quantity        Int               @default(1)
+  referenceType   String?           @map("reference_type")
+  referenceId     String?           @map("reference_id")
+  inventoryItem   InventoryItem?    @relation(fields: [inventoryItemId], references: [id])
+  product         Product?          @relation(fields: [productId], references: [id])
+  createdAt       DateTime          @default(now()) @map("created_at")
+
+  @@map("stock_movements")
+}
+
+model Customer {
+  id                   String                @id @default(uuid())
+  fullName             String                @map("full_name")
+  phoneE164            String                @unique @map("phone_e164")
+  address              String?
+  note                 String?
+  sales                Sale[]
+  installmentContracts InstallmentContract[]
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
+
+  @@map("customers")
+}
+
+model Sale {
+  id                  String               @id @default(uuid())
+  customerId          String?              @map("customer_id")
+  kind                SaleKind
+  status              SaleStatus           @default(CONFIRMED)
+  subtotal            Decimal              @db.Decimal(14, 2)
+  discount            Decimal              @default(0) @db.Decimal(14, 2)
+  total               Decimal              @db.Decimal(14, 2)
+  soldAt              DateTime             @default(now()) @map("sold_at")
+  customer            Customer?            @relation(fields: [customerId], references: [id])
+  saleItems           SaleItem[]
+  installmentContract InstallmentContract?
+  cashEntries         CashEntry[]
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+
+  @@map("sales")
+}
+
+model SaleItem {
+  id              String         @id @default(uuid())
+  saleId          String         @map("sale_id")
+  inventoryItemId String?        @unique @map("inventory_item_id")
+  productId       String         @map("product_id")
+  quantity        Int            @default(1)
+  unitPrice       Decimal        @map("unit_price") @db.Decimal(14, 2)
+  costSnapshot    Decimal        @map("cost_snapshot") @db.Decimal(14, 2)
+  sale            Sale           @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+  product         Product        @relation(fields: [productId], references: [id])
+  createdAt       DateTime       @default(now()) @map("created_at")
+
+  @@map("sale_items")
+}
+
+model InstallmentContract {
+  id                 String            @id @default(uuid())
+  saleId             String            @unique @map("sale_id")
+  customerId         String            @map("customer_id")
+  principal          Decimal           @db.Decimal(14, 2)
+  downPayment        Decimal           @map("down_payment") @db.Decimal(14, 2)
+  outstandingAmount Decimal           @map("outstanding_amount") @db.Decimal(14, 2)
+  status             InstallmentStatus @default(ACTIVE)
+  sale               Sale              @relation(fields: [saleId], references: [id])
+  customer           Customer          @relation(fields: [customerId], references: [id])
+  paymentSchedules   PaymentSchedule[]
+  payments           Payment[]
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+
+  @@map("installment_contracts")
+}
+
+model PaymentSchedule {
+  id         String            @id @default(uuid())
+  contractId String            @map("contract_id")
+  dueDate    DateTime          @map("due_date")
+  amountDue  Decimal           @map("amount_due") @db.Decimal(14, 2)
+  amountPaid Decimal           @default(0) @map("amount_paid") @db.Decimal(14, 2)
+  status     ScheduleStatus    @default(PENDING)
+  contract   InstallmentContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  createdAt  DateTime          @default(now()) @map("created_at")
+  updatedAt  DateTime          @updatedAt @map("updated_at")
+
+  @@map("payment_schedules")
+}
+
+model Payment {
+  id            String              @id @default(uuid())
+  contractId    String              @map("contract_id")
+  amount        Decimal             @db.Decimal(14, 2)
+  method        PaymentMethod
+  status        PaymentStatus       @default(CONFIRMED)
+  paidAt        DateTime            @default(now()) @map("paid_at")
+  receiptFileId String?             @map("receipt_file_id")
+  contract      InstallmentContract @relation(fields: [contractId], references: [id])
+  cashEntry     CashEntry?
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+
+  @@map("payments")
+}
+
+model CashCategory {
+  id          String        @id @default(uuid())
+  name        String
+  direction   CashDirection
+  isSystem    Boolean       @default(false) @map("is_system")
+  cashEntries CashEntry[]
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  @@map("cash_categories")
+}
+
+model CashEntry {
+  id            String        @id @default(uuid())
+  direction     CashDirection
+  amount        Decimal       @db.Decimal(14, 2)
+  occurredAt    DateTime      @default(now()) @map("occurred_at")
+  categoryId    String?       @map("category_id")
+  sourceType    String?       @map("source_type")
+  sourceId      String?       @map("source_id")
+  saleId        String?       @map("sale_id")
+  paymentId     String?       @unique @map("payment_id")
+  note          String?
+  receiptFileId String?       @map("receipt_file_id")
+  category      CashCategory? @relation(fields: [categoryId], references: [id])
+  sale          Sale?         @relation(fields: [saleId], references: [id])
+  payment       Payment?      @relation(fields: [paymentId], references: [id])
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  @@map("cash_entries")
+}
+
+model Document {
+  id          String   @id @default(uuid())
+  type        String
+  storageKey  String   @map("storage_key")
+  contentHash String   @map("content_hash")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("documents")
+}
+
+model NotificationLog {
+  id           String              @id @default(uuid())
+  channel      NotificationChannel
+  recipient    String
+  type         String
+  status       NotificationStatus  @default(PENDING)
+  scheduledFor DateTime?           @map("scheduled_for")
+  sentAt       DateTime?           @map("sent_at")
+  createdAt    DateTime            @default(now()) @map("created_at")
+
+  @@map("notification_logs")
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  adminId   String   @map("admin_id")
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  admin     Admin    @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("push_subscriptions")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?  @map("actor_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  beforeJson Json?    @map("before_json")
+  afterJson  Json?    @map("after_json")
+  actor      Admin?   @relation(fields: [actorId], references: [id])
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("audit_logs")
+}
