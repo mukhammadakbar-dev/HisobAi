@@ -71,6 +71,20 @@ export enum NotificationStatus {
   FAILED = 'FAILED',
 }
 
+// Auth Contracts
+export interface AdminProfile {
+  id: string;
+  email: string;
+  displayName: string;
+  theme: string;
+}
+
+export interface AuthResponse {
+  admin: AdminProfile;
+  sessionToken?: string;
+  expiresAt: string;
+}
+
 export interface ApiResponse<T = any> {
   success: boolean;
   message?: string;

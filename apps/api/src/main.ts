@@ -1,3 +1,6 @@
+import * as dotenv from 'dotenv';
+dotenv.config();
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -12,6 +15,21 @@ async function bootstrap() {
     credentials: true,
   });
 
+  // Simple cookie parser middleware
+  app.use((req: any, res: any, next: any) => {
+    req.cookies = req.cookies || {};
+    const cookieHeader = req.headers.cookie;
+    if (cookieHeader) {
+      cookieHeader.split(';').forEach((cookie: string) => {
+        const parts = cookie.split('=');
+        if (parts.length >= 2) {
+          req.cookies[parts[0].trim()] = decodeURIComponent(parts.slice(1).join('=').trim());
+        }
+      });
+    }
+    next();
+  });
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -21,7 +39,7 @@ async function bootstrap() {
   );
 
   const config = new DocumentBuilder()
-    .setTitle('Baraka Mobile CRM — HisobAI API')
+    .setTitle('HisobAI CRM — HisobAI API')
     .setDescription('HisobAI CRM uchun REST API va OpenAPI hujjatlari')
     .setVersion('0.1.0')
     .addBearerAuth()
