@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Lock, Mail, Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react';
+import { LogoMark } from '@/components/layout/Logo';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -45,8 +46,9 @@ export default function LoginPage() {
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-600 to-emerald-400 flex items-center justify-center text-white font-black text-3xl mx-auto shadow-lg shadow-emerald-500/30 mb-3">
             H
           </div>
-          <h1 className="text-2xl font-bold text-slate-100">
-            Hisob<span className="text-emerald-400">AI</span> CRM
+          <h1 className="flex items-center justify-center gap-2">
+            <LogoMark />
+            <span className="text-2xl font-bold text-slate-100">CRM</span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
             Doʻkon boshqaruvi va moliyaviy hisob-kitob tizimi

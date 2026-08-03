@@ -9,6 +9,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -22,9 +23,16 @@ import { Response, Request } from 'express';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  @Get('csrf')
+  @ApiOperation({ summary: 'CSRF tokenini va baraka_csrf cookie-ni olish' })
+  getCsrfToken(@Res({ passthrough: true }) res: Response): { csrfToken: string } {
+    return this.authService.getCsrfToken(res);
+  }
+
   @Post('login')
+  @Throttle({ default: { ttl: 900000, limit: 5 } })
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Admin logini va sessiya yaratish' })
+  @ApiOperation({ summary: 'Admin logini va sessiya yaratish (5 ta urinish / 15 daqiqa)' })
   @ApiResponse({ status: 200, description: 'Sessiya yaratildi va cookie o\'rnatildi' })
   async login(
     @Body() loginDto: LoginDto,

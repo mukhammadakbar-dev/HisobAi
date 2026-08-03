@@ -403,3 +403,59 @@ export interface ReportSummaryDto {
   topCategories: TopEntityStat[];
 }
 
+// Push Subscription Contracts
+export interface PushSubscriptionDto {
+  id: string;
+  adminId: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  createdAt: string;
+}
+
+export interface CreatePushSubscriptionDto {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+}
+
+// AI Insights Contracts
+export interface DailyInsightDto {
+  date: string;
+  summary: string;
+  metrics: {
+    todayRevenue: number;
+    todaySalesCount: number;
+    todayGrossProfit: number;
+    todayNetCashFlow: number;
+    totalOutstandingDebt: number;
+  };
+}
+
+export interface QueryInsightDto {
+  question: string;
+  from?: string;
+  to?: string;
+}
+
+export interface InsightResponseDto {
+  answer: string;
+  period: {
+    from: string;
+    to: string;
+  };
+  metricsUsed: string[];
+}
+
+export interface SlowMovingItemDto {
+  id: string;
+  product: ProductDto;
+  imei?: string | null;
+  serialNumber?: string | null;
+  costPrice: number;
+  receivedAt: string;
+  daysInStock: number;
+}
+
+
+

@@ -13,7 +13,9 @@ import {
   Wallet,
   BarChart3,
   Settings,
+  Sparkles,
 } from 'lucide-react';
+import { LogoMark } from './Logo';
 
 interface NavItem {
   label: string;
@@ -30,6 +32,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'To\'lovlar', href: '/payments', icon: CreditCard },
   { label: 'Kassa', href: '/cashbook', icon: Wallet },
   { label: 'Hisobotlar', href: '/reports', icon: BarChart3 },
+  { label: 'AI Tahlil', href: '/insights', icon: Sparkles },
   { label: 'Sozlamalar', href: '/settings', icon: Settings },
 ];
 
@@ -41,15 +44,13 @@ export function Sidebar() {
       {/* Desktop Left Sidebar */}
       <aside className="hidden md:flex flex-col w-64 glass-panel h-screen fixed left-0 top-0 z-40 p-4 border-r border-slate-800">
         {/* Brand Logo Header */}
-        <Link href="/" className="h-14 flex items-center px-2 gap-3 border-b border-slate-800/80 pb-3 group">
+        <Link href="/" aria-label="HisobAI bosh sahifasi" className="min-h-14 flex items-center px-2 gap-3 border-b border-slate-800/80 py-3 group">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-emerald-400 flex items-center justify-center text-white font-black text-xl shadow-md shadow-emerald-500/20 group-hover:scale-105 transition-transform">
             H
           </div>
           <div className="flex flex-col">
-            <span className="font-bold text-slate-100 leading-tight">
-              Hisob<span className="text-emerald-400">AI</span>
-            </span>
-            <span className="text-[11px] text-slate-400">Mobile CRM</span>
+            <LogoMark />
+            <span className="text-[11px] text-slate-400 -mt-1">Mobile CRM</span>
           </div>
         </Link>
 

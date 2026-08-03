@@ -4,30 +4,31 @@ dotenv.config();
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import helmet from 'helmet';
+import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Helmet secure HTTP headers
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
+
+  // Cookie parser
+  app.use(cookieParser());
+
+  // Global Exception Filter masking stack traces in production
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   app.setGlobalPrefix('api/v1');
   app.enableCors({
     origin: process.env.CLIENT_URL || 'http://localhost:3000',
     credentials: true,
-  });
-
-  // Simple cookie parser middleware
-  app.use((req: any, res: any, next: any) => {
-    req.cookies = req.cookies || {};
-    const cookieHeader = req.headers.cookie;
-    if (cookieHeader) {
-      cookieHeader.split(';').forEach((cookie: string) => {
-        const parts = cookie.split('=');
-        if (parts.length >= 2) {
-          req.cookies[parts[0].trim()] = decodeURIComponent(parts.slice(1).join('=').trim());
-        }
-      });
-    }
-    next();
   });
 
   app.useGlobalPipes(

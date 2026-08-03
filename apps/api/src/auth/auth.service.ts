@@ -93,6 +93,15 @@ export class AuthService {
       path: '/',
     });
 
+    // Generate CSRF token for double-submit cookie pattern
+    const csrfToken = crypto.randomBytes(24).toString('hex');
+    res.cookie('baraka_csrf', csrfToken, {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+    });
+
     const adminProfile: AdminProfile = {
       id: admin.id,
       email: admin.email,
@@ -107,12 +116,24 @@ export class AuthService {
     };
   }
 
+  getCsrfToken(res: Response): { csrfToken: string } {
+    const csrfToken = crypto.randomBytes(24).toString('hex');
+    res.cookie('baraka_csrf', csrfToken, {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+    });
+    return { csrfToken };
+  }
+
   async logout(sessionId: string, res: Response): Promise<{ message: string }> {
     if (sessionId) {
       await this.prisma.session.delete({ where: { id: sessionId } }).catch(() => null);
     }
 
     res.clearCookie('baraka_session', { path: '/' });
+    res.clearCookie('baraka_csrf', { path: '/' });
     return { message: 'Tizimdan muvaffaqiyatli chiqildi' };
   }
 
