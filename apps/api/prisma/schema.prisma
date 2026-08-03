@@ -244,6 +244,7 @@ model Payment {
   status        PaymentStatus       @default(CONFIRMED)
   paidAt        DateTime            @default(now()) @map("paid_at")
   receiptFileId String?             @map("receipt_file_id")
+  receiptUrl    String?             @map("receipt_url")
   contract      InstallmentContract @relation(fields: [contractId], references: [id])
   cashEntry     CashEntry?
   createdAt     DateTime            @default(now()) @map("created_at")
@@ -275,6 +276,7 @@ model CashEntry {
   paymentId     String?       @unique @map("payment_id")
   note          String?
   receiptFileId String?       @map("receipt_file_id")
+  attachmentUrl String?       @map("attachment_url")
   category      CashCategory? @relation(fields: [categoryId], references: [id])
   sale          Sale?         @relation(fields: [saleId], references: [id])
   payment       Payment?      @relation(fields: [paymentId], references: [id])

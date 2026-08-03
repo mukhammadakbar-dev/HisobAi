@@ -6,6 +6,10 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { CustomersModule } from './customers/customers.module';
+import { SalesModule } from './sales/sales.module';
+import { PaymentsModule } from './payments/payments.module';
+import { CashbookModule } from './cashbook/cashbook.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -16,6 +20,10 @@ import { CustomersModule } from './customers/customers.module';
     CatalogModule,
     InventoryModule,
     CustomersModule,
+    SalesModule,
+    PaymentsModule,
+    CashbookModule,
+    ReportsModule,
   ],
 })
 export class AppModule {}

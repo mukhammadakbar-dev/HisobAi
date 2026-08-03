@@ -166,6 +166,112 @@ export interface LowStockAlertDto {
   minStockAlert: number;
 }
 
+// Sales Contracts
+export interface CreateSaleItemDto {
+  inventoryItemId?: string;
+  productId: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export interface CreateSaleDto {
+  customerId?: string;
+  kind: SaleKind;
+  discount?: number;
+  items: CreateSaleItemDto[];
+}
+
+export interface ConfirmSaleDto {
+  downPayment?: number;
+  installmentMonths?: number;
+  startDate?: string;
+}
+
+export interface SaleItemDto {
+  id: string;
+  saleId: string;
+  inventoryItemId?: string | null;
+  productId: string;
+  product?: ProductDto;
+  inventoryItem?: InventoryItemDto;
+  quantity: number;
+  unitPrice: number;
+  costSnapshot: number;
+  createdAt: string;
+}
+
+export interface SaleDto {
+  id: string;
+  customerId?: string | null;
+  customer?: CustomerDto;
+  kind: SaleKind;
+  status: SaleStatus;
+  subtotal: number;
+  discount: number;
+  total: number;
+  soldAt: string;
+  saleItems: SaleItemDto[];
+  installmentContract?: any;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Payments & Installments Contracts
+export interface CreatePaymentDto {
+  contractId: string;
+  amount: number;
+  method: PaymentMethod;
+  receiptUrl?: string;
+}
+
+export interface PaymentDto {
+  id: string;
+  contractId: string;
+  amount: number;
+  method: PaymentMethod;
+  status: PaymentStatus;
+  receiptUrl?: string | null;
+  paidAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaymentScheduleDto {
+  id: string;
+  contractId: string;
+  dueDate: string;
+  amountDue: number;
+  amountPaid: number;
+  status: ScheduleStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdateScheduleItemDto {
+  dueDate: string;
+  amountDue: number;
+}
+
+export interface UpdateScheduleDto {
+  schedules: UpdateScheduleItemDto[];
+}
+
+export interface InstallmentContractDto {
+  id: string;
+  saleId: string;
+  customerId: string;
+  customer?: CustomerDto;
+  sale?: SaleDto;
+  principal: number;
+  downPayment: number;
+  outstandingAmount: number;
+  status: InstallmentStatus;
+  paymentSchedules: PaymentScheduleDto[];
+  payments: PaymentDto[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Dashboard Contracts
 export interface SalesDynamicsPoint {
   date: string;
@@ -212,3 +318,88 @@ export interface HealthCheckResponse {
   version: string;
   database: string;
 }
+
+// Cashbook Contracts
+export interface CashCategoryDto {
+  id: string;
+  name: string;
+  direction: CashDirection;
+  isSystem: boolean;
+  createdAt: string;
+}
+
+export interface CreateCashCategoryDto {
+  name: string;
+  direction: CashDirection;
+}
+
+export interface CashEntryDto {
+  id: string;
+  direction: CashDirection;
+  amount: number;
+  occurredAt: string;
+  categoryId?: string | null;
+  category?: CashCategoryDto | null;
+  sourceType?: string | null;
+  sourceId?: string | null;
+  saleId?: string | null;
+  paymentId?: string | null;
+  note?: string | null;
+  attachmentUrl?: string | null;
+  createdAt: string;
+}
+
+export interface CreateCashEntryDto {
+  direction: CashDirection;
+  amount: number;
+  categoryId?: string;
+  occurredAt?: string;
+  note?: string;
+  attachmentUrl?: string;
+}
+
+// Reports Contracts
+export interface TopEntityStat {
+  name: string;
+  count: number;
+  revenue: number;
+}
+
+export interface ReportSummaryDto {
+  dateRange: {
+    from: string;
+    to: string;
+  };
+  sales: {
+    totalTurnover: number;
+    totalCount: number;
+    cashSales: { amount: number; count: number };
+    installmentSales: { amount: number; count: number };
+    mixedSales: { amount: number; count: number };
+  };
+  cashFlow: {
+    cashIn: number;
+    cashOut: number;
+    netCashFlow: number;
+  };
+  profitability: {
+    grossProfit: number;
+    costOfGoodsSold: number;
+    grossMarginPercent: number;
+  };
+  installmentDebt: {
+    totalOutstanding: number;
+    collectedAmount: number;
+    overdueAmount: number;
+    activeContractsCount: number;
+  };
+  inventory: {
+    totalCount: number;
+    totalValue: number;
+    lowStockCount: number;
+  };
+  topBrands: TopEntityStat[];
+  topModels: TopEntityStat[];
+  topCategories: TopEntityStat[];
+}
+

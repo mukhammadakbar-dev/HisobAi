@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
-  Tags,
   Package,
   Users,
   ShoppingBag,
@@ -24,7 +23,6 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { label: 'Katalog', href: '/catalog', icon: Tags },
   { label: 'Ombor', href: '/inventory', icon: Package },
   { label: 'Mijozlar', href: '/customers', icon: Users },
   { label: 'Savdo', href: '/sales', icon: ShoppingBag },
