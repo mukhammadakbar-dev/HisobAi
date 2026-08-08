@@ -57,8 +57,23 @@ const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
+/**
+ * `.env` faylida to'ldirilmagan qator (`ADMIN_PASSWORD=`) `undefined` emas,
+ * BO'SH SATR bo'lib keladi. U holda `.optional()` ishlamaydi va standart
+ * qiymatlar ham qo'llanmaydi. Shuning uchun bo'sh satrlar tekshiruvdan
+ * oldin olib tashlanadi — "to'ldirilmagan" degani "berilmagan" demakdir.
+ */
+function dropEmpty(raw: Record<string, unknown>): Record<string, unknown> {
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (typeof value === 'string' && value.trim() === '') continue;
+    cleaned[key] = value;
+  }
+  return cleaned;
+}
+
 export function validateEnv(raw: Record<string, unknown>): Env {
-  const parsed = envSchema.safeParse(raw);
+  const parsed = envSchema.safeParse(dropEmpty(raw));
   if (!parsed.success) {
     const details = parsed.error.issues
       .map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`)

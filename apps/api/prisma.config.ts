@@ -12,6 +12,6 @@ export default defineConfig({
     url: env('DATABASE_URL'),
   },
   migrations: {
-    seed: 'node --experimental-strip-types prisma/seed.ts',
+    seed: 'node prisma/seed.mts',
   },
 });

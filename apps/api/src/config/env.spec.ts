@@ -30,4 +30,21 @@ describe('validateEnv', () => {
   it("noto'g'ri soatni rad etadi", () => {
     expect(() => validateEnv({ ...minimal, REMINDER_HOUR: '25' })).toThrow(/REMINDER_HOUR/);
   });
+
+  // .env dagi to'ldirilmagan qator bo'sh satr bo'lib keladi — u "berilmagan" deb qaralishi kerak,
+  // aks holda API ishga tushmaydi.
+  it("bo'sh satrni berilmagan deb qaraydi", () => {
+    const env = validateEnv({ ...minimal, ADMIN_PASSWORD: '', VAPID_PUBLIC_KEY: '  ' });
+    expect(env.ADMIN_PASSWORD).toBeUndefined();
+    expect(env.VAPID_PUBLIC_KEY).toBeUndefined();
+  });
+
+  it("bo'sh satr standart qiymatni bekor qilmaydi", () => {
+    expect(validateEnv({ ...minimal, PORT: '' }).PORT).toBe(4000);
+    expect(validateEnv({ ...minimal, TIMEZONE: '' }).TIMEZONE).toBe('Asia/Tashkent');
+  });
+
+  it("to'ldirilgan ADMIN_PASSWORD hali ham tekshiriladi", () => {
+    expect(() => validateEnv({ ...minimal, ADMIN_PASSWORD: 'qisqa' })).toThrow(/ADMIN_PASSWORD/);
+  });
 });
