@@ -1,33 +1,46 @@
 # Dependencies
-node_modules
-.pnpm-store
+node_modules/
+.pnpm-store/
 
-# Next.js build output
-.next/
-out/
-
-# NestJS build output
+# Build output
 dist/
+build/
+out/
+.next/
+.turbo/
+
+# TypeScript incremental build artifacts
+*.tsbuildinfo
+
+# Compiled output next to sources (src/ must stay .ts only)
+apps/*/src/**/*.js
+apps/*/src/**/*.d.ts
+packages/*/src/**/*.js
+packages/*/src/**/*.d.ts
+
+# Prisma generated client
+apps/api/src/generated/
+apps/api/prisma/generated/
+
+# Environment — only .env.example is tracked
+.env
+.env.*
+!.env.example
 
 # Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
 *.log
+logs/
 
-# Environment variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# Test / coverage
+coverage/
+.vitest/
 
-# IDE & OS files
+# Local uploads (MinIO is the real store)
+uploads/
+
+# Editor & OS
 .DS_Store
-*.pem
 .vscode/
 .idea/
-
-# Turbo
-.turbo/
+*.pem
+cookies.txt
