@@ -1,0 +1,987 @@
+// HisobAI CRM — ma'lumotlar modeli (v0.2)
+//
+// Manba: docs/DECISIONS.md va docs/ARCHITECTURE.md §7.
+// Izohlardagi §N.N — DECISIONS.md dagi qaror raqami.
+//
+// QOIDALAR (ARCHITECTURE §4):
+//  1. Har bir pul ustuni O'Z VALYUTA ustuni bilan yuradi. Valyutasiz summa bo'lmaydi.
+//  2. Pul — Decimal(18,2). JavaScript `number` bilan pul hisoblanmaydi.
+//  3. Konvertatsiya bo'lgan joyda kurs SNAPSHOT saqlanadi va qayta hisoblanmaydi.
+//  4. Tasdiqlangan moliyaviy yozuv o'chirilmaydi — teskari yozuv bilan tuzatiladi.
+//  5. Hisoblanadigan qiymat (qarz qoldig'i, "muddati o'tgan") saqlanmaydi.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7 da ulanish manzili schema'da emas — `prisma.config.ts` da
+// (migratsiyalar uchun) va PrismaClient adapterida (runtime uchun) turadi.
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────── Enumlar ───────────────────────────────
+// packages/contracts/src/enums.ts bilan bir xil bo'lishi shart.
+
+enum Currency {
+  UZS
+  USD
+}
+
+enum UserRole {
+  OWNER
+  MANAGER
+  SELLER
+}
+
+enum Theme {
+  SYSTEM
+  LIGHT
+  DARK
+}
+
+enum ExchangeRateSource {
+  CBU
+  MANUAL
+}
+
+enum ProductType {
+  SERIALIZED
+  QUANTITY
+}
+
+/// §5.4 — "rezerv" yo'q: qoralama mahsulotni ushlab turmaydi.
+enum InventoryStatus {
+  AVAILABLE
+  SOLD
+  RETURNED
+  WRITTEN_OFF
+}
+
+enum StockMovementType {
+  RECEIVE
+  SALE
+  RETURN
+  ADJUST
+  PERSONAL_USE
+}
+
+/// §5.7 — hisobotda sabablar ajratiladi.
+enum StockAdjustReason {
+  LOST
+  DEFECTIVE
+  MISCOUNT
+  OTHER
+}
+
+enum StocktakeStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum SaleKind {
+  CASH
+  INSTALLMENT
+}
+
+enum SaleStatus {
+  DRAFT
+  CONFIRMED
+  PARTIALLY_RETURNED
+  RETURNED
+  CANCELLED
+}
+
+/// §8 — bekor qilish va qaytarish qat'iy ajratiladi.
+enum ReversalKind {
+  RETURN
+  CANCEL
+}
+
+/// §8.6 — sabab majburiy.
+enum ReversalReason {
+  DEFECTIVE
+  CUSTOMER_CHANGED_MIND
+  ENTRY_ERROR
+  OTHER
+}
+
+/// §9.7 — "muddati o'tgan" holat emas (§9.8 ga qarang).
+enum ContractStatus {
+  ACTIVE
+  CLOSED
+  CANCELLED
+}
+
+enum ScheduleStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+}
+
+/// §10 — faqat CONFIRMED qarzni kamaytiradi va kassaga tushadi.
+enum PaymentStatus {
+  PENDING_VERIFICATION
+  CONFIRMED
+  REJECTED
+  REVERSED
+}
+
+enum CashAccountKind {
+  CASH
+  BANK
+  CARD
+}
+
+enum CashDirection {
+  IN
+  OUT
+}
+
+/// §11.7 — MANUAL bo'lmagani qo'lda tahrirlanmaydi.
+/// §11.4, §11.6 — OPENING_BALANCE va EXCHANGE daromad deb sanalmaydi.
+enum CashSourceType {
+  SALE
+  PAYMENT
+  MANUAL
+  OPENING_BALANCE
+  EXCHANGE
+  PERSONAL_USE
+  REVERSAL
+}
+
+enum FileKind {
+  PASSPORT
+  RECEIPT
+  PRODUCT_IMAGE
+  CASH_ATTACHMENT
+  SHOP_LOGO
+  CONTRACT_PDF
+}
+
+/// §15.1 — MVP'da faqat nasiya shartnomasi.
+enum DocumentType {
+  INSTALLMENT_CONTRACT
+}
+
+enum NotificationChannel {
+  PUSH
+  SMS
+}
+
+enum NotificationType {
+  PAYMENT_DUE_REMINDER
+}
+
+/// PROCESSING — idempotency: xabarni faqat bitta worker oladi.
+enum NotificationStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+// ──────────────────────── Foydalanuvchilar va kirish ────────────────────────
+
+/// §2.1 — MVP'da bitta foydalanuvchi, lekin baza ko'p rolni ko'taradi.
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash") // §2.4 Argon2id
+  displayName  String   @map("display_name")
+  role         UserRole @default(OWNER)
+  theme        Theme    @default(SYSTEM)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  sessions           Session[]
+  passwordResets     PasswordResetToken[]
+  pushSubscriptions  PushSubscription[]
+  auditLogs          AuditLog[]
+  stockMovements     StockMovement[]
+  stocktakes         Stocktake[]
+  salesCreated       Sale[]
+  paymentsCreated    Payment[]
+  cashEntriesCreated CashEntry[]
+  filesUploaded      FileAsset[]
+  ratesUpdated       ExchangeRate[]
+  settingsUpdated    Settings[]
+
+  @@map("users")
+}
+
+/// §2.7 — 30 kun; sozlamalarda faol sessiyalar ro'yxati ko'rinadi.
+model Session {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  userAgent  String?   @map("user_agent")
+  ip         String?
+  lastSeenAt DateTime  @default(now()) @map("last_seen_at")
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("sessions")
+}
+
+/// §2.9 — 5 xato → 15 daqiqa blok. §2.10 — kirish jurnali.
+/// `email` foreign key emas: mavjud bo'lmagan email bilan urinish ham yoziladi.
+model LoginAttempt {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String
+  ip        String?
+  userAgent String?  @map("user_agent")
+  success   Boolean
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([email, createdAt])
+  @@index([ip, createdAt])
+  @@map("login_attempts")
+}
+
+/// §2.5 — parol tiklash email orqali.
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_reset_tokens")
+}
+
+// ──────────────────────── Sozlamalar va valyuta kursi ────────────────────────
+
+/// Bitta qator (id = 1). Tipli ustunlar — JSON blob emas, chunki
+/// har bir sozlama alohida validatsiya va audit talab qiladi (§3.10).
+model Settings {
+  id Int @id @default(1)
+
+  // §3.6 — PDF, login sahifasi va eksportlarda ishlatiladi
+  shopName   String  @default("HisobAI") @map("shop_name")
+  logoFileId String? @unique @map("logo_file_id") @db.Uuid
+  address    String?
+  phone      String?
+
+  // §3.7 — hisobot o'rtachalari va dam olish kunida eslatma yubormaslik uchun
+  workStart   String @default("09:00") @map("work_start")
+  workEnd     String @default("19:00") @map("work_end")
+  weekendDays Int[]  @default([0]) @map("weekend_days") // 0 = yakshanba
+
+  // §3.8 — mahsulotga alohida chegara qo'yilmasa shu ishlatiladi
+  lowStockThreshold Int @default(3) @map("low_stock_threshold")
+
+  // §3.9 — nasiya formasida oldindan to'ldiriladi
+  defaultInstallmentMonths  Int     @default(6) @map("default_installment_months")
+  defaultDownPaymentPercent Decimal @default(30) @map("default_down_payment_percent") @db.Decimal(5, 2)
+
+  // §3.2 — do'kon kursi CBU'dan ustama bilan hisoblanadi
+  baseCurrency    Currency @default(UZS) @map("base_currency")
+  storeRateMarkup Decimal  @default(0) @map("store_rate_markup") @db.Decimal(12, 4)
+
+  reminderHour Int @default(9) @map("reminder_hour")
+
+  updatedById String?  @map("updated_by_id") @db.Uuid
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  logo      FileAsset? @relation(fields: [logoFileId], references: [id], onDelete: SetNull)
+  updatedBy User?      @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("settings")
+}
+
+/// §3.1, §3.5 — har kun uchun bitta qator; ikkala kurs ham saqlanadi.
+model ExchangeRate {
+  id   String   @id @default(uuid()) @db.Uuid
+  date DateTime @unique @db.Date
+
+  /// CBU kursi — ma'lumot uchun. Olinmasa null bo'lishi mumkin (§1.5).
+  cbuRate   Decimal?           @map("cbu_rate") @db.Decimal(12, 4)
+  /// Do'kon kursi — savdo va to'lovlarda AYNAN shu ishlatiladi (§3.1).
+  storeRate Decimal            @map("store_rate") @db.Decimal(12, 4)
+  source    ExchangeRateSource @default(CBU)
+  fetchedAt DateTime?          @map("fetched_at")
+
+  updatedById String?  @map("updated_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  updatedBy User? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([date])
+  @@map("exchange_rates")
+}
+
+// ─────────────────────────────── Katalog ───────────────────────────────
+
+/// §4.3 — dublikat oldini olish uchun `slug` normalizatsiyalangan nom.
+model Category {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  products Product[]
+
+  @@map("categories")
+}
+
+model Brand {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  products Product[]
+
+  @@map("brands")
+}
+
+/// Shablon. Tannarx BU YERDA saqlanmaydi (§4.1) — u ombor birligida/partiyada.
+model Product {
+  id         String @id @default(uuid()) @db.Uuid
+  categoryId String @map("category_id") @db.Uuid
+  brandId    String @map("brand_id") @db.Uuid
+
+  model   String
+  storage String? // §4.7 — aksessuarlarda bo'sh
+  color   String?
+  /// §4.6 — brend + model + xotira + rang dan avtomatik yig'iladi
+  displayName String @map("display_name")
+
+  type     ProductType
+  currency Currency // §1.2 — mahsulotga bitta valyuta
+
+  /// §4.2 — faqat ma'lumot uchun; qabul formasida oldindan to'ldiriladi
+  suggestedPrice   Decimal? @map("suggested_price") @db.Decimal(18, 2)
+  lastCostPrice    Decimal? @map("last_cost_price") @db.Decimal(18, 2)
+  /// §3.8 — null bo'lsa sozlamalardagi umumiy chegara ishlatiladi
+  lowStockThreshold Int?    @map("low_stock_threshold")
+
+  description  String?
+  imageFileId  String?  @map("image_file_id") @db.Uuid
+  /// §4.8 — o'chirilmaydi, arxivlanadi
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  category       Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  brand          Brand            @relation(fields: [brandId], references: [id], onDelete: Restrict)
+  image          FileAsset?       @relation(fields: [imageFileId], references: [id], onDelete: SetNull)
+  inventoryItems InventoryItem[]
+  batches        InventoryBatch[]
+  stockMovements StockMovement[]
+  saleItems      SaleItem[]
+  stocktakeLines StocktakeLine[]
+
+  @@index([brandId, model])
+  @@index([displayName])
+  @@map("products")
+}
+
+// ─────────────────────────────── Ombor ───────────────────────────────
+
+/// §5.1 — har fizik birlik alohida yozuv, O'Z tannarxi bilan.
+model InventoryItem {
+  id        String @id @default(uuid()) @db.Uuid
+  productId String @map("product_id") @db.Uuid
+
+  /// §5.3 — ikkalasi ham unique; qidiruv ikkala ustunni qamraydi
+  imei1        String? @unique @map("imei_1")
+  imei2        String? @unique @map("imei_2")
+  serialNumber String? @unique @map("serial_number")
+
+  /// §4.1 — haqiqiy tannarx aynan shu birlikda
+  costPrice    Decimal         @map("cost_price") @db.Decimal(18, 2)
+  costCurrency Currency        @map("cost_currency")
+  status       InventoryStatus @default(AVAILABLE)
+
+  receivedAt   DateTime  @default(now()) @map("received_at")
+  /// §8.2 — qaytgan mahsulotda sabab saqlanadi
+  returnReason String?   @map("return_reason")
+  note         String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  product        Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  stockMovements StockMovement[]
+  saleItems      SaleItem[]
+  stocktakeLines StocktakeLine[]
+
+  @@index([productId, status])
+  @@map("inventory_items")
+}
+
+/// §5.2 — miqdorli mahsulot partiya bo'yicha: har partiya boshqa narxda keladi.
+model InventoryBatch {
+  id        String @id @default(uuid()) @db.Uuid
+  productId String @map("product_id") @db.Uuid
+
+  quantityReceived  Int      @map("quantity_received")
+  quantityRemaining Int      @map("quantity_remaining")
+  unitCost          Decimal  @map("unit_cost") @db.Decimal(18, 2)
+  costCurrency      Currency @map("cost_currency")
+
+  receivedAt DateTime @default(now()) @map("received_at")
+  note       String?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  product        Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  stockMovements StockMovement[]
+  saleItems      SaleItem[]
+
+  @@index([productId, receivedAt])
+  @@map("inventory_batches")
+}
+
+/// §5.10 — har o'zgarish yoziladi va HECH QACHON o'chirilmaydi.
+model StockMovement {
+  id              String  @id @default(uuid()) @db.Uuid
+  productId       String  @map("product_id") @db.Uuid
+  inventoryItemId String? @map("inventory_item_id") @db.Uuid
+  batchId         String? @map("batch_id") @db.Uuid
+
+  type     StockMovementType
+  /// Seriyalida har doim 1; miqdorlida partiyadan olingan miqdor.
+  quantity Int
+  reason   StockAdjustReason?
+
+  /// Qaysi hujjat sabab bo'ldi: SALE / STOCKTAKE / RECEIVE va h.k.
+  referenceType String? @map("reference_type")
+  referenceId   String? @map("reference_id") @db.Uuid
+
+  occurredAt DateTime @default(now()) @map("occurred_at")
+  actorId    String?  @map("actor_id") @db.Uuid
+  note       String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  product       Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  inventoryItem InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  batch         InventoryBatch? @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  actor         User?          @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([productId, occurredAt])
+  @@index([referenceType, referenceId])
+  @@map("stock_movements")
+}
+
+/// §5.6 — jismonan sanab, tizimdagi qoldiq bilan solishtirish.
+model Stocktake {
+  id          String          @id @default(uuid()) @db.Uuid
+  status      StocktakeStatus @default(IN_PROGRESS)
+  startedAt   DateTime        @default(now()) @map("started_at")
+  completedAt DateTime?       @map("completed_at")
+  actorId     String?         @map("actor_id") @db.Uuid
+  note        String?
+
+  actor User?           @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  lines StocktakeLine[]
+
+  @@map("stocktakes")
+}
+
+model StocktakeLine {
+  id          String @id @default(uuid()) @db.Uuid
+  stocktakeId String @map("stocktake_id") @db.Uuid
+  productId   String @map("product_id") @db.Uuid
+  /// Seriyali mahsulotda aniq birlik ko'rsatiladi.
+  inventoryItemId String? @map("inventory_item_id") @db.Uuid
+
+  expectedQuantity Int                @map("expected_quantity")
+  countedQuantity  Int                @map("counted_quantity")
+  reason           StockAdjustReason?
+  note             String?
+
+  stocktake     Stocktake      @relation(fields: [stocktakeId], references: [id], onDelete: Cascade)
+  product       Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  inventoryItem InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+
+  @@index([stocktakeId])
+  @@map("stocktake_lines")
+}
+
+// ─────────────────────────────── Mijozlar ───────────────────────────────
+
+/// Qarz ustuni YO'Q — qarz faqat tranzaksiyalardan hisoblanadi (§6.12).
+model Customer {
+  id       String @id @default(uuid()) @db.Uuid
+  fullName String @map("full_name")
+
+  /// §6.2, §6.4 — E.164, unique; SMS shunga ketadi
+  phonePrimary   String  @unique @map("phone_primary")
+  phoneSecondary String? @map("phone_secondary")
+
+  address String?
+  note    String?
+
+  // §6.5 — nasiya shartnomasi PDF'ida chiqadi
+  passportSeries String? @map("passport_series")
+  passportNumber String? @map("passport_number")
+  pinfl          String?
+  passportFileId String? @unique @map("passport_file_id") @db.Uuid
+
+  /// §6.9 — ogohlantiradi, lekin taqiqlamaydi
+  isFlagged  Boolean @default(false) @map("is_flagged")
+  flagReason String? @map("flag_reason")
+
+  /// §6.13 — savdosi bor mijoz o'chirilmaydi
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  passportFile     FileAsset?        @relation(fields: [passportFileId], references: [id], onDelete: SetNull)
+  sales            Sale[]
+  notificationLogs NotificationLog[]
+
+  @@index([fullName])
+  @@index([phoneSecondary])
+  @@map("customers")
+}
+
+// ─────────────────────────────── Savdo ───────────────────────────────
+
+model Sale {
+  id String @id @default(uuid()) @db.Uuid
+  /// §7.6 — yil + ketma-ket raqam, masalan `2026-00147`
+  number String @unique
+
+  customerId String?    @map("customer_id") @db.Uuid // §6.1 — naqdda ixtiyoriy
+  kind       SaleKind
+  status     SaleStatus @default(DRAFT)
+
+  /// §1.9 — bitta savdo, bitta valyuta
+  currency Currency
+  /// §1.7 — kurs snapshot; qaytarishda ham AYNAN shu ishlatiladi (§1.8)
+  exchangeRate Decimal @map("exchange_rate") @db.Decimal(12, 4)
+
+  /// §7.3 — alohida chegirma maydoni yo'q; narx qatorda o'zgartiriladi
+  subtotal Decimal @db.Decimal(18, 2)
+  total    Decimal @db.Decimal(18, 2)
+
+  /// §7.5 — 7 kungacha orqaga qo'yish mumkin
+  soldAt      DateTime  @map("sold_at")
+  confirmedAt DateTime? @map("confirmed_at")
+
+  createdById String? @map("created_by_id") @db.Uuid
+
+  // §8 — teskari yozuv asl savdoga bog'lanadi; asl savdo o'chirilmaydi
+  reversesSaleId String?         @map("reverses_sale_id") @db.Uuid
+  reversalKind   ReversalKind?   @map("reversal_kind")
+  reversalReason ReversalReason? @map("reversal_reason")
+  reversalNote   String?         @map("reversal_note")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  customer     Customer?            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy    User?                @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  reversesSale Sale?                @relation("SaleReversal", fields: [reversesSaleId], references: [id], onDelete: Restrict)
+  reversals    Sale[]               @relation("SaleReversal")
+  items        SaleItem[]
+  contract     InstallmentContract?
+  payments     Payment[]
+  cashEntries  CashEntry[]
+
+  @@index([status, soldAt])
+  @@index([customerId, soldAt])
+  @@map("sales")
+}
+
+/// §7.11 — snapshotlar: keyingi narx o'zgarishi eski foydani o'zgartirmaydi.
+model SaleItem {
+  id     String @id @default(uuid()) @db.Uuid
+  saleId String @map("sale_id") @db.Uuid
+
+  productId       String  @map("product_id") @db.Uuid
+  inventoryItemId String? @map("inventory_item_id") @db.Uuid
+  batchId         String? @map("batch_id") @db.Uuid
+
+  quantity  Int     @default(1)
+  /// Savdo valyutasida. Boshqa valyutali mahsulot savdo kursida aylantiriladi (§1.9).
+  unitPrice Decimal @map("unit_price") @db.Decimal(18, 2)
+
+  /// §7.11 — tannarx snapshot, o'z valyutasi bilan
+  costSnapshot Decimal  @map("cost_snapshot") @db.Decimal(18, 2)
+  costCurrency Currency @map("cost_currency")
+
+  /// §7.4 — chegirma hisoboti = tavsiya narx − haqiqiy narx
+  suggestedPriceSnapshot Decimal? @map("suggested_price_snapshot") @db.Decimal(18, 2)
+
+  /// §8.4 — qisman qaytarish
+  returnedQuantity Int @default(0) @map("returned_quantity")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  sale          Sale            @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product       Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  inventoryItem InventoryItem?  @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  batch         InventoryBatch? @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@index([saleId])
+  @@index([productId])
+  @@map("sale_items")
+}
+
+// ─────────────────────────────── Nasiya ───────────────────────────────
+
+/// `outstanding` ustuni YO'Q — jadval va taqsimotlardan hisoblanadi.
+model InstallmentContract {
+  id     String @id @default(uuid()) @db.Uuid
+  saleId String @unique @map("sale_id") @db.Uuid
+
+  /// §9.2 — savdo valyutasi, o'zgarmaydi
+  currency Currency
+
+  /// §9.3 — naqd narx + ustama (summa yoki foiz)
+  cashPrice     Decimal  @map("cash_price") @db.Decimal(18, 2)
+  markupAmount  Decimal  @default(0) @map("markup_amount") @db.Decimal(18, 2)
+  markupPercent Decimal? @map("markup_percent") @db.Decimal(5, 2)
+
+  /// principal = cashPrice + markupAmount − downPayment
+  principal   Decimal @db.Decimal(18, 2)
+  downPayment Decimal @default(0) @map("down_payment") @db.Decimal(18, 2)
+
+  status   ContractStatus @default(ACTIVE)
+  closedAt DateTime?      @map("closed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  sale      Sale              @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  schedules PaymentSchedule[]
+  payments  Payment[]
+  documents Document[]
+
+  @@index([status])
+  @@map("installment_contracts")
+}
+
+/// §9.6 — jadval summasi qarzga teng bo'lishi shart (kod darajasida tekshiriladi).
+/// §9.8 — "muddati o'tgan" saqlanmaydi: `dueDate < bugun` va qarz qolganidan hisoblanadi.
+model PaymentSchedule {
+  id         String @id @default(uuid()) @db.Uuid
+  contractId String @map("contract_id") @db.Uuid
+
+  sequence   Int
+  dueDate    DateTime       @map("due_date") @db.Date
+  amountDue  Decimal        @map("amount_due") @db.Decimal(18, 2)
+  amountPaid Decimal        @default(0) @map("amount_paid") @db.Decimal(18, 2)
+  status     ScheduleStatus @default(UNPAID)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  contract         InstallmentContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  allocations      PaymentAllocation[]
+  notificationLogs NotificationLog[]
+
+  @@unique([contractId, sequence])
+  @@index([dueDate, status])
+  @@map("payment_schedules")
+}
+
+// ─────────────────────────────── To'lovlar ───────────────────────────────
+
+/// §7.2 — savdoga ham, shartnomaga ham bog'lana oladi.
+/// v0.1 da faqat `contractId` bor edi va naqd savdo to'lovini yozadigan joy yo'q edi.
+model Payment {
+  id         String  @id @default(uuid()) @db.Uuid
+  saleId     String? @map("sale_id") @db.Uuid
+  contractId String? @map("contract_id") @db.Uuid
+
+  /// §10 — haqiqatda berilgan summa va uning valyutasi
+  paidAmount   Decimal  @map("paid_amount") @db.Decimal(18, 2)
+  paidCurrency Currency @map("paid_currency")
+  /// §1.7 — o'sha paytdagi do'kon kursi
+  exchangeRate Decimal  @map("exchange_rate") @db.Decimal(12, 4)
+  /// §10.5 — qarzdan qancha ayrildi, shartnoma valyutasida
+  appliedAmount   Decimal  @map("applied_amount") @db.Decimal(18, 2)
+  appliedCurrency Currency @map("applied_currency")
+
+  method PaymentMethod
+  status PaymentStatus @default(PENDING_VERIFICATION)
+
+  /// §10.4 — 7 kungacha orqaga qo'yish mumkin
+  paidAt         DateTime  @map("paid_at")
+  confirmedAt    DateTime? @map("confirmed_at")
+  rejectedReason String?   @map("rejected_reason")
+
+  /// §10.3 — ixtiyoriy
+  receiptFileId String? @unique @map("receipt_file_id") @db.Uuid
+  /// §11.1 — pul qaysi hisobga tushdi
+  cashAccountId String? @map("cash_account_id") @db.Uuid
+  createdById   String? @map("created_by_id") @db.Uuid
+
+  /// §10.6 — qaytarish teskari yozuv sifatida
+  reversesPaymentId String? @map("reverses_payment_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  sale            Sale?                @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  contract        InstallmentContract? @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  receiptFile     FileAsset?           @relation(fields: [receiptFileId], references: [id], onDelete: SetNull)
+  cashAccount     CashAccount?         @relation(fields: [cashAccountId], references: [id], onDelete: Restrict)
+  createdBy       User?                @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  reversesPayment Payment?             @relation("PaymentReversal", fields: [reversesPaymentId], references: [id], onDelete: Restrict)
+  reversals       Payment[]            @relation("PaymentReversal")
+  allocations     PaymentAllocation[]
+  cashEntries     CashEntry[]
+
+  @@index([saleId, status])
+  @@index([contractId, status])
+  @@index([status, paidAt])
+  @@map("payments")
+}
+
+/// §10.1 — eng eski to'lanmagan qatordan boshlab taqsimlanadi.
+/// Alohida jadval: qaytarishni aniq teskari bajarish uchun kerak.
+model PaymentAllocation {
+  id         String  @id @default(uuid()) @db.Uuid
+  paymentId  String  @map("payment_id") @db.Uuid
+  scheduleId String  @map("schedule_id") @db.Uuid
+  amount     Decimal @db.Decimal(18, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  payment  Payment         @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  schedule PaymentSchedule @relation(fields: [scheduleId], references: [id], onDelete: Restrict)
+
+  @@index([paymentId])
+  @@index([scheduleId])
+  @@map("payment_allocations")
+}
+
+// ─────────────────────────────── Kassa ───────────────────────────────
+
+/// §11.1, §11.3 — karta puli kassa yashigida yo'q, shuning uchun hisoblar ajratiladi.
+model CashAccount {
+  id        String          @id @default(uuid()) @db.Uuid
+  name      String
+  currency  Currency
+  kind      CashAccountKind
+  isActive  Boolean         @default(true) @map("is_active")
+  sortOrder Int             @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  entries       CashEntry[]
+  payments      Payment[]
+  exchangesFrom CashExchange[] @relation("ExchangeFrom")
+  exchangesTo   CashExchange[] @relation("ExchangeTo")
+
+  @@unique([name, currency])
+  @@map("cash_accounts")
+}
+
+/// §11.10 — tizim kategoriyalari o'chirilmaydi; yangisini qo'shish mumkin.
+model CashCategory {
+  id        String         @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String         @unique
+  direction CashDirection?
+  isSystem  Boolean        @default(false) @map("is_system")
+  isActive  Boolean        @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  entries CashEntry[]
+
+  @@map("cash_categories")
+}
+
+model CashEntry {
+  id        String        @id @default(uuid()) @db.Uuid
+  accountId String        @map("account_id") @db.Uuid
+  direction CashDirection
+  amount    Decimal       @db.Decimal(18, 2)
+  /// Hisob valyutasi bilan bir xil bo'lishi shart (kod darajasida tekshiriladi).
+  currency  Currency
+
+  occurredAt DateTime @map("occurred_at")
+  categoryId String?  @map("category_id") @db.Uuid
+
+  /// §11.7 — MANUAL bo'lmagani qo'lda tahrirlanmaydi
+  sourceType CashSourceType @map("source_type")
+  sourceId   String?        @map("source_id") @db.Uuid
+  saleId     String?        @map("sale_id") @db.Uuid
+  paymentId  String?        @map("payment_id") @db.Uuid
+
+  note             String?
+  attachmentFileId String? @unique @map("attachment_file_id") @db.Uuid
+  createdById      String? @map("created_by_id") @db.Uuid
+
+  /// §11.8 — ertasiga tuzatish faqat teskari yozuv bilan
+  reversesEntryId String? @map("reverses_entry_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  account        CashAccount   @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  category       CashCategory? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  sale           Sale?         @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  payment        Payment?      @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  attachment     FileAsset?    @relation(fields: [attachmentFileId], references: [id], onDelete: SetNull)
+  createdBy      User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  reversesEntry  CashEntry?    @relation("CashEntryReversal", fields: [reversesEntryId], references: [id], onDelete: Restrict)
+  reversals      CashEntry[]   @relation("CashEntryReversal")
+
+  @@index([accountId, occurredAt])
+  @@index([sourceType, sourceId])
+  @@index([occurredAt])
+  @@map("cash_entries")
+}
+
+/// §11.6 — ayirboshlash alohida amal; daromad deb sanalmaydi.
+/// Ikkita `cash_entries` yozuvi bilan birga yaratiladi.
+model CashExchange {
+  id            String @id @default(uuid()) @db.Uuid
+  fromAccountId String @map("from_account_id") @db.Uuid
+  toAccountId   String @map("to_account_id") @db.Uuid
+
+  fromAmount Decimal @map("from_amount") @db.Decimal(18, 2)
+  toAmount   Decimal @map("to_amount") @db.Decimal(18, 2)
+  rate       Decimal @db.Decimal(12, 4)
+
+  occurredAt DateTime @map("occurred_at")
+  note       String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  fromAccount CashAccount @relation("ExchangeFrom", fields: [fromAccountId], references: [id], onDelete: Restrict)
+  toAccount   CashAccount @relation("ExchangeTo", fields: [toAccountId], references: [id], onDelete: Restrict)
+
+  @@index([occurredAt])
+  @@map("cash_exchanges")
+}
+
+// ──────────────────── Fayllar, hujjatlar, bildirishnomalar ────────────────────
+
+/// §15.5 — hech qachon ochiq havolada bo'lmaydi. §15.7 — 10 MB, siqilmaydi.
+model FileAsset {
+  id           String   @id @default(uuid()) @db.Uuid
+  storageKey   String   @unique @map("storage_key")
+  originalName String   @map("original_name")
+  mimeType     String   @map("mime_type")
+  sizeBytes    Int      @map("size_bytes")
+  kind         FileKind
+  uploadedById String?  @map("uploaded_by_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  uploadedBy  User?       @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  settings    Settings[]
+  products    Product[]
+  customers   Customer[]
+  payments    Payment[]
+  cashEntries CashEntry[]
+  documents   Document[]
+
+  @@map("files")
+}
+
+/// §15.2, §15.3 — har qayta tuzishda yangi versiya; eskisi ham qoladi.
+model Document {
+  id         String       @id @default(uuid()) @db.Uuid
+  type       DocumentType @default(INSTALLMENT_CONTRACT)
+  contractId String       @map("contract_id") @db.Uuid
+  version    Int          @default(1)
+  fileId     String       @map("file_id") @db.Uuid
+
+  contentHash String?  @map("content_hash")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  contract InstallmentContract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  file     FileAsset           @relation(fields: [fileId], references: [id], onDelete: Restrict)
+
+  @@unique([contractId, version])
+  @@map("documents")
+}
+
+model NotificationLog {
+  id      String              @id @default(uuid()) @db.Uuid
+  channel NotificationChannel
+  type    NotificationType
+
+  /// Push uchun endpoint, SMS uchun telefon raqami.
+  recipient  String
+  scheduleId String? @map("schedule_id") @db.Uuid
+  customerId String? @map("customer_id") @db.Uuid
+
+  status              NotificationStatus @default(PENDING)
+  scheduledFor        DateTime           @map("scheduled_for")
+  sentAt              DateTime?          @map("sent_at")
+  /// 10 daqiqadan ortiq turib qolgan ishlov qayta uriniladi.
+  processingStartedAt DateTime?          @map("processing_started_at")
+  error               String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  schedule PaymentSchedule? @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  customer Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  /// Idempotency: bitta jadval qatoriga bitta kanal bo'yicha bitta xabar.
+  @@unique([scheduleId, channel, type])
+  @@index([status, scheduledFor])
+  @@map("notification_logs")
+}
+
+model PushSubscription {
+  id       String @id @default(uuid()) @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+  endpoint String @unique
+  p256dh   String
+  auth     String
+
+  lastUsedAt DateTime? @map("last_used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
+}
+
+/// §2.2 — har amal qaysi foydalanuvchi qilganini yozadi.
+/// §6.7 — passport rasmini kim ko'rgani ham shu yerga tushadi.
+model AuditLog {
+  id         String  @id @default(uuid()) @db.Uuid
+  actorId    String? @map("actor_id") @db.Uuid
+  action     String
+  entityType String  @map("entity_type")
+  entityId   String? @map("entity_id")
+
+  beforeJson Json?    @map("before_json")
+  afterJson  Json?    @map("after_json")
+  ip         String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

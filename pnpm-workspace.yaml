@@ -1,0 +1,17 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# pnpm postinstall skriptlarini standart holda bloklaydi.
+# Bu paketlar native binary yig'adi yoki Prisma client generatsiya qiladi.
+allowBuilds:
+  '@prisma/engines': true
+  '@swc/core': true
+  argon2: true
+  prisma: true
+  # Faqat telemetriya yig'adi — kerak emas.
+  '@scarf/scarf': false
+
+minimumReleaseAgeExclude:
+  - '@types/node@26.2.0'
+  - eslint@10.8.1

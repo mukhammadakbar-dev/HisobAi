@@ -54,35 +54,35 @@ bog'lanishini oldini oladi.
 
 ## 3. Texnologik qarorlar
 
-| Qatlam | Tanlov | Sabab |
-|---|---|---|
-| Runtime | Node.js LTS | uzoq muddatli qo'llab-quvvatlash |
-| Frontend | React, Next.js, TypeScript | responsive UI, PWA va server rendering |
-| Backend | NestJS, TypeScript | aniq modul chegaralari, DI, testga qulaylik |
-| Database | PostgreSQL | ACID tranzaksiyalar, ishonchli moliyaviy hisob |
-| ORM | Prisma | type-safe so'rovlar, migratsiyalar, transaction API |
-| API | REST + OpenAPI/Swagger | aniq kontrakt |
-| Background jobs | PostgreSQL-backed queue + NestJS worker | eslatma va kurs sync'ini HTTP so'rovidan ajratish |
-| Fayllar | **MinIO** (S3-mos), `StorageProvider` adapteri ortida | §0.2 — Docker'siz, binary sifatida o'rnatiladi |
-| Dev muhiti | **Lokal PostgreSQL** | §0.3 — Docker image faqat production uchun |
-| Push | Web Push + service worker | admin PWA bildirishnomasi |
-| SMS | `SmsProvider` adapteri | hozir console, productionda provider |
-| Email | `MailProvider` adapteri | parol tiklash; provider tanlanmagan (§2.5) |
-| AI | `AiProvider` adapteri | model/providerga qaramlikni cheklash |
-| Kurs | `ExchangeRateProvider` adapteri | CBU API; ishlamasa oxirgi ma'lum kurs |
+| Qatlam          | Tanlov                                                | Sabab                                               |
+| --------------- | ----------------------------------------------------- | --------------------------------------------------- |
+| Runtime         | Node.js LTS                                           | uzoq muddatli qo'llab-quvvatlash                    |
+| Frontend        | React, Next.js, TypeScript                            | responsive UI, PWA va server rendering              |
+| Backend         | NestJS, TypeScript                                    | aniq modul chegaralari, DI, testga qulaylik         |
+| Database        | PostgreSQL                                            | ACID tranzaksiyalar, ishonchli moliyaviy hisob      |
+| ORM             | Prisma                                                | type-safe so'rovlar, migratsiyalar, transaction API |
+| API             | REST + OpenAPI/Swagger                                | aniq kontrakt                                       |
+| Background jobs | PostgreSQL-backed queue + NestJS worker               | eslatma va kurs sync'ini HTTP so'rovidan ajratish   |
+| Fayllar         | **MinIO** (S3-mos), `StorageProvider` adapteri ortida | §0.2 — Docker'siz, binary sifatida o'rnatiladi      |
+| Dev muhiti      | **Lokal PostgreSQL**                                  | §0.3 — Docker image faqat production uchun          |
+| Push            | Web Push + service worker                             | admin PWA bildirishnomasi                           |
+| SMS             | `SmsProvider` adapteri                                | hozir console, productionda provider                |
+| Email           | `MailProvider` adapteri                               | parol tiklash; provider tanlanmagan (§2.5)          |
+| AI              | `AiProvider` adapteri                                 | model/providerga qaramlikni cheklash                |
+| Kurs            | `ExchangeRateProvider` adapteri                       | CBU API; ishlamasa oxirgi ma'lum kurs               |
 
 ## 4. Pul va valyutani ifodalash
 
 Bu bo'lim butun tizimga tegadi — undan chetga chiqilmaydi.
 
-| Qoida | Ifodasi |
-|---|---|
-| Valyuta | `Currency` enum: `UZS`, `USD`. Bazaviy valyuta — `UZS` (§1.1) |
-| Summa | `numeric(18, 2)`. JavaScript `float` **hech qachon** pul hisobida ishlatilmaydi — Prisma `Decimal` |
-| Kurs | `numeric(12, 4)` — 1 USD necha UZS |
-| Yaxlitlash | USD 2 kasr xona, UZS butun songacha (§1.10). Yaxlitlash **yozishdan oldin** qilinadi, ko'rsatishda emas |
-| Juftlik qoidasi | Har bir pul ustuni **o'z valyuta ustuni bilan** yuradi. Valyutasiz summa ustuni bo'lmaydi |
-| Snapshot qoidasi | Konvertatsiya bo'lgan har joyda **kurs snapshot** ustuni saqlanadi va qayta hisoblanmaydi (§1.7) |
+| Qoida            | Ifodasi                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------- |
+| Valyuta          | `Currency` enum: `UZS`, `USD`. Bazaviy valyuta — `UZS` (§1.1)                                           |
+| Summa            | `numeric(18, 2)`. JavaScript `float` **hech qachon** pul hisobida ishlatilmaydi — Prisma `Decimal`      |
+| Kurs             | `numeric(12, 4)` — 1 USD necha UZS                                                                      |
+| Yaxlitlash       | USD 2 kasr xona, UZS butun songacha (§1.10). Yaxlitlash **yozishdan oldin** qilinadi, ko'rsatishda emas |
+| Juftlik qoidasi  | Har bir pul ustuni **o'z valyuta ustuni bilan** yuradi. Valyutasiz summa ustuni bo'lmaydi               |
+| Snapshot qoidasi | Konvertatsiya bo'lgan har joyda **kurs snapshot** ustuni saqlanadi va qayta hisoblanmaydi (§1.7)        |
 
 Amaliy natijalar:
 
@@ -99,25 +99,25 @@ Amaliy natijalar:
 
 ## 5. Backend modullari
 
-| Modul | Javobgarlik |
-|---|---|
-| `Auth` | login, sessiya, urinishlar cheklovi va jurnali, parol tiklash |
-| `Users` | foydalanuvchi profili, rol (MVP'da bitta rol faol) |
-| `Settings` | do'kon sozlamalari, standart qiymatlar |
-| `ExchangeRates` | CBU sync (09:00 Toshkent), do'kon kursi, kurs tarixi |
-| `Catalog` | kategoriya, brend, mahsulot shablonlari |
-| `Inventory` | seriyali birliklar, partiyalar, ombor harakati, inventarizatsiya |
-| `Customers` | mijoz kartasi, telefon normalizatsiyasi va dublikatlari, passport |
-| `Sales` | savdo qoralamasi, tasdiqlash, qaytarish va bekor qilish |
-| `Installments` | nasiya shartnomalari, ustama, to'lov jadvali |
-| `Payments` | to'lovlar, taqsimlash, tasdiqlash/rad etish/qaytarish |
-| `Cashbook` | kassa hisoblari, kirim-chiqim, valyuta ayirboshlash |
-| `Documents` | shartnoma PDF versiyalari |
-| `Storage` | MinIO adapteri, vaqtinchalik havolalar |
-| `Reports` | KPI, davr hisobotlari, dashboard |
-| `Notifications` | web push, SMS porti, yuborish tarixi |
-| `AiInsights` | read-only ma'lumot tayyorlash va AI javoblari |
-| `Audit` | o'zgarmas audit yozuvlari |
+| Modul           | Javobgarlik                                                       |
+| --------------- | ----------------------------------------------------------------- |
+| `Auth`          | login, sessiya, urinishlar cheklovi va jurnali, parol tiklash     |
+| `Users`         | foydalanuvchi profili, rol (MVP'da bitta rol faol)                |
+| `Settings`      | do'kon sozlamalari, standart qiymatlar                            |
+| `ExchangeRates` | CBU sync (09:00 Toshkent), do'kon kursi, kurs tarixi              |
+| `Catalog`       | kategoriya, brend, mahsulot shablonlari                           |
+| `Inventory`     | seriyali birliklar, partiyalar, ombor harakati, inventarizatsiya  |
+| `Customers`     | mijoz kartasi, telefon normalizatsiyasi va dublikatlari, passport |
+| `Sales`         | savdo qoralamasi, tasdiqlash, qaytarish va bekor qilish           |
+| `Installments`  | nasiya shartnomalari, ustama, to'lov jadvali                      |
+| `Payments`      | to'lovlar, taqsimlash, tasdiqlash/rad etish/qaytarish             |
+| `Cashbook`      | kassa hisoblari, kirim-chiqim, valyuta ayirboshlash               |
+| `Documents`     | shartnoma PDF versiyalari                                         |
+| `Storage`       | MinIO adapteri, vaqtinchalik havolalar                            |
+| `Reports`       | KPI, davr hisobotlari, dashboard                                  |
+| `Notifications` | web push, SMS porti, yuborish tarixi                              |
+| `AiInsights`    | read-only ma'lumot tayyorlash va AI javoblari                     |
+| `Audit`         | o'zgarmas audit yozuvlari                                         |
 
 **Modul boshqa modul jadvaliga bevosita yozmaydi.** Savdo tasdiqlanganda
 `Sales` domen event chiqaradi; `Inventory`, `Cashbook`, `Installments` va
@@ -184,45 +184,45 @@ erDiagram
 
 ### Auth va foydalanuvchilar
 
-| Jadval | Muhim maydonlar |
-|---|---|
-| `users` | `id`, `email` (unique), `password_hash` (Argon2id), `display_name`, `role`, `theme`, `is_active` |
-| `sessions` | `id`, `user_id`, `token_hash`, `user_agent`, `ip`, `last_seen_at`, `expires_at`, `revoked_at` — 30 kun (§2.7) |
-| `login_attempts` | `id`, `email`, `ip`, `success`, `user_agent`, `created_at` — 5/15daq blok va jurnal (§2.9, §2.10) |
-| `password_reset_tokens` | `id`, `user_id`, `token_hash`, `expires_at`, `used_at` (§2.5) |
+| Jadval                  | Muhim maydonlar                                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `users`                 | `id`, `email` (unique), `password_hash` (Argon2id), `display_name`, `role`, `theme`, `is_active`              |
+| `sessions`              | `id`, `user_id`, `token_hash`, `user_agent`, `ip`, `last_seen_at`, `expires_at`, `revoked_at` — 30 kun (§2.7) |
+| `login_attempts`        | `id`, `email`, `ip`, `success`, `user_agent`, `created_at` — 5/15daq blok va jurnal (§2.9, §2.10)             |
+| `password_reset_tokens` | `id`, `user_id`, `token_hash`, `expires_at`, `used_at` (§2.5)                                                 |
 
 ### Sozlamalar va kurs
 
-| Jadval | Muhim maydonlar |
-|---|---|
-| `settings` | bitta qator, tipli ustunlar: `shop_name`, `logo_file_id`, `address`, `phone`, `work_start`, `work_end`, `weekend_days`, `low_stock_threshold`, `default_installment_months`, `default_down_payment_percent`, `store_rate_markup`, `reminder_hour` |
-| `exchange_rates` | `date` (unique), `cbu_rate`, `store_rate`, `source` (`CBU`/`MANUAL`), `fetched_at`, `updated_by_id` (§3.5) |
+| Jadval           | Muhim maydonlar                                                                                                                                                                                                                                   |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `settings`       | bitta qator, tipli ustunlar: `shop_name`, `logo_file_id`, `address`, `phone`, `work_start`, `work_end`, `weekend_days`, `low_stock_threshold`, `default_installment_months`, `default_down_payment_percent`, `store_rate_markup`, `reminder_hour` |
+| `exchange_rates` | `date` (unique), `cbu_rate`, `store_rate`, `source` (`CBU`/`MANUAL`), `fetched_at`, `updated_by_id` (§3.5)                                                                                                                                        |
 
 ### Katalog
 
-| Jadval | Muhim maydonlar |
-|---|---|
-| `categories` | `id`, `name` (normalizatsiyalangan, unique), `is_active` |
-| `brands` | `id`, `name` (normalizatsiyalangan, unique), `is_active` |
-| `products` | `id`, `category_id`, `brand_id`, `model`, `storage`, `color`, `display_name` (avtomatik, §4.6), `type` (`SERIALIZED`/`QUANTITY`), `currency`, `suggested_price`, `low_stock_threshold`, `description`, `image_file_id`, `is_active` (§4.8) |
+| Jadval       | Muhim maydonlar                                                                                                                                                                                                                            |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `categories` | `id`, `name` (normalizatsiyalangan, unique), `is_active`                                                                                                                                                                                   |
+| `brands`     | `id`, `name` (normalizatsiyalangan, unique), `is_active`                                                                                                                                                                                   |
+| `products`   | `id`, `category_id`, `brand_id`, `model`, `storage`, `color`, `display_name` (avtomatik, §4.6), `type` (`SERIALIZED`/`QUANTITY`), `currency`, `suggested_price`, `low_stock_threshold`, `description`, `image_file_id`, `is_active` (§4.8) |
 
 ### Ombor
 
-| Jadval | Muhim maydonlar |
-|---|---|
-| `inventory_items` | `id`, `product_id`, `imei_1`, `imei_2`, `serial_number`, `cost_price`, `cost_currency`, `status`, `received_at`, `return_reason`, `note` |
-| `inventory_batches` | `id`, `product_id`, `quantity_received`, `quantity_remaining`, `unit_cost`, `cost_currency`, `received_at`, `note` (§5.2) |
-| `stock_movements` | `id`, `product_id`, `inventory_item_id?`, `batch_id?`, `type`, `quantity`, `reason`, `reference_type`, `reference_id`, `occurred_at`, `actor_id` |
-| `stocktakes` | `id`, `status`, `started_at`, `completed_at`, `actor_id`, `note` (§5.6) |
-| `stocktake_lines` | `id`, `stocktake_id`, `product_id`, `inventory_item_id?`, `expected_quantity`, `counted_quantity`, `reason` (§5.7) |
+| Jadval              | Muhim maydonlar                                                                                                                                  |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `inventory_items`   | `id`, `product_id`, `imei_1`, `imei_2`, `serial_number`, `cost_price`, `cost_currency`, `status`, `received_at`, `return_reason`, `note`         |
+| `inventory_batches` | `id`, `product_id`, `quantity_received`, `quantity_remaining`, `unit_cost`, `cost_currency`, `received_at`, `note` (§5.2)                        |
+| `stock_movements`   | `id`, `product_id`, `inventory_item_id?`, `batch_id?`, `type`, `quantity`, `reason`, `reference_type`, `reference_id`, `occurred_at`, `actor_id` |
+| `stocktakes`        | `id`, `status`, `started_at`, `completed_at`, `actor_id`, `note` (§5.6)                                                                          |
+| `stocktake_lines`   | `id`, `stocktake_id`, `product_id`, `inventory_item_id?`, `expected_quantity`, `counted_quantity`, `reason` (§5.7)                               |
 
 `imei_1`, `imei_2` va `serial_number` null bo'lmagan qiymatlar uchun unique;
 IMEI qidiruvi ikkala ustunni ham qamraydi (§5.3).
 
 ### Mijozlar
 
-| Jadval | Muhim maydonlar |
-|---|---|
+| Jadval      | Muhim maydonlar                                                                                                                                                                                       |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `customers` | `id`, `full_name`, `phone_primary` (E.164, unique), `phone_secondary`, `address`, `note`, `passport_series`, `passport_number`, `pinfl`, `passport_file_id`, `is_flagged`, `flag_reason`, `is_active` |
 
 Qarz ustuni **yo'q** — qarz faqat tranzaksiyalardan hisoblanadi (§6.12) va
@@ -230,30 +230,30 @@ valyuta bo'yicha alohida ko'rsatiladi (§6.11).
 
 ### Savdo
 
-| Jadval | Muhim maydonlar |
-|---|---|
-| `sales` | `id`, `number` (`2026-00147`, unique), `customer_id?`, `kind` (`CASH`/`INSTALLMENT`), `status` (`DRAFT`/`CONFIRMED`/`RETURNED`/`PARTIALLY_RETURNED`/`CANCELLED`), `currency`, `exchange_rate`, `subtotal`, `total`, `sold_at`, `confirmed_at`, `created_by_id`, `reverses_sale_id?`, `reversal_kind` (`RETURN`/`CANCEL`), `reversal_reason` |
-| `sale_items` | `id`, `sale_id`, `product_id`, `inventory_item_id?`, `batch_id?`, `quantity`, `unit_price`, `cost_snapshot`, `cost_currency`, `suggested_price_snapshot`, `returned_quantity` |
+| Jadval       | Muhim maydonlar                                                                                                                                                                                                                                                                                                                             |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sales`      | `id`, `number` (`2026-00147`, unique), `customer_id?`, `kind` (`CASH`/`INSTALLMENT`), `status` (`DRAFT`/`CONFIRMED`/`RETURNED`/`PARTIALLY_RETURNED`/`CANCELLED`), `currency`, `exchange_rate`, `subtotal`, `total`, `sold_at`, `confirmed_at`, `created_by_id`, `reverses_sale_id?`, `reversal_kind` (`RETURN`/`CANCEL`), `reversal_reason` |
+| `sale_items` | `id`, `sale_id`, `product_id`, `inventory_item_id?`, `batch_id?`, `quantity`, `unit_price`, `cost_snapshot`, `cost_currency`, `suggested_price_snapshot`, `returned_quantity`                                                                                                                                                               |
 
 Tannarx va tavsiya narx `sale_items`da snapshot sifatida saqlanadi — keyingi
 narx o'zgarishi eski savdo foydasini o'zgartirmaydi (§7.4, §7.11).
 
 ### Nasiya
 
-| Jadval | Muhim maydonlar |
-|---|---|
+| Jadval                  | Muhim maydonlar                                                                                                                                                                        |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `installment_contracts` | `id`, `sale_id` (unique), `currency`, `cash_price`, `markup_amount`, `markup_percent`, `principal`, `down_payment`, `status` (`ACTIVE`/`CLOSED`/`CANCELLED`), `closed_at` (§9.3, §9.7) |
-| `payment_schedules` | `id`, `contract_id`, `sequence`, `due_date`, `amount_due`, `amount_paid`, `status` (`UNPAID`/`PARTIAL`/`PAID`) |
+| `payment_schedules`     | `id`, `contract_id`, `sequence`, `due_date`, `amount_due`, `amount_paid`, `status` (`UNPAID`/`PARTIAL`/`PAID`)                                                                         |
 
 `outstanding_amount` **saqlanmaydi** — jadval va taqsimotlardan hisoblanadi
 (§6.12 bilan bir mantiq: hisoblanadigan qiymat ikki joyda turmasin).
 
 ### To'lovlar
 
-| Jadval | Muhim maydonlar |
-|---|---|
-| `payments` | `id`, `sale_id?`, `contract_id?`, `paid_amount`, `paid_currency`, `exchange_rate`, `applied_amount`, `applied_currency`, `method`, `status`, `paid_at`, `confirmed_at`, `rejected_reason`, `receipt_file_id?`, `cash_account_id`, `created_by_id`, `reverses_payment_id?` |
-| `payment_allocations` | `id`, `payment_id`, `schedule_id`, `amount` (§10.1) |
+| Jadval                | Muhim maydonlar                                                                                                                                                                                                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `payments`            | `id`, `sale_id?`, `contract_id?`, `paid_amount`, `paid_currency`, `exchange_rate`, `applied_amount`, `applied_currency`, `method`, `status`, `paid_at`, `confirmed_at`, `rejected_reason`, `receipt_file_id?`, `cash_account_id`, `created_by_id`, `reverses_payment_id?` |
+| `payment_allocations` | `id`, `payment_id`, `schedule_id`, `amount` (§10.1)                                                                                                                                                                                                                       |
 
 `sale_id` ham, `contract_id` ham bo'lishi — v0.1 dagi arxitektura xatosining
 tuzatilishi (§7.2): ilgari faqat `contract_id` bor edi, naqd savdo to'lovini
@@ -261,12 +261,12 @@ yozadigan joy yo'q edi.
 
 ### Kassa
 
-| Jadval | Muhim maydonlar |
-|---|---|
-| `cash_accounts` | `id`, `name`, `currency`, `kind` (`CASH`/`BANK`/`CARD`), `is_active`, `sort_order` (§11.1) |
-| `cash_categories` | `id`, `name`, `direction`, `is_system`, `is_active` (§11.10) |
-| `cash_entries` | `id`, `account_id`, `direction` (`IN`/`OUT`), `amount`, `currency`, `occurred_at`, `category_id?`, `source_type`, `source_id?`, `note`, `attachment_file_id?`, `created_by_id`, `reverses_entry_id?` |
-| `cash_exchanges` | `id`, `from_account_id`, `to_account_id`, `from_amount`, `to_amount`, `rate`, `occurred_at`, `note` (§11.6) |
+| Jadval            | Muhim maydonlar                                                                                                                                                                                      |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cash_accounts`   | `id`, `name`, `currency`, `kind` (`CASH`/`BANK`/`CARD`), `is_active`, `sort_order` (§11.1)                                                                                                           |
+| `cash_categories` | `id`, `name`, `direction`, `is_system`, `is_active` (§11.10)                                                                                                                                         |
+| `cash_entries`    | `id`, `account_id`, `direction` (`IN`/`OUT`), `amount`, `currency`, `occurred_at`, `category_id?`, `source_type`, `source_id?`, `note`, `attachment_file_id?`, `created_by_id`, `reverses_entry_id?` |
+| `cash_exchanges`  | `id`, `from_account_id`, `to_account_id`, `from_amount`, `to_amount`, `rate`, `occurred_at`, `note` (§11.6)                                                                                          |
 
 `source_type`: `SALE` · `PAYMENT` · `MANUAL` · `OPENING_BALANCE` ·
 `EXCHANGE` · `PERSONAL_USE` · `REVERSAL`. `MANUAL` bo'lmagan yozuv qo'lda
@@ -276,13 +276,13 @@ daromad deb sanalmaydi (§11.4, §11.6).
 
 ### Fayllar, hujjatlar, bildirishnomalar, audit
 
-| Jadval | Muhim maydonlar |
-|---|---|
-| `files` | `id`, `storage_key`, `original_name`, `mime_type`, `size_bytes`, `kind`, `uploaded_by_id` — maks 10 MB, siqilmaydi (§15.7) |
-| `documents` | `id`, `type`, `contract_id`, `version`, `file_id`, `content_hash` — har qayta tuzishda yangi versiya (§15.3) |
-| `notification_logs` | `id`, `channel`, `type`, `recipient`, `schedule_id?`, `customer_id?`, `status`, `scheduled_for`, `sent_at`, `processing_started_at`, `error` |
-| `push_subscriptions` | `id`, `user_id`, `endpoint` (unique), `p256dh`, `auth`, `last_used_at` |
-| `audit_logs` | `id`, `actor_id`, `action`, `entity_type`, `entity_id`, `before_json`, `after_json`, `ip`, `created_at` |
+| Jadval               | Muhim maydonlar                                                                                                                              |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `files`              | `id`, `storage_key`, `original_name`, `mime_type`, `size_bytes`, `kind`, `uploaded_by_id` — maks 10 MB, siqilmaydi (§15.7)                   |
+| `documents`          | `id`, `type`, `contract_id`, `version`, `file_id`, `content_hash` — har qayta tuzishda yangi versiya (§15.3)                                 |
+| `notification_logs`  | `id`, `channel`, `type`, `recipient`, `schedule_id?`, `customer_id?`, `status`, `scheduled_for`, `sent_at`, `processing_started_at`, `error` |
+| `push_subscriptions` | `id`, `user_id`, `endpoint` (unique), `p256dh`, `auth`, `last_used_at`                                                                       |
+| `audit_logs`         | `id`, `actor_id`, `action`, `entity_type`, `entity_id`, `before_json`, `after_json`, `ip`, `created_at`                                      |
 
 Passport rasmini kim ko'rgani ham `audit_logs`ga yoziladi (§6.7).
 
@@ -354,10 +354,10 @@ muhitida Docker yo'q — MinIO binary sifatida o'rnatiladi.
 
 ## 10. Fon jarayonlari
 
-| Jarayon | Vaqti | Vazifa |
-|---|---|---|
-| CBU kurs sync | har kuni 09:00 (Toshkent) | CBU kursini olish, do'kon kursini ustama bilan hisoblash, `exchange_rates`ga yozish (§3.3) |
-| To'lov eslatmasi | har kuni `reminder_hour` (default 09:00) va server ishga tushganda | ertaga muddati keladigan to'lanmagan qatorlar |
+| Jarayon          | Vaqti                                                              | Vazifa                                                                                     |
+| ---------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| CBU kurs sync    | har kuni 09:00 (Toshkent)                                          | CBU kursini olish, do'kon kursini ustama bilan hisoblash, `exchange_rates`ga yozish (§3.3) |
+| To'lov eslatmasi | har kuni `reminder_hour` (default 09:00) va server ishga tushganda | ertaga muddati keladigan to'lanmagan qatorlar                                              |
 
 Eslatma oqimi:
 
@@ -405,11 +405,11 @@ xarajat baholashidan keyin qilinadi.
 
 ### Testlar
 
-| Daraja | Qamrov |
-|---|---|
-| Unit | pul va valyuta hisoblari, yaxlitlash, to'lov taqsimoti, jadval tuzish, foyda hisobi |
+| Daraja      | Qamrov                                                                                                 |
+| ----------- | ------------------------------------------------------------------------------------------------------ |
+| Unit        | pul va valyuta hisoblari, yaxlitlash, to'lov taqsimoti, jadval tuzish, foyda hisobi                    |
 | Integration | savdo tasdiqlash tranzaksiyasi, qaytarish/bekor qilish, to'lov tasdiqlash va qaytarish, ombor tuzatish |
-| E2E | login → savdo → nasiya → to'lov asosiy yo'li |
+| E2E         | login → savdo → nasiya → to'lov asosiy yo'li                                                           |
 
 Savdo tasdiqlash va to'lov taqsimlash — eng xavfli ikki joy: noto'g'ri
 ishlasa pul hisobi buziladi va buni hech kim sezmaydi. Ular testsiz

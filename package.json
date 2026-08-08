@@ -1,0 +1,28 @@
+{
+  "name": "hisobai",
+  "version": "0.2.0",
+  "private": true,
+  "description": "HisobAI CRM — telefon do'konlari uchun ombor, savdo, nasiya, kassa va AI tahlil",
+  "packageManager": "pnpm@11.18.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "build": "pnpm --filter @hisobai/contracts build && pnpm --filter @hisobai/api build && pnpm --filter @hisobai/web build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:generate": "pnpm --filter @hisobai/api db:generate",
+    "db:migrate": "pnpm --filter @hisobai/api db:migrate",
+    "db:deploy": "pnpm --filter @hisobai/api db:deploy",
+    "db:seed": "pnpm --filter @hisobai/api db:seed",
+    "db:studio": "pnpm --filter @hisobai/api db:studio"
+  },
+  "devDependencies": {
+    "prettier": "3.9.6",
+    "typescript": "5.9.3"
+  }
+}
