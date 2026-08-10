@@ -6,6 +6,7 @@ import type { Request } from 'express';
 
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { CatalogModule } from './catalog/catalog.module';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
 import { CsrfCookieMiddleware } from './common/csrf-cookie.middleware';
 import { CsrfGuard } from './common/csrf.guard';
@@ -73,6 +74,7 @@ function isMutation(context: ExecutionContext): boolean {
     AuthModule,
     SettingsModule,
     ExchangeRatesModule,
+    CatalogModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

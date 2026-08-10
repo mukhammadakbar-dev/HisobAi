@@ -92,9 +92,22 @@ export const ErrorCode = {
   INVENTORY_DUPLICATE_IMEI: 'INVENTORY_DUPLICATE_IMEI',
   INVENTORY_ITEM_NOT_AVAILABLE: 'INVENTORY_ITEM_NOT_AVAILABLE',
   INVENTORY_COST_CURRENCY_MISMATCH: 'INVENTORY_COST_CURRENCY_MISMATCH',
+  /** Seriyali mahsulotga partiya (yoki aksincha) yuborildi — sxema turni bilmaydi. */
+  INVENTORY_PRODUCT_TYPE_MISMATCH: 'INVENTORY_PRODUCT_TYPE_MISMATCH',
 
   // ── Katalog va mijoz ──────────────────────────────────────────────────
   CATALOG_DUPLICATE_NAME: 'CATALOG_DUPLICATE_NAME',
+  /** §4.8 — arxivlangan mahsulotga qabul qilib bo'lmaydi. */
+  CATALOG_PRODUCT_ARCHIVED: 'CATALOG_PRODUCT_ARCHIVED',
+  /**
+   * Ombor bo'sh emas — `currency` yoki `type` ni o'zgartirib bo'lmaydi.
+   * Tannarx valyutasi triggeri faqat ombor yozuvlarida ishlaydi, ya'ni
+   * mahsulotni USD dan UZS ga o'tkazish mavjud qatorlarni jimgina
+   * noto'g'ri qoldirardi. Bazada bu holat uchun cheklov yo'q.
+   */
+  CATALOG_PRODUCT_HAS_STOCK: 'CATALOG_PRODUCT_HAS_STOCK',
+  /** §4.4 — birlashtirish nishoni o'zi yoki arxivdagi yozuv bo'lmasin. */
+  CATALOG_MERGE_INVALID_TARGET: 'CATALOG_MERGE_INVALID_TARGET',
   CUSTOMER_PHONE_TAKEN: 'CUSTOMER_PHONE_TAKEN',
 
   // ── Kurs (§3) ─────────────────────────────────────────────────────────

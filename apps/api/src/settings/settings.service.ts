@@ -3,7 +3,9 @@ import type { SettingsDto, UpdateSettingsInput } from '@hisobai/contracts';
 import { Prisma, type Settings } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
+import { auditDiff, hasChanges, type AuditDiff } from '../common/audit-diff';
 import { staleResource, type Precondition } from '../common/optimistic-lock';
+import { isRecordNotFound } from '../common/prisma-errors';
 import type { RequestUser } from '../common/request-user';
 import { PrismaService } from '../database/prisma.service';
 
@@ -77,7 +79,7 @@ export class SettingsService {
         });
 
       const changes = diff(before, after);
-      if (Object.keys(changes.before).length > 0) {
+      if (hasChanges(changes)) {
         await this.audit.record(tx, {
           actorId: actor.id,
           action: 'SETTINGS_UPDATED',
@@ -92,11 +94,6 @@ export class SettingsService {
       return toDto(after);
     });
   }
-}
-
-/** `P2025` — `WHERE` shartiga mos qator topilmadi. */
-function isRecordNotFound(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025';
 }
 
 // `Unchecked` — `updatedById` skalyar FK sifatida yoziladi; `Checked`
@@ -126,31 +123,17 @@ function toPrismaData(input: UpdateSettingsInput): Prisma.SettingsUncheckedUpdat
   return data;
 }
 
-/** Faqat o'zgargan maydonlar — audit o'qiladigan bo'lib qolsin. */
-function diff(
-  before: Settings,
-  after: Settings,
-): { before: Record<string, unknown>; after: Record<string, unknown> } {
-  const beforeChanges: Record<string, unknown> = {};
-  const afterChanges: Record<string, unknown> = {};
-
-  const beforeDto = toDto(before) as unknown as Record<string, unknown>;
-  const afterDto = toDto(after) as unknown as Record<string, unknown>;
-
-  for (const key of Object.keys(afterDto)) {
-    // `updatedAt` va `updatedById` har o'zgarishda farq qiladi — ular
-    // audit yozuvining o'zida allaqachon bor
-    if (key === 'updatedAt' || key === 'updatedById') continue;
-
-    const previous = beforeDto[key];
-    const next = afterDto[key];
-    if (JSON.stringify(previous) === JSON.stringify(next)) continue;
-
-    beforeChanges[key] = previous;
-    afterChanges[key] = next;
-  }
-
-  return { before: beforeChanges, after: afterChanges };
+/**
+ * Faqat o'zgargan maydonlar — audit o'qiladigan bo'lib qolsin.
+ *
+ * Hisob `common/audit-diff.ts` da: katalog moduli ham xuddi shu
+ * xulqni talab qiladi, ikki nusxa esa bir kun chetga chiqardi.
+ */
+function diff(before: Settings, after: Settings): AuditDiff {
+  return auditDiff(
+    toDto(before) as unknown as Record<string, unknown>,
+    toDto(after) as unknown as Record<string, unknown>,
+  );
 }
 
 function toDto(settings: Settings): SettingsDto {

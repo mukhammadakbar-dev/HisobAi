@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { MAX_PAGE_LIMIT } from '../pagination';
+
 /**
  * Sxemalarda qayta ishlatiladigan asosiy tiplar (`FRONTEND.md` §6.1).
  *
@@ -92,3 +94,58 @@ export const calendarDate = z
     },
     { message: 'Bunday sana yo‘q' },
   );
+
+/** UUID identifikator — barcha `:id` parametrlari va FK maydonlari uchun. */
+export const uuidString = z.uuid({ message: "Identifikator noto'g'ri" });
+
+/**
+ * Musbat pul qiymati — bazadagi `*_positive` CHECK cheklovlarining
+ * sxemadagi juftligi (`inventory_items_cost_positive`,
+ * `inventory_batches_cost_positive`). Ikkalasi ataylab takrorlanadi:
+ * sxema foydalanuvchiga tushunarli xato beradi, CHECK esa kod xatosidan
+ * himoyaning oxirgi qatlami bo'lib qoladi.
+ */
+export const positiveDecimal = decimalString.refine((value) => Number(value) > 0, {
+  message: "Qiymat noldan katta bo'lishi kerak",
+});
+
+/**
+ * Kursor pagination maydonlari (`API.md` §5.1).
+ *
+ * Har ro'yxat sxemasiga `...pageQueryFields` bilan qo'shiladi — beshta
+ * endpoint beshta boshqacha `limit` chegarasi ixtiro qilmasin.
+ */
+export const pageQueryFields = {
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().positive().max(MAX_PAGE_LIMIT).optional(),
+};
+
+/**
+ * Arxivlangan yozuvlarni ko'rsatish filtri (§4.8 — o'chirilmaydi, arxivlanadi).
+ *
+ * Default `active`: ro'yxat odatda ishlaydigan yozuvlarni ko'rsatadi.
+ * `all` varianti dublikat qidiruvida kerak — arxivdagi mahsulot ham
+ * "bunday nom bor" degan javobga kirishi kerak.
+ */
+export const activeFilter = z.enum(['active', 'archived', 'all']).default('active');
+export type ActiveFilter = z.infer<typeof activeFilter>;
+
+/**
+ * `?status=AVAILABLE,SOLD` — vergul bilan ajratilgan enum ro'yxati
+ * (`API.md` §5.2).
+ *
+ * Bo'sh bo'laklar tashlanadi (`?status=AVAILABLE,` odatiy xato), lekin
+ * butunlay bo'sh ro'yxat rad etiladi: `?status=` "hech narsa ko'rsatma"
+ * degani emas, u client xatosi.
+ */
+export function enumList<T extends Record<string, string>>(source: T, message: string) {
+  return z
+    .string()
+    .transform((raw) =>
+      raw
+        .split(',')
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0),
+    )
+    .pipe(z.array(z.enum(source)).min(1, message));
+}
