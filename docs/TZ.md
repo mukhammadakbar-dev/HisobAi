@@ -1,9 +1,15 @@
-# HisobAI CRM — Texnik topshiriq (v0.2)
+# HisobAI CRM — Texnik topshiriq (v0.2.1)
 
 > **v0.2 haqida.** Bu hujjat v0.1 (Baraka Mobile CRM) ustiga `DECISIONS.md`dagi
 > 2026-08-05/06 dizayn muhokamasi natijalarini qo'llaydi. Jadvallardagi
 > `§` ustuni qaror raqamini ko'rsatadi — batafsil sabab `DECISIONS.md`da.
 > Ziddiyat chiqsa **`DECISIONS.md` ustun turadi**.
+>
+> **v0.2.1 (2026-08-09).** Audit natijasida javobsiz qolgan 14 ta savol va
+> 18 ta blocker yopildi — `DECISIONS.md` §16 va §17. Ular ushbu hujjatga
+> singdirilgan; yangi bandlar `§16.N` / `§17.N` bilan belgilangan.
+> API konventsiyalari `API.md` da, atamalar `GLOSSARY.md` da, ruxsatlar
+> `PERMISSIONS.md` da.
 
 ## 1. Maqsad
 
@@ -33,26 +39,33 @@ izchilligini saqlaydi va egaga tezkor boshqaruv qarorlarida yordam beradi.
 Bu v0.2 ning eng katta o'zgarishi. Valyuta deyarli har bir moliyaviy
 jadvalga tegadi, shuning uchun u boshidan quriladi.
 
-| §    | Qoida                                                                                                       |
-| ---- | ----------------------------------------------------------------------------------------------------------- |
-| 1.1  | **Bazaviy valyuta — UZS.** Barcha hisobot, foyda va dashboard so'mda jamlanadi                              |
-| 1.2  | **Mahsulotga bitta valyuta** — tannarx ham, sotuv narxi ham o'sha valyutada                                 |
-| 1.9  | **Bitta savdo — bitta valyuta.** Boshqa valyutadagi mahsulot savatga qo'shilsa, savdo kursida aylantiriladi |
-| 1.3  | **Qarz savdo valyutasida qoladi.** USD'da sotilgan mahsulot qarzi USD'da qoladi                             |
-| 1.7  | Kurs har savdo va har to'lovda **snapshot** sifatida saqlanadi va hech qachon qayta hisoblanmaydi           |
-| 1.8  | Qaytarish va bekor qilish **asl kursda** bajariladi — teskari yozuv savdoni aniq nolga chiqaradi            |
-| 1.6  | **Kassada so'm va dollar qoldig'i alohida** yuritiladi                                                      |
-| 1.10 | Yaxlitlash: USD 2 kasr xonagacha, UZS butun songacha (tiyin ishlatilmaydi)                                  |
+| §    | Qoida                                                                                                                                                                                                                                                                     |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.1  | **Bazaviy valyuta — UZS.** Barcha hisobot, foyda va dashboard so'mda jamlanadi                                                                                                                                                                                            |
+| 1.2  | **Mahsulotga bitta valyuta** — tannarx ham, sotuv narxi ham o'sha valyutada                                                                                                                                                                                               |
+| 1.9  | **Bitta savdo — bitta valyuta.** Boshqa valyutadagi mahsulot savatga qo'shilsa, savdo kursida aylantiriladi                                                                                                                                                               |
+| 16.1 | **Savdo valyutasini foydalanuvchi tanlaydi**, default `UZS`; birinchi mahsulotdan taxmin qilinmaydi. Qoralamada o'zgartiriladi, tasdiqdan keyin yo'q. Aylantirish — faqat narx maydonini to'ldirish uchun; `sales.exchange_rate` **tasdiqlash paytida** snapshot qilinadi |
+| 16.9 | **Tannarx valyutasi = mahsulot valyutasi** (§1.2 dan kelib chiqadi), baza darajasida tekshiriladi                                                                                                                                                                         |
+| 1.3  | **Qarz savdo valyutasida qoladi.** USD'da sotilgan mahsulot qarzi USD'da qoladi                                                                                                                                                                                           |
+| 1.7  | Kurs har savdo va har to'lovda **snapshot** sifatida saqlanadi va hech qachon qayta hisoblanmaydi                                                                                                                                                                         |
+| 1.8  | Qaytarish va bekor qilish **asl kursda** bajariladi — teskari yozuv savdoni aniq nolga chiqaradi                                                                                                                                                                          |
+| 1.6  | **Kassada so'm va dollar qoldig'i alohida** yuritiladi                                                                                                                                                                                                                    |
+| 1.10 | Yaxlitlash: USD 2 kasr xonagacha, UZS butun songacha (tiyin ishlatilmaydi)                                                                                                                                                                                                |
 
 ### Kurs manbai
 
-| §         | Qoida                                                                                                                   |
-| --------- | ----------------------------------------------------------------------------------------------------------------------- |
-| 3.1       | **Ikkita kurs saqlanadi:** CBU kursi (avtomatik, ma'lumot uchun) va **do'kon kursi** (savdo va to'lovlarda ishlatiladi) |
-| 3.2       | Do'kon kursi CBU'dan ustama bilan avtomatik hisoblanadi yoki qo'lda kiritiladi; ikkalasi UI'da yonma-yon ko'rinadi      |
-| 3.3       | CBU kursi har kuni **09:00 (Toshkent)** da olinadi; har kun uchun bitta qator                                           |
-| 1.5 · 3.4 | **Kurs eskirsa savdo to'xtamaydi:** oxirgi ma'lum kurs ishlatiladi + ekran tepasida ogohlantirish chizig'i              |
-| 3.5       | Kurs tarixi saqlanadi: sana, CBU kursi, do'kon kursi, manba (`CBU`/`MANUAL`), olingan vaqt, kim o'zgartirgan            |
+| §         | Qoida                                                                                                                                                       |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 3.1       | **Ikkita kurs saqlanadi:** CBU kursi (avtomatik, ma'lumot uchun) va **do'kon kursi** (savdo va to'lovlarda ishlatiladi)                                     |
+| 3.2       | Do'kon kursi CBU'dan ustama bilan avtomatik hisoblanadi yoki qo'lda kiritiladi; ikkalasi UI'da yonma-yon ko'rinadi                                          |
+| 16.2      | **Ustama — foiz:** `do'kon kursi = round(CBU × (1 + ustama% / 100))`, butun so'mgacha. Sozlama nomi `store_rate_markup_percent`                             |
+| 3.3       | CBU kursi har kuni **09:00 (Toshkent)** da olinadi; har kun uchun bitta qator                                                                               |
+| 16.7      | **Olinmasa qayta uriniladi:** +15 daqiqa → +1 soat → +3 soat (4 urinish); server ishga tushganda ham (vaqt ≥ 09:00 va bugungi qator yo'q bo'lsa)            |
+| 1.5 · 3.4 | **Kurs eskirsa savdo to'xtamaydi:** oxirgi ma'lum kurs ishlatiladi + ekran tepasida ogohlantirish chizig'i                                                  |
+| 16.6      | **Eskirgan** = bugungi sana uchun qator yo'q. Chegara yo'q — 1 kun sariq, ≥3 kun qizil ogohlantirish                                                        |
+| 3.5       | Kurs tarixi saqlanadi: sana, CBU kursi, do'kon kursi, manba (`CBU`/`MANUAL`), olingan vaqt, kim o'zgartirgan                                                |
+| 16.8      | **Qo'lda qo'yilgan kursni avtomatik jarayon ustidan yozmaydi** (`source = MANUAL` bo'lsa `store_rate` daxlsiz). UI'da "CBU kursiga qaytarish" alohida amali |
+| 17.11     | **Orqaga qo'yilgan sana o'sha kunning kursini oladi** (savdo ham, to'lov ham); o'sha kun uchun qator bo'lmasa — undan oldingi eng yaqin qator               |
 
 ## 4. Kirish va xavfsizlik
 
@@ -97,19 +110,21 @@ tursa, foyda noto'g'ri hisoblanadi.
 
 ## 7. Ombor
 
-| §    | Talab                                                                                                                                                     |
-| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 5.1  | **Seriyali mahsulot** — har fizik birlik alohida yozuv, o'z tannarxi va holati bilan                                                                      |
-| 5.2  | **Miqdorli mahsulot** — **partiya** bo'yicha: miqdor + donasiga tannarx. Har partiya boshqa narxda keladi, foyda aniq hisoblanishi kerak                  |
-| 5.3  | **IMEI-1 va IMEI-2** (ikkinchisi ixtiyoriy). Ikkalasi bo'yicha qidiriladi, ikkalasi ham takrorlanmaydi                                                    |
-| 5.4  | Holatlar: `MAVJUD` · `SOTILGAN` · `QAYTARILGAN` · `CHIQARILGAN`. **"Rezerv" holati yo'q**                                                                 |
-| 5.5  | Savdo qoralamasi mahsulotni ushlab turmaydi. Bir xil IMEI ikki qoralamada bo'lishi mumkin — **birinchi tasdiqlagan oladi**, ikkinchisiga xato qaytariladi |
-| 5.6  | **Inventarizatsiya** ekrani: jismonan sanab, tizimdagi qoldiq bilan solishtirish; farq sababi bilan tuzatiladi                                            |
-| 5.7  | Tuzatish sababi: `yo'qolgan` · `nuqsonli` · `xato hisob` · `boshqa`. Hisobotda sabablar ajratiladi                                                        |
-| 5.8  | **Shaxsiy foydalanishga olish** — mahsulot ombordan chiqadi, tannarx miqdorida xarajat sifatida yoziladi                                                  |
-| 5.9  | **Ombor qiymati bugungi do'kon kursida** baholanadi. Foyda hisobi esa savdo paytidagi snapshot kursda qoladi — o'tgan davr hisoboti o'zgarmaydi           |
-| 5.10 | Har o'zgarish yoziladi va hech qachon o'chirilmaydi: `QABUL` · `SOTUV` · `QAYTARISH` · `TUZATISH` · `SHAXSIY`                                             |
-| 5.11 | Qabul qilish bitta tranzaksiyada; bir nechta IMEI'ni birdaniga kiritish mumkin                                                                            |
+| §     | Talab                                                                                                                                                                                                         |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 5.1   | **Seriyali mahsulot** — har fizik birlik alohida yozuv, o'z tannarxi va holati bilan                                                                                                                          |
+| 5.2   | **Miqdorli mahsulot** — **partiya** bo'yicha: miqdor + donasiga tannarx. Har partiya boshqa narxda keladi, foyda aniq hisoblanishi kerak                                                                      |
+| 5.3   | **IMEI-1 va IMEI-2** (ikkinchisi ixtiyoriy). Ikkalasi bo'yicha qidiriladi, ikkalasi ham takrorlanmaydi                                                                                                        |
+| 5.4   | Holatlar: `MAVJUD` · `SOTILGAN` · `QAYTARILGAN` · `CHIQARILGAN`. **"Rezerv" holati yo'q**                                                                                                                     |
+| 16.4  | **Qaytgan mahsulot qayta sotiladi:** ega "Sotuvga qaytarish" tugmasini bosadi → `MAVJUD`, lekin **qaytarish sababi o'chirilmaydi** va savdo formasida belgi bo'lib ko'rinadi. Nuqsonli bo'lsa → `CHIQARILGAN` |
+| 5.5   | Savdo qoralamasi mahsulotni ushlab turmaydi. Bir xil IMEI ikki qoralamada bo'lishi mumkin — **birinchi tasdiqlagan oladi**, ikkinchisiga xato qaytariladi                                                     |
+| 5.6   | **Inventarizatsiya** ekrani: jismonan sanab, tizimdagi qoldiq bilan solishtirish; farq sababi bilan tuzatiladi                                                                                                |
+| 5.7   | Tuzatish sababi: `yo'qolgan` · `nuqsonli` · `xato hisob` · `boshqa`. Hisobotda sabablar ajratiladi                                                                                                            |
+| 5.8   | **Shaxsiy foydalanishga olish** — mahsulot ombordan chiqadi, tannarx miqdorida xarajat sifatida yoziladi                                                                                                      |
+| 17.12 | **Bu xarajat kassaga tegmaydi** — kassadan pul chiqmaydi. Sof foyda hisobida pul bo'lmagan xarajat sifatida alohida satr. Ombor yo'qotishlariga (`yo'qolgan`, `nuqsonli`) ham shu qoida                       |
+| 5.9   | **Ombor qiymati bugungi do'kon kursida** baholanadi. Foyda hisobi esa savdo paytidagi snapshot kursda qoladi — o'tgan davr hisoboti o'zgarmaydi                                                               |
+| 5.10  | Har o'zgarish yoziladi va hech qachon o'chirilmaydi: `QABUL` · `SOTUV` · `QAYTARISH` · `TUZATISH` · `SHAXSIY`                                                                                                 |
+| 5.11  | Qabul qilish bitta tranzaksiyada; bir nechta IMEI'ni birdaniga kiritish mumkin                                                                                                                                |
 
 ## 8. Mijozlar
 
@@ -137,27 +152,37 @@ tursa, foyda noto'g'ri hisoblanadi.
 
 ### Tasdiqlash tranzaksiyasi (§7, hammasi bitta tranzaksiyada)
 
-1. Mahsulotlar hali mavjudmi — tekshiriladi
-2. Savdo va uning qatorlari yaratiladi, **kurs snapshot** va **tannarx snapshot** yoziladi
-3. Ombor birligi `SOTILGAN` bo'ladi / miqdor kamayadi + ombor harakati yoziladi
-4. To'langan summa kassaga kirim bo'ladi (valyutasi bo'yicha tegishli hisobga)
-5. Nasiya bo'lsa, shartnoma va to'lov jadvali shu yerda yaratiladi
-6. Audit yozuvi
+1. Ombor birligi **shartli yangilash** bilan band qilinadi (§17.5) — "birinchi
+   tasdiqlagan oladi" aynan shu yerda amalga oshadi
+2. Savdo raqami `sale_counters` dan ajratiladi (§17.1); savdo **yangilanadi**
+   (qoralama allaqachon mavjud), **kurs snapshot** va **tannarx snapshot** yoziladi
+3. Ombor harakati yoziladi
+4. To'lovlar `to'lovlar` jadvaliga yoziladi: naqd va karta — darhol
+   `TASDIQLANGAN`, o'tkazma — `TEKSHIRILMOQDA` (§17.2)
+5. `TASDIQLANGAN` to'lovlar uchun kassa kirimi yaratiladi — **faqat shu yo'l
+   orqali** (§17.2)
+6. Nasiya bo'lsa, shartnoma va to'lov jadvali shu yerda yaratiladi
+7. Audit yozuvi
 
 Bittasi xato bersa — hech biri saqlanmaydi.
 
-| §    | Talab                                                                                                                       |
-| ---- | --------------------------------------------------------------------------------------------------------------------------- |
-| 7.1  | **Aralash to'lov:** bitta savdoga bir nechta to'lov, har biri o'z usuli, valyutasi va holati bilan                          |
-| 7.3  | **Alohida chegirma maydoni yo'q** — sotuv narxi to'g'ridan-to'g'ri o'zgartiriladi                                           |
-| 7.4  | Savdo qatorida **tavsiya narx ham snapshot** qilinadi; chegirma hisoboti `tavsiya narx − haqiqiy narx` sifatida hisoblanadi |
-| 7.5  | **Savdo sanasini 7 kungacha orqaga** qo'yish mumkin; audit'ga yoziladi                                                      |
-| 7.6  | **Savdo raqami:** yil + ketma-ket raqam (`2026-00147`), har yil boshida qaytadan                                            |
-| 7.7  | **Qoralamani saqlash** mumkin — ombor va kassaga ta'sir qilmaydi                                                            |
-| 7.8  | **Tannarxdan past sotishda ogohlantirish** chiqadi, lekin taqiqlamaydi                                                      |
-| 7.9  | **Savat ichida har qatorning foydasi** ko'rsatiladi                                                                         |
-| 7.10 | **Kalkulator savdo formasida** ochiladi, natijani narx maydoniga o'tkazadi                                                  |
-| 7.11 | Har qatorda: mahsulot, miqdor, sotuv narxi, **tannarx snapshot**, tavsiya narx snapshot                                     |
+**Takroriy so'rov himoyasi:** tasdiqlash `Idempotency-Key` sarlavhasisiz
+qabul qilinmaydi (§17.6, `API.md` §4).
+
+| §     | Talab                                                                                                                                                     |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 7.1   | **Aralash to'lov:** bitta savdoga bir nechta to'lov, har biri o'z usuli, valyutasi va holati bilan                                                        |
+| 7.3   | **Alohida chegirma maydoni yo'q** — sotuv narxi to'g'ridan-to'g'ri o'zgartiriladi                                                                         |
+| 7.4   | Savdo qatorida **tavsiya narx ham snapshot** qilinadi; chegirma hisoboti `tavsiya narx − haqiqiy narx` sifatida hisoblanadi                               |
+| 7.5   | **Savdo sanasini 7 kungacha orqaga** qo'yish mumkin; audit'ga yoziladi                                                                                    |
+| 7.6   | **Savdo raqami:** yil + ketma-ket raqam (`2026-00147`), har yil boshida qaytadan                                                                          |
+| 17.1  | Raqam **faqat tasdiqlashda** ajratiladi — qoralamada raqam yo'q. Shu sabab o'chirilgan qoralama raqam teshigi qoldirmaydi                                 |
+| 7.7   | **Qoralamani saqlash** mumkin — ombor va kassaga ta'sir qilmaydi; o'chirish ham mumkin                                                                    |
+| 17.10 | **Naqd savdo to'liq to'lanadi:** to'lovlar yig'indisi savdo summasiga teng bo'lmasa tasdiqlanmaydi. Qarz qolishi kerak bo'lsa — nasiya rasmiylashtiriladi |
+| 7.8   | **Tannarxdan past sotishda ogohlantirish** chiqadi, lekin taqiqlamaydi                                                                                    |
+| 7.9   | **Savat ichida har qatorning foydasi** ko'rsatiladi                                                                                                       |
+| 7.10  | **Kalkulator savdo formasida** ochiladi, natijani narx maydoniga o'tkazadi                                                                                |
+| 7.11  | Har qatorda: mahsulot, miqdor, sotuv narxi, **tannarx snapshot**, tavsiya narx snapshot                                                                   |
 
 Transfer to'lovi Telegram cheki asosida qo'lda tasdiqlanadi. Telegram bilan
 avtomatik integratsiya scope'da yo'q.
@@ -171,33 +196,40 @@ Ikki xil holat qat'iy ajratiladi:
 
 Asl savdo **hech qachon o'chirilmaydi** — ustiga teskari yozuv qo'shiladi.
 
-| §   | Talab                                                                                                                                           |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| 8.1 | Qaytarish **asl savdoning kursida** — savdo aniq nolga chiqadi, soxta kurs foydasi paydo bo'lmaydi                                              |
-| 8.2 | Qaytgan mahsulot omborga **"qaytarilgan" belgisi + sababi** bilan qaytadi                                                                       |
-| 8.3 | Qaytgan mahsulot ombor qiymatida to'liq hisoblanadi                                                                                             |
-| 8.4 | **Qisman qaytarish** mumkin — tanlangan qatorlar; miqdorli mahsulotda qisman miqdor ham                                                         |
-| 8.5 | **Nasiya savdo qaytarilsa:** shartnoma yopiladi, mahsulot omborga qaytadi. To'langan pulni qaytarish/qaytarmaslikni **admin qo'lda hal qiladi** |
-| 8.6 | **Sabab majburiy** (nuqson / mijoz fikri o'zgardi / xato kiritildi / boshqa), audit'ga yoziladi                                                 |
-| 8.7 | **Qaytarish o'z sanasiga yoziladi**, savdo sanasiga emas. O'tgan davr aylanmasi o'zgarmaydi                                                     |
-| 8.8 | **Muddat cheklovi yo'q** — 8.7 tufayli kerak emas                                                                                               |
+| §     | Talab                                                                                                                                                                                                                                                                                                               |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 8.1   | Qaytarish **asl savdoning kursida** — savdo aniq nolga chiqadi, soxta kurs foydasi paydo bo'lmaydi                                                                                                                                                                                                                  |
+| 8.2   | Qaytgan mahsulot omborga **"qaytarilgan" belgisi + sababi** bilan qaytadi                                                                                                                                                                                                                                           |
+| 8.3   | Qaytgan mahsulot ombor qiymatida to'liq hisoblanadi                                                                                                                                                                                                                                                                 |
+| 8.4   | **Qisman qaytarish** mumkin — tanlangan qatorlar; miqdorli mahsulotda qisman miqdor ham                                                                                                                                                                                                                             |
+| 8.5   | **Nasiya savdo qaytarilsa:** shartnoma yopiladi, mahsulot omborga qaytadi. To'langan pulni qaytarish/qaytarmaslikni **admin qo'lda hal qiladi**                                                                                                                                                                     |
+| 8.6   | **Sabab majburiy** (nuqson / mijoz fikri o'zgardi / xato kiritildi / boshqa), audit'ga yoziladi                                                                                                                                                                                                                     |
+| 8.7   | **Qaytarish o'z sanasiga yoziladi**, savdo sanasiga emas. O'tgan davr aylanmasi o'zgarmaydi                                                                                                                                                                                                                         |
+| 8.8   | **Muddat cheklovi yo'q** — 8.7 tufayli kerak emas                                                                                                                                                                                                                                                                   |
+| 16.5  | **Bekor qilish esa asl savdo sanasiga yoziladi** — shundagina savdo "umuman bo'lmagandek" bo'ladi. Buning evaziga bekor qilish faqat **oxirgi 7 kun** ichidagi savdolarga qo'llanadi; eskisi uchun qaytarish ishlatiladi                                                                                            |
+| 16.12 | **Qisman qaytarilgan nasiyada** qarz qaytgan qatorlar qiymati va unga tegishli proporsional ustama miqdorida kamayadi; kamayish **faqat to'lanmagan** jadval qatorlaridan, oxirgisidan boshlab ayriladi (§9.10 buzilmaydi). To'lanmagan qatorlar yetmasa — shartnoma yopiladi, pul qaytarishni ega hal qiladi (8.5) |
+| 17.4  | Teskari yozuv alohida savdo qatori sifatida saqlanadi: raqami `2026-00147-R1`, summasi manfiy. Asl savdodagi "qaytarilgan miqdor" va holat — undan hosila                                                                                                                                                           |
 
 ## 11. Nasiya va qarzdorlik
 
-| §    | Talab                                                                                                                                                      |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 9.1  | Shartnoma savdo tasdiqlanganda **o'sha tranzaksiya ichida** yaratiladi                                                                                     |
-| 9.2  | Shartnoma valyutasi = savdo valyutasi, **o'zgarmaydi**                                                                                                     |
-| 9.3  | **Alohida ustama maydoni:** naqd narx ko'rsatiladi, ustiga ustama qo'shiladi — summa yoki foiz                                                             |
-| 9.4  | Hisobotda **"nasiya ustamasidan daromad"** alohida ko'rinadi                                                                                               |
-| 9.5  | Jadval **oylik avtomatik**, **qo'lda** yoki **aralash** tuziladi                                                                                           |
-| 9.6  | **Jadval summasi qarzga teng bo'lishi shart** — teng bo'lmasa savdo tasdiqlanmaydi                                                                         |
-| 9.7  | Holatlar: `FAOL` · `YOPILGAN` · `BEKOR QILINGAN`                                                                                                           |
-| 9.8  | **"Muddati o'tgan" saqlanmaydi — sanadan hisoblanadi.** Saqlansa uni yangilab turadigan jarayon kerak bo'ladi va u ishlamay qolsa holat yolg'on ko'rsatadi |
-| 9.9  | **Jarima yo'q.** Kechikish faqat ogohlantirish sifatida ko'rsatiladi                                                                                       |
-| 9.10 | **Jadvalni qayta tuzish faqat to'lanmagan qatorlarda.** To'langan yoki qisman to'langanga tegib bo'lmaydi                                                  |
-| 9.11 | Qayta tuzish sababi bilan audit'ga yoziladi; umumiy qarz o'zgarmaydi — faqat sanalar/summalar taqsimoti                                                    |
-| 9.12 | **Erta yopish:** qolgan summa ko'rsatiladi, mijoz to'laydi, shartnoma yopiladi. Ustama qaytarilmaydi                                                       |
+| §     | Talab                                                                                                                                                                                                                                                                                                  |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 9.1   | Shartnoma savdo tasdiqlanganda **o'sha tranzaksiya ichida** yaratiladi                                                                                                                                                                                                                                 |
+| 9.2   | Shartnoma valyutasi = savdo valyutasi, **o'zgarmaydi**                                                                                                                                                                                                                                                 |
+| 9.3   | **Alohida ustama maydoni:** naqd narx ko'rsatiladi, ustiga ustama qo'shiladi — summa yoki foiz                                                                                                                                                                                                         |
+| 9.4   | Hisobotda **"nasiya ustamasidan daromad"** alohida ko'rinadi                                                                                                                                                                                                                                           |
+| 17.3  | **Summalar aniq:** savdo qatoridagi narx — **naqd narx** (ustamasiz); savdo summasi = naqd narxlar yig'indisi; shartnoma qarzi = naqd narx + ustama − boshlang'ich to'lov. Yalpi foyda ustamani **o'z ichiga olmaydi**, ustama alohida daromad satri bo'ladi va savdo kunida to'liq tan olinadi (13.1) |
+| 9.5   | Jadval **oylik avtomatik**, **qo'lda** yoki **aralash** tuziladi                                                                                                                                                                                                                                       |
+| 17.15 | Jadval tuzishda: yaxlitlash qoldig'i **oxirgi qatorga** qo'shiladi; oyning kuni keyingi oyda bo'lmasa (31 → fevral) **o'sha oyning oxirgi kuni** olinadi                                                                                                                                               |
+| 9.6   | **Jadval summasi qarzga teng bo'lishi shart** — teng bo'lmasa savdo tasdiqlanmaydi                                                                                                                                                                                                                     |
+| 9.7   | Holatlar: `FAOL` · `YOPILGAN` · `BEKOR QILINGAN`                                                                                                                                                                                                                                                       |
+| 17.18 | `YOPILGAN` — qarz to'liq to'langanda. Savdo qaytarilsa yoki bekor qilinsa shartnoma **`BEKOR QILINGAN`** bo'ladi                                                                                                                                                                                       |
+| 16.3  | **Boshlang'ich to'lov 0% bo'lishi mumkin** — ogohlantirish chiqadi, taqiqlamaydi                                                                                                                                                                                                                       |
+| 9.8   | **"Muddati o'tgan" saqlanmaydi — sanadan hisoblanadi.** Saqlansa uni yangilab turadigan jarayon kerak bo'ladi va u ishlamay qolsa holat yolg'on ko'rsatadi                                                                                                                                             |
+| 9.9   | **Jarima yo'q.** Kechikish faqat ogohlantirish sifatida ko'rsatiladi                                                                                                                                                                                                                                   |
+| 9.10  | **Jadvalni qayta tuzish faqat to'lanmagan qatorlarda.** To'langan yoki qisman to'langanga tegib bo'lmaydi                                                                                                                                                                                              |
+| 9.11  | Qayta tuzish sababi bilan audit'ga yoziladi; umumiy qarz o'zgarmaydi — faqat sanalar/summalar taqsimoti                                                                                                                                                                                                |
+| 9.12  | **Erta yopish:** qolgan summa ko'rsatiladi, mijoz to'laydi, shartnoma yopiladi. Ustama qaytarilmaydi                                                                                                                                                                                                   |
 
 ## 12. To'lovlar
 
@@ -215,31 +247,34 @@ To'lov yozuvida uchalasi saqlanadi: **haqiqatda berilgan summa va valyutasi**,
 **o'sha paytdagi do'kon kursi**, **qarzdan qancha ayrilgani**. Shunda hisob
 har qanday tekshiruvda qayta tiklanadi.
 
-| §    | Talab                                                                                                                      |
-| ---- | -------------------------------------------------------------------------------------------------------------------------- |
-| 10.1 | To'lov **eng eski to'lanmagan qatordan boshlab avtomatik taqsimlanadi**; ortgani keyingisiga o'tadi                        |
-| 10.2 | **Ortiqcha to'lov qabul qilinmaydi:** ogohlantiradi va faqat qarz miqdoricha oladi. "Avans/mijoz balansi" tushunchasi yo'q |
-| 10.3 | **Chek rasmi ixtiyoriy** — tasdiqlash uchun shart emas                                                                     |
-| 10.4 | **To'lov sanasini 7 kungacha orqaga** qo'yish mumkin; audit'ga yoziladi                                                    |
-| 10.5 | Kassaga **haqiqiy pul o'z valyutasida** yoziladi, qarzdan esa shartnoma valyutasida ayriladi                               |
-| 10.6 | To'lovni qaytarish teskari kassa yozuvi yaratadi va qarzni tiklaydi                                                        |
+| §     | Talab                                                                                                                                                                                                                                                             |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 10.1  | To'lov **eng eski to'lanmagan qatordan boshlab avtomatik taqsimlanadi**; ortgani keyingisiga o'tadi                                                                                                                                                               |
+| 10.2  | **Ortiqcha to'lov qabul qilinmaydi:** ogohlantiradi va faqat qarz miqdoricha oladi. "Avans/mijoz balansi" tushunchasi yo'q                                                                                                                                        |
+| 16.11 | Summa maydoni qarz qoldig'idan ortiq qiymatni **umuman qabul qilmaydi**. Ortiqcha naqd mijozga qaytim sifatida qaytariladi — bu jismoniy amal, tizimda yozuv yaratmaydi. Sabab: yozilsa, u kassada qolgan mijoz puli — ya'ni taqiqlangan "mijoz balansi" bo'lardi |
+| 16.11 | Valyuta aylanishida qoldiq shartnoma valyutasining eng kichik birligidan kam bo'lsa (< 0.01 USD / < 1 so'm), oxirgi jadval qatori avtomatik yopiladi — ifodalab bo'lmaydigan qoldiq abadiy qarz bo'lib osilib qolmasin                                            |
+| 10.3  | **Chek rasmi ixtiyoriy** — tasdiqlash uchun shart emas                                                                                                                                                                                                            |
+| 10.4  | **To'lov sanasini 7 kungacha orqaga** qo'yish mumkin; audit'ga yoziladi                                                                                                                                                                                           |
+| 10.5  | Kassaga **haqiqiy pul o'z valyutasida** yoziladi, qarzdan esa shartnoma valyutasida ayriladi                                                                                                                                                                      |
+| 10.6  | To'lovni qaytarish teskari kassa yozuvi yaratadi va qarzni tiklaydi                                                                                                                                                                                               |
 
 ## 13. Kassa (pul kirim-chiqimi)
 
 Savdo ma'lumoti va haqiqiy pul — bir xil narsa emas. Nasiyaga sotilgan telefon
 aylanmada bor, lekin kassada pul yo'q.
 
-| §           | Talab                                                                                                                                                                                                          |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 11.1 · 11.3 | **Alohida hisoblar:** "Naqd UZS", "Naqd USD", "Karta/bank UZS" va h.k. Sabab: karta puli kassa yashigida yo'q — bir joyga qo'shilsa, kun oxirida naqd pulni sanaganda tizim bilan hech qachon to'g'ri kelmaydi |
-| 11.2        | Yangi hisob qo'shish mumkin; hisobotda hammasi bazaviy valyutada jamlanadi                                                                                                                                     |
-| 11.4        | **Boshlang'ich qoldiq** — har hisob uchun bir marta, alohida yozuv turi. Daromad deb sanalmaydi                                                                                                                |
-| 11.5        | Ombor uchun ham shunday: mavjud mahsulotlar qabul qilish orqali kiritiladi                                                                                                                                     |
-| 11.6        | **Valyuta ayirboshlash — alohida amal:** qaysi hisobdan qancha chiqdi, qaysi hisobga qancha kirdi, qanday kurs bo'yicha. Daromad emas; kurs farqi hisobotda alohida ko'rinadi                                  |
-| 11.7        | **Avtomatik yozuvlar qo'lda tahrirlanmaydi** — tuzatish faqat savdo/to'lovni qaytarish orqali                                                                                                                  |
-| 11.8        | **Qo'lda kiritilgan yozuv o'sha kuni ichida tahrirlanadi yoki o'chiriladi** (audit'ga yoziladi); ertasiga faqat teskari yozuv bilan                                                                            |
-| 11.9        | Har yozuvda: sana, summa, valyuta, hisob, kirim/chiqim, kategoriya, izoh, ilova (chek surati)                                                                                                                  |
-| 11.10       | Kategoriyalar: ijara, kommunal, maosh, reklama, yetkazib berish, boshqa — yangisini qo'shish mumkin                                                                                                            |
+| §           | Talab                                                                                                                                                                                                                                                                          |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 11.1 · 11.3 | **Alohida hisoblar:** "Naqd UZS", "Naqd USD", "Karta/bank UZS" va h.k. Sabab: karta puli kassa yashigida yo'q — bir joyga qo'shilsa, kun oxirida naqd pulni sanaganda tizim bilan hech qachon to'g'ri kelmaydi                                                                 |
+| 11.2        | Yangi hisob qo'shish mumkin; hisobotda hammasi bazaviy valyutada jamlanadi                                                                                                                                                                                                     |
+| 11.4        | **Boshlang'ich qoldiq** — har hisob uchun bir marta, alohida yozuv turi. Daromad deb sanalmaydi                                                                                                                                                                                |
+| 11.5        | Ombor uchun ham shunday: mavjud mahsulotlar qabul qilish orqali kiritiladi                                                                                                                                                                                                     |
+| 11.6        | **Valyuta ayirboshlash — alohida amal:** qaysi hisobdan qancha chiqdi, qaysi hisobga qancha kirdi, qanday kurs bo'yicha. Daromad emas; kurs farqi hisobotda alohida ko'rinadi                                                                                                  |
+| 17.2        | **Kassaga pul faqat to'lov orqali tushadi.** Savdo to'g'ridan-to'g'ri kassa yozuvi yaratmaydi — u to'lov yaratadi, kassa yozuvi esa to'lov tasdiqlanganda paydo bo'ladi. Shu bilan o'tkazma (hali tasdiqlanmagan pul) kassaga tushib qolmaydi va bir pul ikki marta sanalmaydi |
+| 11.7        | **Avtomatik yozuvlar qo'lda tahrirlanmaydi** — tuzatish faqat savdo/to'lovni qaytarish orqali                                                                                                                                                                                  |
+| 11.8        | **Qo'lda kiritilgan yozuv o'sha kuni ichida tahrirlanadi yoki o'chiriladi** (audit'ga yoziladi); ertasiga faqat teskari yozuv bilan                                                                                                                                            |
+| 11.9        | Har yozuvda: sana, summa, valyuta, hisob, kirim/chiqim, kategoriya, izoh, ilova (chek surati)                                                                                                                                                                                  |
+| 11.10       | Kategoriyalar: ijara, kommunal, maosh, reklama, yetkazib berish, boshqa — yangisini qo'shish mumkin                                                                                                                                                                            |
 
 ## 14. Kalkulator
 
@@ -254,18 +289,19 @@ aylanmada bor, lekin kassada pul yo'q.
 
 ## 15. Hisobotlar
 
-| §     | Talab                                                                                                                  |
-| ----- | ---------------------------------------------------------------------------------------------------------------------- |
-| 13.1  | **Foyda savdo kunida to'liq tan olinadi** (nasiyada ham) — "bugun qancha ishladim" degan savolga to'g'ri javob beradi  |
-| 13.2  | Pul oqimi kassa hisobotida **alohida** ko'rsatiladi — foyda va pul oqimi aralashmaydi                                  |
-| 13.3  | **Yalpi foyda** (sotuv − tannarx) va **sof foyda** (yalpi − xarajatlar) yonma-yon                                      |
-| 13.5  | **Oldingi davr bilan solishtirish** — har ko'rsatkich yonida `+33%` / `−12%`                                           |
-| 13.6  | **Savdo va foyda dinamikasi grafigi**                                                                                  |
-| 13.7  | **Mahsulot bo'yicha foyda jadvali** — qaysi model qancha sotildi va qancha foyda keltirdi                              |
-| 13.8  | **Qarzdorlar ro'yxati** — kim qancha qarzdor, qachon to'lashi kerak, necha kun kechikkan; muddati o'tganlar tepada     |
-| 13.9  | Davrlar: kunlik, haftalik, oylik, yillik, ixtiyoriy oraliq                                                             |
-| 13.10 | **Hisobotlar saqlanmaydi — har safar hisoblanadi.** Saqlansa, savdo qaytarilganda eski hisobot noto'g'ri bo'lib qoladi |
-| 13.4  | **Eksport (CSV/XLSX) keyingi relizga** — MVP'da hisobotlar faqat ekranda                                               |
+| §            | Talab                                                                                                                                                                 |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 13.1         | **Foyda savdo kunida to'liq tan olinadi** (nasiyada ham) — "bugun qancha ishladim" degan savolga to'g'ri javob beradi                                                 |
+| 13.2         | Pul oqimi kassa hisobotida **alohida** ko'rsatiladi — foyda va pul oqimi aralashmaydi                                                                                 |
+| 13.3         | **Yalpi foyda** (sotuv − tannarx) va **sof foyda** (yalpi − xarajatlar) yonma-yon                                                                                     |
+| 17.3 · 17.12 | Sof foyda = yalpi foyda **+ nasiya ustamasi daromadi** − kassa xarajatlari − **pul bo'lmagan xarajatlar** (shaxsiy foydalanish, ombor yo'qotishlari tannarx bo'yicha) |
+| 13.5         | **Oldingi davr bilan solishtirish** — har ko'rsatkich yonida `+33%` / `−12%`                                                                                          |
+| 13.6         | **Savdo va foyda dinamikasi grafigi**                                                                                                                                 |
+| 13.7         | **Mahsulot bo'yicha foyda jadvali** — qaysi model qancha sotildi va qancha foyda keltirdi                                                                             |
+| 13.8         | **Qarzdorlar ro'yxati** — kim qancha qarzdor, qachon to'lashi kerak, necha kun kechikkan; muddati o'tganlar tepada                                                    |
+| 13.9         | Davrlar: kunlik, haftalik, oylik, yillik, ixtiyoriy oraliq                                                                                                            |
+| 13.10        | **Hisobotlar saqlanmaydi — har safar hisoblanadi.** Saqlansa, savdo qaytarilganda eski hisobot noto'g'ri bo'lib qoladi                                                |
+| 13.4         | **Eksport (CSV/XLSX) keyingi relizga** — MVP'da hisobotlar faqat ekranda                                                                                              |
 
 ## 16. Dashboard
 
@@ -281,15 +317,17 @@ aylanmada bor, lekin kassada pul yo'q.
 
 ## 17. Hujjatlar va fayllar
 
-| §    | Talab                                                                                                                                                                |
-| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 15.1 | **Faqat nasiya shartnomasi PDF'i** yaratiladi. v0.1 dagi "qarz jadvali PDF"i olib tashlandi                                                                          |
-| 15.2 | **Shartnoma PDF'i saqlanadi** — mijozga berilgan nusxa bilan aynan bir xil qoladi                                                                                    |
-| 15.3 | Jadval qayta tuzilsa **yangi versiya saqlanadi, eskisi ham qoladi**                                                                                                  |
-| 15.5 | Fayl **hech qachon ochiq havolada bo'lmaydi** — API 15 daqiqalik vaqtinchalik havola beradi                                                                          |
-| 15.6 | Fayl turlari: passport rasmi, chek surati, mahsulot rasmi, kassa yozuvi ilovasi                                                                                      |
-| 15.7 | Cheklov: **10 MB**, avtomatik siqish **yo'q** — fayl asl sifatida saqlanadi                                                                                          |
-| 15.8 | Shartnoma PDF mazmuni: logo va do'kon ma'lumoti, shartnoma raqami va sanasi, mijoz + passport, mahsulot + IMEI, summa/boshlang'ich/qarz, to'liq jadval, imzo joylari |
+| §     | Talab                                                                                                                                                                |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 15.1  | **Faqat nasiya shartnomasi PDF'i** yaratiladi. v0.1 dagi "qarz jadvali PDF"i olib tashlandi                                                                          |
+| 16.10 | Shartnoma PDF — **nasiya bosqichi uchun majburiy**: passport ma'lumoti (6.5) faqat shu hujjat uchun yig'iladi, imzolangan qog'ozsiz nasiya amalda himoyalanmagan     |
+| 17.7  | Fayl yuklashda: MIME oq ro'yxati, fayl imzosi tekshiruvi, rasmlardan EXIF (jumladan GPS) tozalash. Tafsilot `API.md` §7                                              |
+| 15.2  | **Shartnoma PDF'i saqlanadi** — mijozga berilgan nusxa bilan aynan bir xil qoladi                                                                                    |
+| 15.3  | Jadval qayta tuzilsa **yangi versiya saqlanadi, eskisi ham qoladi**                                                                                                  |
+| 15.5  | Fayl **hech qachon ochiq havolada bo'lmaydi** — API 15 daqiqalik vaqtinchalik havola beradi                                                                          |
+| 15.6  | Fayl turlari: passport rasmi, chek surati, mahsulot rasmi, kassa yozuvi ilovasi                                                                                      |
+| 15.7  | Cheklov: **10 MB**, avtomatik siqish **yo'q** — fayl asl sifatida saqlanadi                                                                                          |
+| 15.8  | Shartnoma PDF mazmuni: logo va do'kon ma'lumoti, shartnoma raqami va sanasi, mijoz + passport, mahsulot + IMEI, summa/boshlang'ich/qarz, to'liq jadval, imzo joylari |
 
 Printerda chop etish talab qilinmaydi.
 
@@ -338,15 +376,45 @@ keyin alohida relizda qo'shiladi.
 
 ## 22. Bosqichma-bosqich yetkazib berish
 
-1. **Poydevor:** monorepo, lint/format/test, lokal PostgreSQL, to'liq schema va migratsiya.
-2. **Auth va sozlamalar:** users/role, sessiya, login cheklovi va jurnali, do'kon sozlamalari, valyuta kursi (CBU + do'kon kursi).
-3. **Katalog va ombor:** kategoriya/brend, mahsulot, seriyali birlik va partiya, qabul, inventarizatsiya.
-4. **Mijoz, savdo, nasiya, to'lov:** tasdiqlash tranzaksiyasi, jadval, to'lov taqsimoti, qaytarish va bekor qilish.
-5. **Kassa va hisobotlar:** hisoblar, ayirboshlash, KPI, dashboard, audit.
-6. **PWA va bildirishnoma:** offline qobiq, push, SMS test adapteri.
-7. **Hujjatlar:** shartnoma PDF, fayl saqlash va vaqtinchalik havolalar.
-8. **AI tahlil:** read-only analitika va savol-javob.
-9. **Production:** testlar, monitoring, backup/restore sinovi, CI/CD, haqiqiy SMS va SMTP provideri.
+> **v0.2.1 (§17.17):** MVP ikkiga bo'lindi. Sabab: to'rtta murakkab
+> tranzaksion modulni (savdo, qaytarish, nasiya, to'lov) bir vaqtda yozish —
+> loyihaning eng katta xavfi. MVP-1 bilan do'kon allaqachon daftardan voz
+> kechadi va tizim real sinovdan o'tadi.
+
+**Tayyorgarlik**
+
+0. **Qarorlarni yopish:** hujjat ziddiyatlari, `API.md`, `GLOSSARY.md`,
+   `PERMISSIONS.md`, schema tuzatishlari va cheklovlar migratsiyasi.
+1. **Kesuvchi poydevor:** xato formati va global filter, DTO validatsiyasi
+   (whitelist), idempotency, pagination, `Decimal` ↔ JSON serializatsiyasi,
+   audit interceptor, rate limiting, `trust proxy`.
+
+**MVP-1 — ishlaydigan do'kon (naqd savdo)**
+
+2. **Auth va sozlamalar:** users/role, sessiya, login cheklovi va jurnali,
+   parol o'zgartirish, do'kon sozlamalari, valyuta kursi (CBU + do'kon kursi).
+3. **Katalog va ombor:** kategoriya/brend (birlashtirish bilan), mahsulot,
+   seriyali birlik va partiya, qabul qilish.
+4. **Mijozlar:** karta, dublikat tekshiruvi, arxivlash.
+5. **Naqd savdo va kassa:** qoralama, **tasdiqlash tranzaksiyasi**, to'lovlar,
+   kassa hisoblari, qo'lda kirim/chiqim, boshlang'ich qoldiq, dashboard.
+
+**MVP-2 — nasiya**
+
+6. **Qaytarish va bekor qilish:** teskari yozuv, qisman qaytarish.
+7. **Nasiya va to'lovlar:** shartnoma, jadval, to'lov taqsimoti,
+   tasdiqlash/rad etish/qaytarish, erta yopish, jadvalni qayta tuzish.
+8. **Hisobotlar:** KPI, davr hisobotlari, qarzdorlar, foyda, audit ko'rinishi.
+9. **Hujjatlar:** shartnoma PDF, fayl saqlash va vaqtinchalik havolalar.
+
+**Kengaytirish**
+
+10. **Ombor qo'shimchalari:** inventarizatsiya, shaxsiy foydalanish,
+    valyuta ayirboshlash.
+11. **PWA va bildirishnoma:** offline qobiq, push, SMS test adapteri.
+12. **AI tahlil:** read-only analitika va savol-javob.
+13. **Production:** testlar, monitoring, backup/restore sinovi, CI/CD,
+    haqiqiy SMS va SMTP provideri.
 
 ## 23. Scope'dan tashqari
 
@@ -361,8 +429,12 @@ keyin alohida relizda qo'shiladi.
 
 ## 24. Ochiq savollar
 
-| Mavzu | Savol                                                                                         |
-| ----- | --------------------------------------------------------------------------------------------- |
-| SMTP  | Provider tanlash (Gmail app-parol / Resend / Brevo) — parol tiklash shunga bog'liq (2.5)      |
-| CBU   | API endpointining aniq manzili va javob formati tekshirilishi kerak (3.3)                     |
-| AI    | Provider va model yakuniy tanlovi productiondan oldingi xavfsizlik/xarajat baholashidan keyin |
+| Mavzu   | Savol                                                                                         |
+| ------- | --------------------------------------------------------------------------------------------- |
+| SMTP    | Provider tanlash (Gmail app-parol / Resend / Brevo) — parol tiklash shunga bog'liq (2.5)      |
+| CBU     | API endpointining aniq manzili va javob formati tekshirilishi kerak (3.3)                     |
+| AI      | Provider va model yakuniy tanlovi productiondan oldingi xavfsizlik/xarajat baholashidan keyin |
+| Hosting | Shaxsga doir ma'lumot lokalizatsiyasi bo'yicha yuridik tasdiq (16.13)                         |
+
+> 2026-08-09 auditidagi 14 ta noaniqlik `DECISIONS.md` §16 da yopildi;
+> kodlashdan oldingi 18 ta blocker — §17 da.

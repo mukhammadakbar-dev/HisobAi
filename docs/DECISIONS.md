@@ -214,7 +214,7 @@ Bittasi xato bersa — hech biri saqlanmaydi.
 | Qism | Manzil |
 |------|--------|
 | Sahifa | `/sales` · `/sales/new` · `/sales/:id` |
-| API | `GET/POST /sales` · `PATCH /sales/:id` (faqat qoralama) · `POST /sales/:id/confirm` · `POST /sales/:id/reverse` |
+| API | `GET/POST /sales` · `GET /sales/:id` · `PATCH /sales/:id` (faqat qoralama) · `DELETE /sales/:id` (faqat qoralama) · `POST /sales/:id/confirm` · `POST /sales/:id/return` · `POST /sales/:id/cancel` (§17.18 — ilgari bu yerda `/reverse` yozilgan edi, §8 bilan zid edi) |
 | Jadval | `sales` · `sale_items` · `payments` |
 | Modul | `Sales` |
 
@@ -246,7 +246,7 @@ Asl savdo **hech qachon o'chirilmaydi** — ustiga teskari yozuv qo'shiladi.
 |------|--------|
 | Sahifa | `/sales/:id` — "Qaytarish" va "Bekor qilish" tugmalari; `/sales` filtrida "qaytarilganlar" |
 | API | `POST /sales/:id/return` · `POST /sales/:id/cancel` |
-| Jadval | `sales` (`reversed_sale_id`) · `sale_items` · `stock_movements` · `cash_entries` |
+| Jadval | `sales` (**`reverses_sale_id`** — §17.18) · `sale_items` · `stock_movements` · `payments` |
 | Modul | `Sales` |
 
 ---
@@ -433,9 +433,74 @@ API va jadval **yo'q** — faqat frontend komponenti.
 
 ---
 
+## 16. Aniqlashtirishlar (v0.2.1 — 2026-08-09 audit)
+
+Loyiha auditidan keyin hujjatlarda javobsiz qolgan 14 ta savol yopildi.
+Har qaror uchun **sabab** va **kelajakda nima uchun buzmasligi** yozilgan.
+
+| # | Qaror | Sabab |
+|---|-------|-------|
+| 16.1 | **Savdo valyutasini foydalanuvchi aniq tanlaydi**, default `UZS`. Birinchi mahsulotdan taxmin qilinmaydi. Qoralama davomida o'zgartirish mumkin, tasdiqdan keyin yo'q | §1.9 savdo valyutasini birlamchi qiladi ("boshqa valyutadagi mahsulot **savdo kursida** aylantiriladi"). USD tannarxli telefonni so'mda sotish — eng ko'p uchraydigan holat. Taxminiy model USD telefon + UZS aksessuar holatida bir ma'noli javob bermaydi |
+| 16.2 | **`store_rate_markup` — foiz.** Ustun `store_rate_markup_percent Decimal(5,2)`. `store_rate = round(cbu_rate × (1 + p/100))`, butun so'mgacha | Absolyut ustama kurs o'sishi bilan jimgina siqiladi (200 so'm: 12 000 da 1.67%, 15 000 da 1.33%). §3.2 "avtomatik hisoblanadi" deydi — avtomatik qiymat qo'lda qayta sozlashni talab qilmasligi kerak. `default_down_payment_percent Decimal(5,2)` bilan bir xil tip |
+| 16.3 | **0% boshlang'ich to'lov ruxsat etiladi**, ogohlantirish chiqadi, taqiq yo'q | Loyihaning izchil naqshi: §6.9 va §7.8 — biznes qarorida *ogohlantiradi, taqiqlamaydi*. Qat'iy taqiq faqat matematik invariant uchun (§9.6). §3.9 default 30% — oldindan to'ldirish, cheklov emas |
+| 16.4 | **`RETURNED` mahsulot qayta sotiladi.** Ega "Sotuvga qaytarish" tugmasini bosadi → `status = AVAILABLE`, **`return_reason` o'chirilmaydi**. Nuqsonli bo'lsa → `WRITTEN_OFF`. Savdo formasida "qaytarilgan mahsulot" belgisi ko'rinadi | Schema buni allaqachon qo'llab-quvvatlaydi: `return_reason` — `status` dan **alohida ustun**, ya'ni "holat o'zgaradi, sabab qoladi". §8.3 qaytgan mahsulotni ombor qiymatiga **to'liq** qo'shishni talab qiladi — sotib bo'lmaydigan mahsulotni to'liq baholash noto'g'ri. Aks holda `RETURNED` — chiqish yo'li yo'q o'lik holat |
+| 16.5 | **Bekor qilish asl savdo sanasiga yoziladi.** Faqat oxirgi **7 kun** ichidagi savdolarga qo'llanadi; eskisi uchun faqat qaytarish | §8 ta'rifi: "hisobotda savdo **umuman bo'lmagandek**". Bugungi sanaga yozilsa — ikki kunning aylanmasi buziladi, ta'rif bajarilmaydi. §8.7 ("o'z sanasiga") qaytarish bandi va sababi qaytarishga xos: mahsulot **bugun** qaytdi — haqiqiy hodisa. Bekor qilishda hodisa yo'q. 7 kun — §7.5 dagi mavjud oyna, yangi konstanta emas |
+| 16.6 | **Kurs eskirishi: bugungi sana uchun qator yo'q bo'lsa — darhol eskirgan.** Sun'iy chegara yo'q. UI: 1 kun → sariq, ≥3 kun → qizil. Savdo hech qachon to'xtamaydi (§1.5) | §3.3 "har kun uchun bitta qator" bir ma'noli signal beradi. Har qanday chegara (2-3 kun) — **jim oyna**: "noto'g'ri kursda savdo qilamiz, lekin aytmaymiz". Chegara UI keskinligida bo'lsin, haqiqat aytilishida emas |
+| 16.7 | **CBU retry:** 09:00 → +15 daq → +1 soat → +3 soat (jami 4 urinish). Server ishga tushganda ham (vaqt ≥ 09:00 va bugungi qator yo'q bo'lsa) bitta urinish | Yangi tushuncha kiritilmaydi — ARCHITECTURE §10 eslatma jarayoni uchun aynan shu naqshni ("har kuni + server ishga tushganda") allaqachon belgilagan. §1.5 ilova to'xtamasligini kafolatlagani uchun cheksiz retry keraksiz |
+| 16.8 | **`source = MANUAL` bo'lgan kursni cron ustidan yozmaydi.** `cbu_rate` va `fetched_at` yangilanishi mumkin, `store_rate` — hech qachon. UI'da "CBU kursiga qaytarish" alohida amali | Ikki ustunning mavjudligining butun sababi shu: §3.1 `cbu_rate` ni "ma'lumot uchun", `store_rate` ni "savdoda ishlatiladi" deb ajratgan. §3.5 `updated_by_id` ni talab qiladi — fon jarayoni odam qarorini bekor qilsa, u ustun yolg'on ma'lumot saqlaydi. Zarar assimetriyasi: cron yozsa — ega **sezmaydi**; yozmasa — ko'radi va o'zi hal qiladi |
+| 16.9 | **`cost_currency` = `product.currency`** (DB `CHECK` + kod). Ustunlar **saqlanib qoladi** | §1.2 so'zma-so'z: "mahsulotga bitta valyuta — tannarx ham, sotuv narxi ham". Ustunlar takrorlanish emas, **snapshot**: `sale_items` o'zini o'zi tushuntiradi (§1.7). Assimetriya: ustun bor + cheklov bor → kelajakda cheklovni olib tashlash bitta migratsiya; ustun yo'q bo'lsa → qo'shish + barcha tarixiy qatorlarni to'ldirish |
+| 16.10 | **Shartnoma PDF: MVP-1 (naqd) uchun yo'q, MVP-2 (nasiya) uchun MUST HAVE.** Nasiya moduli PDF'siz tugallangan hisoblanmaydi | §6.5 passport ma'lumotining **yagona maqsadi** — PDF'da chiqishi. PDF olib tashlansa §6.5, §6.6, §6.7 maqsadsiz qoladi. §15.8 mazmunni 8 bandda batafsil yozgan — bu daraja "keyinroq" uchun yozilmaydi. Imzolangan qog'ozsiz nasiya amalda undirib bo'lmaydi |
+| 16.11 | **Ortiqcha to'lov tizimga kiritilmaydi.** Summa maydoni qarz qoldig'idan ortiq qiymat qabul qilmaydi. Ortiqcha naqd mijozga **qaytim** sifatida qaytariladi — jismoniy amal, moliyaviy yozuv emas | Matematik zanjir: §10.2 "avans/mijoz balansi tushunchasi yo'q" + §11.3 "kassa yozuvlari jismoniy naqd pulga teng". Ortiqcha pul kassaga yozilsa → u mijozning puli → **majburiyat (balans)** → §10.2 buzildi. Yozilmasa, lekin kassada qolsa → §11.3 buzildi. Yagona ziddiyatsiz yechim — pul kassada qolmaydi |
+| 16.12 | **Qisman qaytarilgan nasiya:** `Δqarz = qaytgan_naqd_qiymat × (1 + markup_amount / cash_price)`, asl kursda (§8.1). Faqat `UNPAID` qatorlardan, **oxirgisidan boshlab teskari** ayriladi. `UNPAID` yig'indisidan oshsa — shartnoma yopiladi, pul qaytarishni ega hal qiladi (§8.5). Audit (§9.11) + yangi PDF versiyasi (§15.3) | Yechim bitta ham yangi qoida ixtiro qilmaydi — §8.1, §9.10, §9.11, §8.5 ni birlashtiradi. Ustama proporsional kamayadi, chunki §9.3 uni "naqd narx **ustiga**" qo'yadi — u naqd narxning funksiyasi. §9.12 ("ustama qaytarilmaydi") zid emas: u **erta yopish** haqida, unda mahsulot mijozda qoladi. Oxirgi qatordan teskari — chunki §10.1 to'lovni eng eskidan taqsimlaydi, kamayish esa buning teskarisi bo'lishi kerak |
+| 16.13 | **Hosting O'zbekiston hududida.** PostgreSQL va MinIO shu yerda. Backup — shifrlangan holda | Passport seriyasi/raqami/**JSHSHIR**/rasm (§6.5, §6.6) — shaxsga doir ma'lumot; O'zbekiston qonunchiligi lokalizatsiyani talab qiladi (yuridik tasdiq kerak). CBU API va foydalanuvchi mahalliy — kechikish kam. §0.2 `StorageProvider` porti tufayli provayder almashtirish bitta env o'zgaruvchisi — qulflanmaydi |
+| 16.14 | **`UserRole` enum'i `OWNER` ga qisqartiriladi.** `MANAGER`/`SELLER` olib tashlanadi. Lekin ruxsat mexanizmi to'liq quriladi: `@Roles()` dekoratori + global **default DENY**. Matritsa `PERMISSIONS.md` da kelajak uchun saqlanadi | Amalga oshirilmagan enum qiymati — sinovdan o'tmagan xavfsizlik kodi, ya'ni xavfsizlik illyuziyasi. Assimetriya: `ALTER TYPE ... ADD VALUE` — bir daqiqalik ish; enum'dan qiymat olib tashlash — tip qayta yaratish va ma'lumot ko'chirish. §2.3 "ruxsat tekshiruvi kodda bor, bitta rol bilan ishlaydi" — mexanizm bor, rol bitta: talab to'liq bajariladi |
+
+### Kelajakda o'zgarishi mumkin bo'lgan qarorlar
+
+Quyidagilar — **biznes siyosati**, texnik zaruriyat emas. Ular schema'ga
+tegmaydi, shuning uchun keyin o'zgartirish arzon:
+
+| # | Qaror | Qayerda o'zgaradi |
+|---|-------|-------------------|
+| 16.2 | Foiz ↔ absolyut ustama | `ExchangeRates` moduli, bitta formula |
+| 16.12 | Ustamaning proporsional kamayishi | `recalculateScheduleAfterReturn()`, bitta qator |
+| 16.3 | 0% boshlang'ich to'lov ruxsati | Validatsiya, bitta shart |
+| 16.5 | Bekor qilish uchun 7 kunlik oyna | Konstanta |
+
+---
+
+## 17. Blocker qarorlari (v0.2.1 — kodlashdan oldin)
+
+Audit 20 ta ziddiyat aniqladi. Quyidagilar kod yozilishidan **oldin**
+hal qilinishi shart bo'lganlari.
+
+| # | Qaror | Sabab |
+|---|-------|-------|
+| 17.1 | **`sales.number` — nullable.** Qoralamada `null`, tasdiqlash tranzaksiyasi ichida ajratiladi. `confirm` = **UPDATE**, CREATE emas. Raqam `sale_counters(year, last_seq)` jadvalidan `UPDATE … SET last_seq = last_seq + 1 RETURNING last_seq` bilan olinadi | ARCHITECTURE §6 raqamni tasdiqlashda ajratadi, lekin schema `NOT NULL` — qoralama saqlanmaydi. `MAX(number)+1` naqshi ikki parallel tasdiqlashda bir xil raqam beradi. Qator qulfi bilan sanagich — aniq va tekshiriladigan. Nullable raqam o'chirilgan qoralamalardan raqam teshiklari ham qoldirmaydi |
+| 17.2 | **Kassaga pul faqat `Payment` orqali tushadi.** Savdo tasdiqlash tranzaksiyasi `payments` yozuvlarini yaratadi (CASH/CARD → darhol `CONFIRMED`, TRANSFER → `PENDING_VERIFICATION`); `cash_entries` esa faqat `Payment → CONFIRMED` o'tishida, `source_type = PAYMENT` bilan. **`CashSourceType.SALE` va `CashEntry.sale_id` olib tashlanadi** | ARCHITECTURE §6 4-qadami kassaga to'g'ridan-to'g'ri yozadi, TZ §12 esa "faqat `TASDIQLANGAN` to'lov kassaga tushadi" deydi. Ikki yo'l qolsa — pul **ikki marta** sanaladi va bu jim xato. Yagona yo'l TRANSFER holatini ham to'g'ri qamraydi |
+| 17.3 | **Nasiya savdo summalari:** `sale_items.unit_price` = naqd narx (ustamasiz); `sales.total` = Σ(naqd narx); `contract.cash_price = sales.total`; `principal = cash_price + markup_amount − down_payment`. **Foyda:** yalpi foyda = Σ(narx − tannarx) — ustamasiz; **nasiya ustamasi daromadi = Σ(markup_amount) alohida satr**; sof foyda = yalpi + ustama − xarajatlar. Ustama savdo kunida to'liq tan olinadi | §13.1 foydani savdo kunida to'liq tan oladi, §9.4 ustama daromadini alohida ko'rsatishni talab qiladi. Agar ustama `sales.total` ga qo'shilsa — yalpi foyda uni yutib yuboradi va §9.4 buziladi. Bu formula ikkala talabni ham buzmaydi |
+| 17.4 | **Qaytarish modeli:** teskari `sales` qatori — **yagona haqiqat manbai**. `status = REVERSAL`, `total` **manfiy**, `number` = asl raqam + `-R1`, `-R2`. Asl savdodagi `sale_items.returned_quantity` va `PARTIALLY_RETURNED`/`RETURNED` statuslari — **hosila kesh**; faqat o'sha tranzaksiya ichida yangilanadi va izohda kesh ekani yoziladi | Bitta fakt uch joyda saqlanardi, bu README'dagi "hisoblanadigan qiymat saqlanmaydi" qoidasini buzardi. Teskari qatorning `status`, `total` ishorasi va `number` formati aniqlanmagani hisobot SQL'ini yozib bo'lmaydigan qilardi |
+| 17.5 | **Ombor poygasi (§5.5) mexanizmi:** seriyali — `UPDATE inventory_items SET status='SOLD' WHERE id = $1 AND status = 'AVAILABLE'`, `rowCount = 0` bo'lsa xato. Partiyali — `UPDATE inventory_batches SET quantity_remaining = quantity_remaining − $n WHERE id = $1 AND quantity_remaining >= $n`. Izolyatsiya darajasi — `READ COMMITTED` | "Tekshiriladi" degani mexanizm emas. `SELECT` keyin `UPDATE` — klassik TOCTOU poygasi: `READ COMMITTED` da ikkala tranzaksiya ham "mavjud" ko'radi. Shartli `UPDATE` qulfsiz va atomik — "birinchi tasdiqlagan oladi" ni aynan bajaradi |
+| 17.6 | **Idempotency:** `Idempotency-Key` sarlavhasi barcha moliyaviy `POST` uchun majburiy; `idempotency_keys` jadvali. Tafsilot — `API.md` §4 | Telefon internetida so'rov yuborilib javob yo'qolishi oddiy hol; foydalanuvchi tugmani qayta bosadi. UI'da bloklash yetarli emas — so'rov allaqachon serverga yetgan bo'lishi mumkin. Natija: ikki savdo, ikki to'lov |
+| 17.7 | **API konventsiyalari `docs/API.md` da** — xato formati, HTTP kodlari, pagination, filtr, saralash, rate limiting, fayl validatsiyasi, optimistik qulf, **pul JSON'da string** | Har modul o'z konventsiyasini yaratsa, keyin 15 ta joyni bir vaqtda tuzatish kerak. Ayniqsa pul serializatsiyasi: Prisma `Decimal` ni to'g'ridan-to'g'ri JSON'ga berish `number` (float!) yoki ichki obyekt beradi — ikkalasi ham xato |
+| 17.8 | **DB `CHECK` cheklovlari qo'shiladi** (to'liq ro'yxat `proposals/v0.2.1-migration.sql` da): valyuta mosligi, manfiy bo'lmagan qoldiq, `returned_quantity ≤ quantity`, to'lovda `sale_id` yoki `contract_id`, `amount > 0`, `principal` formulasi, holat izchilligi | Schema izohlari ikki joyda "kod darajasida tekshiriladi" deydi, lekin bazada **bitta ham** `CHECK` yo'q. Loyihaning butun falsafasi moliyaviy yaxlitlikka qurilgan; bitta xato kod yoki migratsiya bazani jim ravishda buzuq holatga o'tkazadi |
+| 17.9 | **Barcha `DateTime` → `@db.Timestamptz(3)`.** `@db.Date` maydonlar kalendar sana bo'lib qoladi. "Bugun" doim `Asia/Tashkent` da hisoblanadi | Hozir 66 ta ustun `timestamp(3)` — **timezone'siz**. Toshkent vaqti bilan 00:00–05:00 orasidagi savdolar hisobotda kechagi kunga tushadi. Migratsiya bitta va baza bo'sh — hozir arzon, keyin qimmat |
+| 17.10 | **Naqd savdo to'liq to'lanadi:** `kind = CASH` savdo tasdiqlanishi uchun Σ(to'lovlar, savdo valyutasiga aylantirilgan) = `sales.total`. Kam bo'lsa — nasiyaga o'tkazish kerak | Hujjatlarda naqd savdodagi qarz uchun na model, na formula bor (shartnoma yo'q, jadval yo'q, allocation yo'q), mijoz esa ixtiyoriy (§6.1) — qarz kimda ekani ham noma'lum. §10.2 "avans/balans yo'q" falsafasi bilan izchil |
+| 17.11 | **Orqaga qo'yilgan sana o'sha kunning do'kon kursini oladi** (`exchange_rates.date = sold_at::date`); o'sha kun uchun qator bo'lmasa — undan oldingi eng yaqin qator. To'lovda ham xuddi shunday (§10.4) | §1.8 "qaytarish asl kursda" falsafasi bilan izchil: hodisa qaysi kunda sodir bo'lgan bo'lsa, o'sha kunning kursi. Tekshiriladigan va tushuntiriladigan qoida |
+| 17.12 | **Shaxsiy foydalanish — pul bo'lmagan xarajat.** `cash_entries` ga **tushmaydi**. `stock_movements(PERSONAL_USE)` + `inventory_items.status = WRITTEN_OFF`. Sof foyda hisobida tannarx yig'indisi alohida xarajat satri sifatida qo'shiladi. `CashSourceType.PERSONAL_USE` va seed'dagi `shaxsiy-foydalanish` **kassa** kategoriyasi olib tashlanadi | Shaxsiy foydalanishda kassadan hech qanday pul chiqmaydi. `cash_entries(OUT)` yozilsa, kassa qoldig'i haqiqiy naqddan kam ko'rsatadi — bu §11.3 da aniq nomlangan muammoning aynan o'zi. Xuddi shu mantiq ombor yo'qotishlariga (`LOST`, `DEFECTIVE`) ham qo'llanadi |
+| 17.13 | **Notifikatsiya unique kaliti:** `@@unique([scheduleId, channel, type, scheduledFor])`; `scheduleId` majburiy | Hozirgi `[scheduleId, channel, type]` kaliti bilan jadval qatori qayta rejalashtirilsa (§9.10), yangi sana uchun eslatma **hech qachon** yuborilmaydi. `scheduleId` nullable bo'lgani uchun `NULL` qatorlar umuman deduplikatsiya qilinmaydi |
+| 17.14 | **`roundMoney` `Decimal` bilan qayta yoziladi** (`ROUND_HALF_UP`). `money.ts` faqat formatlash uchun qoladi | Yaxlitlash — hisob, formatlash emas: ARCHITECTURE §4 o'zi "yaxlitlash **yozishdan oldin** qilinadi" deydi. `Number()` + `toFixed()` binar float xatosiga uchraydi (`(1.005).toFixed(2) === "1.00"`). Xato jamlanib, `payment_allocations` yig'indisi `amount_due` ga teng bo'lmaydi va §9.6 tekshiruvi yolg'on xato beradi |
+| 17.15 | **Jadval tuzish qoidalari:** yaxlitlash qoldig'i **oxirgi qatorga** qo'shiladi (Σ = `principal` aniq bajarilsin); oy kuni keyingi oyda mavjud bo'lmasa (31 → fevral) — **o'sha oyning oxirgi kuni** olinadi | §9.6 jadval summasi qarzga teng bo'lishini talab qiladi, lekin 1 000 000 / 3 kabi holatda yaxlitlash 0.01 farq beradi va savdo tasdiqlanmaydi. Sana qoidasisiz 31-yanvarda tuzilgan jadval fevralda yiqiladi |
+| 17.16 | **Yetishmayotgan endpointlar qo'shiladi:** `DELETE /sales/:id` (faqat qoralama), `DELETE /cash-entries/:id`, `POST /auth/change-password`, `GET /audit-logs`, `POST /categories/:id/merge`, `POST /brands/:id/merge`, `GET/POST /cash-categories`, `POST /inventory/:id/restock`, `POST /stocktakes/:id/cancel`, `GET /health/live`, `GET /health/ready` | Har biri mavjud talabga mos keladi (§7.7, §11.8, §4.4, §11.10, §16.4, §2.2), lekin API ro'yxatida yo'q edi |
+| 17.17 | **MVP ikkiga bo'linadi:** MVP-1 — auth, sozlama, kurs, katalog, ombor, mijoz, **naqd savdo**, kassa, dashboard. MVP-2 — nasiya, to'lov, qaytarish, hisobotlar, shartnoma PDF | To'rtta murakkab tranzaksion modulni (savdo, qaytarish, nasiya, to'lov) parallel yozish — loyihaning eng katta xavfi. MVP-1 bilan do'kon allaqachon daftardan voz kechadi va tizim real sinovdan o'tadi |
+| 17.18 | **Kichik tuzatishlar:** `POST /sales/:id/reverse` → `/return` + `/cancel` (§7 va §8 dagi ziddiyat); `reversed_sale_id` → **`reverses_sale_id`**; `Settings.base_currency` olib tashlanadi (§1.1 qat'iy); `sales.subtotal` olib tashlanadi (§7.3 chegirma yo'q, `subtotal ≡ total`); qaytarishda shartnoma → **`CANCELLED`** (`CLOSED` faqat qarz to'liq to'langanda) | Hujjatlar orasidagi nomuvofiqliklar. Ular kichik, lekin "manba haqiqat" hujjatining ichki ziddiyati uning maqomini zaiflashtiradi |
+
+---
+
 ## Ochiq savollar
 
 | Mavzu | Savol |
 |-------|-------|
 | 15 | SMTP provider tanlash (Gmail app-parol / Resend / Brevo) |
 | 2 | CBU API endpointining aniq manzili va javob formati tekshirilishi kerak |
+| 16.13 | Hosting lokalizatsiyasi bo'yicha yuridik tasdiq |

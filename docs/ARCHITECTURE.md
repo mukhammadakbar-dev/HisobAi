@@ -1,9 +1,18 @@
-# HisobAI CRM — Texnik arxitektura (v0.2)
+# HisobAI CRM — Texnik arxitektura (v0.2.1)
 
 > **v0.2 haqida.** `DECISIONS.md` (2026-08-05/06) qarorlari asosida qayta
 > yozilgan. Eng katta o'zgarish — **ko'p valyuta** tizimi: u deyarli har bir
 > moliyaviy jadvalga tegadi, shuning uchun keyinroq qo'shilmaydi, boshidan
 > quriladi. Ziddiyat chiqsa **`DECISIONS.md` ustun turadi**.
+>
+> **v0.2.1 (2026-08-09).** Audit natijasida 14 ta noaniqlik (`DECISIONS.md`
+> §16) va 18 ta blocker (§17) yopildi. Asosiy tuzatishlar: savdo raqami
+> tasdiqlashda ajratiladi, kassaga pul faqat to'lov orqali tushadi, qaytarish
+> modeli bir manbali qilindi, ombor poygasi mexanizmi belgilandi,
+> idempotency va DB cheklovlari qo'shildi.
+>
+> Yondosh hujjatlar: **`API.md`** (kesuvchi konventsiyalar),
+> **`PERMISSIONS.md`** (ruxsat matritsasi), **`GLOSSARY.md`** (atamalar).
 
 ## 1. Arxitektura maqsadi
 
@@ -75,14 +84,16 @@ bog'lanishini oldini oladi.
 
 Bu bo'lim butun tizimga tegadi — undan chetga chiqilmaydi.
 
-| Qoida            | Ifodasi                                                                                                 |
-| ---------------- | ------------------------------------------------------------------------------------------------------- |
-| Valyuta          | `Currency` enum: `UZS`, `USD`. Bazaviy valyuta — `UZS` (§1.1)                                           |
-| Summa            | `numeric(18, 2)`. JavaScript `float` **hech qachon** pul hisobida ishlatilmaydi — Prisma `Decimal`      |
-| Kurs             | `numeric(12, 4)` — 1 USD necha UZS                                                                      |
-| Yaxlitlash       | USD 2 kasr xona, UZS butun songacha (§1.10). Yaxlitlash **yozishdan oldin** qilinadi, ko'rsatishda emas |
-| Juftlik qoidasi  | Har bir pul ustuni **o'z valyuta ustuni bilan** yuradi. Valyutasiz summa ustuni bo'lmaydi               |
-| Snapshot qoidasi | Konvertatsiya bo'lgan har joyda **kurs snapshot** ustuni saqlanadi va qayta hisoblanmaydi (§1.7)        |
+| Qoida            | Ifodasi                                                                                                                                                                      |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Valyuta          | `Currency` enum: `UZS`, `USD`. Bazaviy valyuta — `UZS` (§1.1)                                                                                                                |
+| Summa            | `numeric(18, 2)`. JavaScript `float` **hech qachon** pul hisobida ishlatilmaydi — Prisma `Decimal`                                                                           |
+| Kurs             | `numeric(12, 4)` — 1 USD necha UZS                                                                                                                                           |
+| Yaxlitlash       | USD 2 kasr xona, UZS butun songacha (§1.10). Yaxlitlash **yozishdan oldin** qilinadi, ko'rsatishda emas                                                                      |
+| Yaxlitlash usuli | `Decimal` bilan `ROUND_HALF_UP` (§17.14). `Number()` + `toFixed()` **ishlatilmaydi** — u float xatosini kiritadi va taqsimot yig'indisi jadval summasiga teng bo'lmay qoladi |
+| JSON'da pul      | **String** (`"12500000.00"`), hech qachon `number` — `API.md` §2.1                                                                                                           |
+| Juftlik qoidasi  | Har bir pul ustuni **o'z valyuta ustuni bilan** yuradi. Valyutasiz summa ustuni bo'lmaydi                                                                                    |
+| Snapshot qoidasi | Konvertatsiya bo'lgan har joyda **kurs snapshot** ustuni saqlanadi va qayta hisoblanmaydi (§1.7)                                                                             |
 
 Amaliy natijalar:
 
@@ -131,12 +142,37 @@ Xato qaytarish yoki bekor qilish orqali teskari operatsiya bilan to'g'rilanadi.
 
 ### Savdo tasdiqlash tranzaksiyasi
 
-1. Mahsulotlar mavjudligi va IMEI/serial takrorlanmasligi tekshiriladi (§5.5 — birinchi tasdiqlagan oladi).
-2. Savdo raqami ajratiladi (§7.6), `sales` va `sale_items` yaratiladi — **kurs snapshot**, **tannarx snapshot**, **tavsiya narx snapshot** bilan.
-3. Seriyali birlik `SOTILGAN` bo'ladi / partiya qoldig'i kamayadi + `stock_movements`.
-4. To'langan summa `cash_entries`ga kirim — **valyutasi bo'yicha tegishli hisobga** (§11.1).
-5. Nasiya bo'lsa: shartnoma + to'lov jadvali; jadval summasi qarzga teng ekani tekshiriladi (§9.6).
-6. `audit_logs` yozuvi.
+Kirish sharti: `Idempotency-Key` sarlavhasi (§17.6). Savdo allaqachon
+`DRAFT` holatda mavjud — tranzaksiya uni **yangilaydi**, yangi qator
+yaratmaydi (§17.1).
+
+1. **Ombor shartli yangilash bilan band qilinadi** (§17.5 — bu §5.5 dagi
+   "birinchi tasdiqlagan oladi" ning aniq mexanizmi):
+   ```sql
+   UPDATE inventory_items SET status = 'SOLD'
+    WHERE id = $1 AND status = 'AVAILABLE';          -- rowCount = 0 → xato
+
+   UPDATE inventory_batches SET quantity_remaining = quantity_remaining - $n
+    WHERE id = $1 AND quantity_remaining >= $n;      -- rowCount = 0 → xato
+   ```
+   `SELECT` keyin `UPDATE` naqshi ishlatilmaydi — u `READ COMMITTED` da
+   ikki tranzaksiyaga bir birlikni sotishga ruxsat beradi.
+2. Savdo raqami `sale_counters` dan ajratiladi (§7.6, §17.1):
+   `UPDATE sale_counters SET last_seq = last_seq + 1 WHERE year = $1 RETURNING last_seq`.
+3. `sales` yangilanadi va `sale_items` qat'iylashtiriladi — **kurs snapshot**
+   (savdo sanasidagi do'kon kursi, §17.11), **tannarx snapshot**,
+   **tavsiya narx snapshot** bilan.
+4. `stock_movements` yoziladi.
+5. Savatdagi to'lovlar uchun `payments` yaratiladi: naqd va karta — darhol
+   `CONFIRMED`, o'tkazma — `PENDING_VERIFICATION` (§17.2).
+   `kind = CASH` savdoda to'lovlar yig'indisi `sales.total` ga teng bo'lishi
+   tekshiriladi (§17.10).
+6. **Faqat `CONFIRMED` to'lovlar uchun** `cash_entries` kirimi yaratiladi —
+   `source_type = PAYMENT`, valyutasi bo'yicha tegishli hisobga (§11.1).
+   Savdo kassaga **to'g'ridan-to'g'ri yozmaydi** (§17.2).
+7. Nasiya bo'lsa: shartnoma + to'lov jadvali; jadval summasi qarzga teng
+   ekani tekshiriladi (§9.6), yaxlitlash qoldig'i oxirgi qatorga (§17.15).
+8. `audit_logs` yozuvi.
 
 Bittasi xato bersa — hech biri saqlanmaydi.
 
@@ -144,8 +180,36 @@ Bittasi xato bersa — hech biri saqlanmaydi.
 
 To'lov **eng eski to'lanmagan jadval qatoridan boshlab** taqsimlanadi (§10.1);
 har taqsimot `payment_allocations`da alohida qator bo'ladi. Bu qaytarishni
-aniq teskari bajarish imkonini beradi. Ortiqcha to'lov qabul qilinmaydi
-(§10.2) — faqat qarz miqdoricha olinadi.
+aniq teskari bajarish imkonini beradi.
+
+`applied_amount = min(round(paid_amount / rate, scale), outstanding)`.
+Ortiqcha to'lov **kiritilmaydi** (§10.2, §16.11): API `PAYMENT_EXCEEDS_OUTSTANDING`
+qaytaradi, UI esa summa maydonini qarz qoldig'i bilan cheklaydi. Ortiqcha
+naqd pul mijozga qaytim sifatida qaytariladi va tizimda yozuv yaratmaydi —
+aks holda u kassada qolgan mijoz puli, ya'ni taqiqlangan "mijoz balansi"
+bo'lardi.
+
+Qoldiq shartnoma valyutasining eng kichik birligidan kam bo'lsa
+(< 0.01 USD / < 1 UZS) oxirgi jadval qatori avtomatik `PAID` bo'ladi (§16.11).
+
+### Qaytarish va bekor qilish
+
+Teskari yozuv — **alohida `sales` qatori** va **yagona haqiqat manbai**
+(§17.4): `reverses_sale_id` to'ldiriladi, `status = REVERSAL`, `total`
+manfiy, `number` = asl raqam + `-R1` / `-R2`.
+
+- Asl savdodagi `sale_items.returned_quantity` va
+  `PARTIALLY_RETURNED` / `RETURNED` statuslari — **hosila kesh**; ular
+  faqat shu tranzaksiya ichida yangilanadi.
+- **Qaytarish** o'z sanasiga yoziladi (§8.7); mahsulot `RETURNED` holatda
+  qaytadi va keyin "Sotuvga qaytarish" bilan `AVAILABLE` bo'ladi, sabab
+  saqlanib qoladi (§16.4).
+- **Bekor qilish** asl savdo sanasiga yoziladi va faqat oxirgi 7 kun
+  ichidagi savdolarga qo'llanadi (§16.5); mahsulot to'g'ridan-to'g'ri
+  `AVAILABLE` bo'ladi.
+- Nasiya qaytarilsa/bekor qilinsa shartnoma `CANCELLED` bo'ladi (§17.18).
+  Qisman qaytarishda qarz §16.12 formulasi bo'yicha kamayadi va faqat
+  `UNPAID` jadval qatorlaridan, oxirgisidan boshlab ayriladi.
 
 ### Muddati o'tganlik
 
@@ -193,10 +257,10 @@ erDiagram
 
 ### Sozlamalar va kurs
 
-| Jadval           | Muhim maydonlar                                                                                                                                                                                                                                   |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `settings`       | bitta qator, tipli ustunlar: `shop_name`, `logo_file_id`, `address`, `phone`, `work_start`, `work_end`, `weekend_days`, `low_stock_threshold`, `default_installment_months`, `default_down_payment_percent`, `store_rate_markup`, `reminder_hour` |
-| `exchange_rates` | `date` (unique), `cbu_rate`, `store_rate`, `source` (`CBU`/`MANUAL`), `fetched_at`, `updated_by_id` (§3.5)                                                                                                                                        |
+| Jadval           | Muhim maydonlar                                                                                                                                                                                                                                                                                                                                       |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `settings`       | bitta qator, tipli ustunlar: `shop_name`, `logo_file_id`, `address`, `phone`, `work_start`, `work_end`, `weekend_days`, `low_stock_threshold`, `default_installment_months`, `default_down_payment_percent`, **`store_rate_markup_percent`** (§16.2), `reminder_hour`. `base_currency` **olib tashlandi** — bazaviy valyuta doim `UZS` (§1.1, §17.18) |
+| `exchange_rates` | `date` (unique), `cbu_rate`, `store_rate`, `source` (`CBU`/`MANUAL`), `fetched_at`, `updated_by_id` (§3.5)                                                                                                                                                                                                                                            |
 
 ### Katalog
 
@@ -230,13 +294,17 @@ valyuta bo'yicha alohida ko'rsatiladi (§6.11).
 
 ### Savdo
 
-| Jadval       | Muhim maydonlar                                                                                                                                                                                                                                                                                                                             |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sales`      | `id`, `number` (`2026-00147`, unique), `customer_id?`, `kind` (`CASH`/`INSTALLMENT`), `status` (`DRAFT`/`CONFIRMED`/`RETURNED`/`PARTIALLY_RETURNED`/`CANCELLED`), `currency`, `exchange_rate`, `subtotal`, `total`, `sold_at`, `confirmed_at`, `created_by_id`, `reverses_sale_id?`, `reversal_kind` (`RETURN`/`CANCEL`), `reversal_reason` |
-| `sale_items` | `id`, `sale_id`, `product_id`, `inventory_item_id?`, `batch_id?`, `quantity`, `unit_price`, `cost_snapshot`, `cost_currency`, `suggested_price_snapshot`, `returned_quantity`                                                                                                                                                               |
+| Jadval          | Muhim maydonlar                                                                                                                                                                                                                                                                                                                 |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sales`         | `id`, **`number?`** (`2026-00147`, unique — qoralamada `null`, §17.1), `customer_id?`, `kind`, `status` (`DRAFT`/`CONFIRMED`/`PARTIALLY_RETURNED`/`RETURNED`/`CANCELLED`/`REVERSAL`), `currency`, `exchange_rate`, `total`, `sold_at`, `confirmed_at`, `created_by_id`, `reverses_sale_id?`, `reversal_kind`, `reversal_reason` |
+| `sale_items`    | `id`, `sale_id`, `product_id`, `inventory_item_id?`, `batch_id?`, `quantity`, `unit_price` (**naqd narx, ustamasiz** — §17.3), `cost_snapshot`, `cost_currency`, `suggested_price_snapshot`, `returned_quantity` (kesh, §17.4)                                                                                                  |
+| `sale_counters` | `year` (PK), `last_seq` — savdo raqamini poygasiz ajratish uchun (§17.1)                                                                                                                                                                                                                                                        |
 
 Tannarx va tavsiya narx `sale_items`da snapshot sifatida saqlanadi — keyingi
 narx o'zgarishi eski savdo foydasini o'zgartirmaydi (§7.4, §7.11).
+
+`subtotal` ustuni **olib tashlandi** (§17.18): chegirma maydoni yo'q (§7.3),
+soliq va yetkazib berish scope'da yo'q — u doim `total` ga teng edi.
 
 ### Nasiya
 
@@ -268,11 +336,22 @@ yozadigan joy yo'q edi.
 | `cash_entries`    | `id`, `account_id`, `direction` (`IN`/`OUT`), `amount`, `currency`, `occurred_at`, `category_id?`, `source_type`, `source_id?`, `note`, `attachment_file_id?`, `created_by_id`, `reverses_entry_id?` |
 | `cash_exchanges`  | `id`, `from_account_id`, `to_account_id`, `from_amount`, `to_amount`, `rate`, `occurred_at`, `note` (§11.6)                                                                                          |
 
-`source_type`: `SALE` · `PAYMENT` · `MANUAL` · `OPENING_BALANCE` ·
-`EXCHANGE` · `PERSONAL_USE` · `REVERSAL`. `MANUAL` bo'lmagan yozuv qo'lda
-tahrirlanmaydi (§11.7); `MANUAL` yozuv faqat o'sha kuni ichida
-tahrirlanadi/o'chiriladi (§11.8). Boshlang'ich qoldiq va ayirboshlash
-daromad deb sanalmaydi (§11.4, §11.6).
+`source_type`: `PAYMENT` · `MANUAL` · `OPENING_BALANCE` · `EXCHANGE` ·
+`REVERSAL`. `MANUAL` bo'lmagan yozuv qo'lda tahrirlanmaydi (§11.7);
+`MANUAL` yozuv faqat o'sha kuni ichida tahrirlanadi/o'chiriladi (§11.8).
+Boshlang'ich qoldiq va ayirboshlash daromad deb sanalmaydi (§11.4, §11.6).
+
+**`SALE` va `PERSONAL_USE` olib tashlandi:**
+
+- `SALE` — kassaga pul faqat `Payment` orqali tushadi (§17.2), aks holda
+  bir pul ikki yo'ldan yozilib, ikki marta sanalishi mumkin edi.
+  `cash_entries.sale_id` ustuni ham keraksiz — bog'lanish
+  `cash_entry → payment → sale` orqali.
+- `PERSONAL_USE` — shaxsiy foydalanishda kassadan pul chiqmaydi (§17.12).
+  U pul bo'lmagan xarajat: `stock_movements(PERSONAL_USE)` yoziladi va
+  hisobotda tannarx miqdorida alohida xarajat satri bo'ladi. Kassa yozuvi
+  yaratilsa, qoldiq jismoniy naqd puldan farq qilib qolardi — bu §11.3 da
+  nomlangan muammoning aynan o'zi.
 
 ### Fayllar, hujjatlar, bildirishnomalar, audit
 
@@ -283,55 +362,91 @@ daromad deb sanalmaydi (§11.4, §11.6).
 | `notification_logs`  | `id`, `channel`, `type`, `recipient`, `schedule_id?`, `customer_id?`, `status`, `scheduled_for`, `sent_at`, `processing_started_at`, `error` |
 | `push_subscriptions` | `id`, `user_id`, `endpoint` (unique), `p256dh`, `auth`, `last_used_at`                                                                       |
 | `audit_logs`         | `id`, `actor_id`, `action`, `entity_type`, `entity_id`, `before_json`, `after_json`, `ip`, `created_at`                                      |
+| `idempotency_keys`   | `key` (PK), `user_id`, `endpoint`, `request_hash`, `status_code`, `response_body`, `created_at` — 24 soat saqlanadi (§17.6, `API.md` §4)     |
 
 Passport rasmini kim ko'rgani ham `audit_logs`ga yoziladi (§6.7).
 
+`notification_logs` unique kaliti — `(schedule_id, channel, type, scheduled_for)`
+(§17.13). `scheduled_for` kalitga kiritilmasa, jadval qatori qayta
+rejalashtirilganda (§9.10) yangi sana uchun eslatma hech qachon
+yuborilmaydi.
+
+### Ma'lumot yaxlitligi cheklovlari
+
+Baza darajasidagi `CHECK` cheklovlari — **kod xatosidan himoyaning oxirgi
+qatlami** (§17.8). To'liq ro'yxat `proposals/v0.2.1-migration.sql` da:
+valyuta mosligi (`cash_entries` ↔ hisob, tannarx ↔ mahsulot), manfiy
+bo'lmagan partiya qoldig'i, `returned_quantity ≤ quantity`, to'lovda
+`sale_id` yoki `contract_id` bo'lishi, musbat summalar, `principal`
+formulasi, holat izchilligi, boshlang'ich qoldiqning hisob uchun bir marta
+bo'lishi.
+
+Barcha vaqt ustunlari — `timestamptz` (§17.9). "Bugun" doim
+`Asia/Tashkent` da hisoblanadi; `@db.Date` maydonlar kalendar sana
+sifatida qoladi.
+
 ## 8. API
 
-`/api/v1` prefiksi ostida REST. Asosiy yo'nalishlar:
+`/api/v1` prefiksi ostida REST. **Kesuvchi konventsiyalar — `API.md`da:**
+xato formati va kodlari, pagination, filtr, saralash, idempotency,
+rate limiting, fayl validatsiyasi, pul va sana serializatsiyasi.
 
 ```text
 POST   /auth/login            POST /auth/logout          GET  /auth/me
 POST   /auth/forgot-password  POST /auth/reset-password
-GET    /auth/sessions         DELETE /auth/sessions/:id
+POST   /auth/change-password
+GET    /auth/sessions         DELETE /auth/sessions/:id  DELETE /auth/sessions
 GET    /auth/login-attempts
 
 GET    /settings              PATCH /settings
 GET    /exchange-rates        GET  /exchange-rates/today   PUT /exchange-rates/:date
 
 GET    /categories            POST /categories             PATCH /categories/:id
+POST   /categories/:id/merge
 GET    /brands                POST /brands                 PATCH /brands/:id
+POST   /brands/:id/merge
 GET    /products              POST /products               PATCH /products/:id
+GET    /products/:id
 
 GET    /inventory             POST /inventory/receive      GET  /inventory/:id
 GET    /inventory/movements   POST /inventory/adjust       POST /inventory/personal-use
-GET    /stocktakes            POST /stocktakes             POST /stocktakes/:id/complete
+POST   /inventory/:id/restock                            # §16.4 sotuvga qaytarish
+GET    /stocktakes            POST /stocktakes             GET  /stocktakes/:id
+POST   /stocktakes/:id/complete   POST /stocktakes/:id/cancel
 
 GET    /customers             POST /customers              PATCH /customers/:id
-GET    /customers/:id/history
+GET    /customers/:id         GET  /customers/:id/history
 
-GET    /sales                 POST /sales                  PATCH /sales/:id
+GET    /sales                 POST /sales                  GET  /sales/:id
+PATCH  /sales/:id             DELETE /sales/:id            # faqat qoralama
 POST   /sales/:id/confirm     POST /sales/:id/return       POST /sales/:id/cancel
 
 GET    /installments          GET  /installments/:id
 PATCH  /installments/:id/schedule   POST /installments/:id/close
 
-POST   /payments              POST /payments/:id/confirm
-POST   /payments/:id/reject   POST /payments/:id/reverse
+GET    /payments              GET  /payments/:id           POST /payments
+POST   /payments/:id/confirm  POST /payments/:id/reject    POST /payments/:id/reverse
 
-GET    /cash-accounts         POST /cash-accounts
-GET    /cash-entries          POST /cash-entries           PATCH /cash-entries/:id
+GET    /cash-accounts         POST /cash-accounts          PATCH /cash-accounts/:id
+GET    /cash-categories       POST /cash-categories
+GET    /cash-entries          POST /cash-entries
+PATCH  /cash-entries/:id      DELETE /cash-entries/:id     # §11.8 o'sha kuni
 GET    /cashbook/balances     POST /cashbook/exchange
 
 GET    /dashboard
 GET    /reports/summary       /reports/sales   /reports/profit
 GET    /reports/debts         /reports/inventory  /reports/top-products
 
+GET    /audit-logs
 POST   /documents/contracts/:id/pdf
 POST   /files                 GET  /files/:id            # 15 daqiqalik havola
-POST   /push-subscriptions
+POST   /push-subscriptions    DELETE /push-subscriptions/:id
 GET    /ai-insights/daily     POST /ai-insights/query
+GET    /health/live           GET  /health/ready
 ```
+
+`POST /sales/:id/reverse` **yo'q** — qaytarish va bekor qilish biznes
+ma'nosi jihatidan boshqa amallar (§8), API ham shuni aks ettiradi (§17.18).
 
 Next.js sahifalari domain bo'yicha ajratiladi: `/login`, `/dashboard`,
 `/sales`, `/inventory`, `/customers`, `/installments`, `/payments`,
@@ -392,14 +507,32 @@ xarajat baholashidan keyin qilinadi.
 ## 12. Xavfsizlik va ishga tayyorlik
 
 - Parol Argon2id bilan hash qilinadi (§2.4).
-- Sessiya `HttpOnly`, `Secure`, `SameSite` cookie orqali; CSRF himoyasi (§2.8).
+- Sessiya `HttpOnly`, `Secure`, `SameSite=Strict` cookie orqali; CSRF —
+  double-submit token (§2.8, `API.md` §1).
 - Login urinishlari cheklanadi va jurnalga yoziladi (§2.9, §2.10).
-- DTO validatsiyasi va endpoint rate limiting.
-- Object storage fayllari public emas — faqat vaqtinchalik havola (§15.5).
+  Reverse proxy ortida `trust proxy` **sozlanadi** — aks holda IP bo'yicha
+  cheklov yagona foydalanuvchini bloklaydi.
+- DTO validatsiyasi `whitelist: true, forbidNonWhitelisted: true` bilan —
+  mass assignment'ga qarshi. `cost_snapshot`, `exchange_rate`, `number`,
+  `status` clientdan **hech qachon** qabul qilinmaydi.
+- **Idempotency** barcha moliyaviy `POST` uchun majburiy (§17.6).
+- Ruxsat: global **default DENY** guard, `@Roles()` dekoratori,
+  rolga bog'liq javob serializatsiyasi — `PERMISSIONS.md`.
+- Rate limiting endpoint sinflari bo'yicha — `API.md` §6.
+- Object storage fayllari public emas — faqat vaqtinchalik havola (§15.5);
+  yuklashda MIME oq ro'yxati, fayl imzosi va EXIF tozalash (`API.md` §7).
+- `audit_logs` ilova DB roli uchun faqat `INSERT`/`SELECT` — `UPDATE` va
+  `DELETE` rad etiladi, "o'zgarmas audit" e'lon emas, kafolat bo'lsin.
 - HTTPS majburiy; secretlar `.env` va deploy secret store'da. **API kalitlari
   repoga hech qachon kiritilmaydi.**
-- Har kuni PostgreSQL backup; restore jarayoni productiondan oldin sinaladi.
-- Structured log, error tracking, health endpoint, DB connection monitoring.
+- **Hosting O'zbekiston hududida** — passport va JSHSHIR shaxsga doir
+  ma'lumot (§16.13).
+- PostgreSQL backup: kunlik to'liq nusxa + WAL arxivlash (PITR).
+  Maqsad: RPO ≤ 5 daqiqa, RTO ≤ 1 soat. **Restore jadval bo'yicha sinaladi** —
+  sinalmagan backup backup emas.
+- Structured log, error tracking, health endpointlari (`/health/live`,
+  `/health/ready`), DB connection monitoring. Alert: CBU sync ketma-ket
+  ikki kun ishlamasa, eslatma jarayoni turib qolsa.
 - Build artifaktlari (`.js`, `.d.ts`, `*.tsbuildinfo`) git'ga kirmaydi —
   `.gitignore` buni ta'minlaydi.
 
@@ -417,14 +550,44 @@ ishlasa pul hisobi buziladi va buni hech kim sezmaydi. Ular testsiz
 
 ## 13. Kodlash tartibi
 
-`TZ.md` §22 bilan bir xil:
+`TZ.md` §22 bilan bir xil (v0.2.1 da qayta tuzilgan, §17.17):
 
-1. Monorepo, lint/format/test, lokal PostgreSQL, **to'liq schema va migratsiya**.
-2. Auth va sozlamalar (users/role, sessiya, login cheklovi, do'kon sozlamalari, valyuta kursi).
-3. Katalog va Inventory (kategoriya/brend, seriyali birlik va partiya, qabul, inventarizatsiya).
-4. Customers, Sales, Installments, Payments tranzaksiyalari.
-5. Cashbook, Reports, dashboard, audit.
-6. PWA, web push, SMS test adapteri.
-7. Documents (shartnoma PDF) va Storage.
-8. AI Insights read-only moduli.
-9. Production hardening, backup, CI/CD, haqiqiy SMS va SMTP adapterlari.
+0. **Qarorlarni yopish:** hujjat ziddiyatlari, `API.md`/`GLOSSARY.md`/
+   `PERMISSIONS.md`, schema tuzatishlari va cheklovlar migratsiyasi.
+1. **Kesuvchi poydevor:** exception filter va xato formati, `ValidationPipe`
+   (whitelist), idempotency middleware, pagination yordamchisi,
+   `Decimal` ↔ JSON serializatsiyasi, audit interceptor, `@Roles` guard
+   (default DENY), rate limiting, `trust proxy`.
+
+**MVP-1**
+
+2. Auth va sozlamalar (users/role, sessiya, login cheklovi, parol
+   o'zgartirish, do'kon sozlamalari, valyuta kursi va CBU sync).
+3. Catalog va Inventory (kategoriya/brend + merge, mahsulot, seriyali birlik
+   va partiya, qabul qilish).
+4. Customers.
+5. **Sales (naqd) + Cashbook** — tasdiqlash tranzaksiyasi, `payments`,
+   kassa hisoblari va yozuvlari, dashboard.
+
+**MVP-2**
+
+6. Sales reversal — qaytarish va bekor qilish.
+7. Installments va Payments — jadval, taqsimot, tasdiqlash, erta yopish.
+8. Reports va audit ko'rinishi.
+9. Documents (shartnoma PDF) va Storage.
+
+**Kengaytirish**
+
+10. Inventarizatsiya, shaxsiy foydalanish, valyuta ayirboshlash.
+11. PWA, web push, SMS test adapteri.
+12. AI Insights read-only moduli.
+13. Production hardening, backup/restore sinovi, CI/CD, haqiqiy SMS va SMTP.
+
+**Nega 0 va 1 bosqichlar birinchi:** hujjat ziddiyatini kod yozilmaganda
+tuzatish arzon; kesuvchi konventsiyalarni keyin qo'shish esa har bir
+modulni qayta ko'rib chiqishni talab qiladi.
+
+**Nega naqd savdo nasiyadan ajratilgan:** savdo, qaytarish, nasiya va
+to'lov — to'rtta murakkab tranzaksion mantiq. Ularni bir vaqtda yozish
+va bir vaqtda debug qilish loyihaning eng katta xavfi. MVP-1 tugaganda
+do'kon allaqachon ishlaydi va tizim real ma'lumot bilan sinaladi.
