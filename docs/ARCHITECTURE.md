@@ -400,6 +400,7 @@ GET    /auth/login-attempts
 
 GET    /settings              PATCH /settings
 GET    /exchange-rates        GET  /exchange-rates/today   PUT /exchange-rates/:date
+POST   /exchange-rates/:date/reset-to-cbu   # §16.8 — MANUAL dan qaytish
 
 GET    /categories            POST /categories             PATCH /categories/:id
 POST   /categories/:id/merge
@@ -554,10 +555,17 @@ ishlasa pul hisobi buziladi va buni hech kim sezmaydi. Ular testsiz
 
 0. **Qarorlarni yopish:** hujjat ziddiyatlari, `API.md`/`GLOSSARY.md`/
    `PERMISSIONS.md`, schema tuzatishlari va cheklovlar migratsiyasi.
-1. **Kesuvchi poydevor:** exception filter va xato formati, `ValidationPipe`
-   (whitelist), idempotency middleware, pagination yordamchisi,
-   `Decimal` ↔ JSON serializatsiyasi, audit interceptor, `@Roles` guard
-   (default DENY), rate limiting, `trust proxy`.
+1. **Kesuvchi poydevor:** exception filter va xato formati, zod
+   validatsiya pipe'i (`.strict()` — whitelist), idempotency interceptor,
+   pagination yordamchisi, `Decimal` ↔ JSON serializatsiyasi, **audit
+   servisi** (tranzaksiya ichida — §6, quyidagi izohga qarang), optimistik
+   qulf (`API.md` §8), `@Roles` guard (default DENY), rate limiting va
+   `Retry-After`, `trust proxy`.
+
+   > Audit **interceptor bilan bajarilmaydi**: §6 uni asosiy o'zgarish
+   > bilan bitta tranzaksiyada talab qiladi, interceptor esa undan
+   > tashqarida ishlaydi — amal saqlanib, audit yozilmay qolishi mumkin
+   > bo'lardi. Shu sabab `AuditService.record(tx, …)`.
 
 **MVP-1**
 

@@ -1,17 +1,12 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ErrorCode, UserRole } from '@hisobai/contracts';
-import type { Request } from 'express';
 
 import { AppException } from './app.exception';
 import { PUBLIC_KEY, ROLES_KEY } from './auth.decorators';
+import type { AuthedRequest } from './request-user';
 
-export interface RequestUser {
-  id: string;
-  role: UserRole;
-}
-
-type AuthedRequest = Request & { user?: RequestUser };
+export type { RequestUser } from './request-user';
 
 /**
  * **Default DENY** ruxsat qorovuli (`PERMISSIONS.md` §1).
@@ -39,7 +34,14 @@ export class RolesGuard implements CanActivate {
     const user = request.user;
 
     if (!user) {
-      throw AppException.unauthorized(ErrorCode.AUTH_REQUIRED, 'Tizimga kiring.');
+      // Cookie bor edi, lekin sessiya yaroqsiz — foydalanuvchi "nega
+      // chiqib ketdim?" degan savolga javob olsin (§2.7).
+      throw request.sessionExpired === true
+        ? AppException.unauthorized(
+            ErrorCode.AUTH_SESSION_EXPIRED,
+            'Sessiya tugadi. Qaytadan kiring.',
+          )
+        : AppException.unauthorized(ErrorCode.AUTH_REQUIRED, 'Tizimga kiring.');
     }
 
     const allowed = this.reflector.getAllAndOverride<UserRole[]>(ROLES_KEY, targets);

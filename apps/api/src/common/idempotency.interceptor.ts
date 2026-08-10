@@ -4,20 +4,18 @@ import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nes
 import { Reflector } from '@nestjs/core';
 import { ErrorCode } from '@hisobai/contracts';
 import { Prisma } from '@prisma/client';
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
 import type { Observable } from 'rxjs';
 import { from, of, switchMap, tap } from 'rxjs';
 
 import { AppException } from './app.exception';
 import { IDEMPOTENT_KEY } from './auth.decorators';
 import { serializeDecimals } from './decimal-serializer.interceptor';
-import type { RequestUser } from './roles.guard';
+import type { AuthedRequest } from './request-user';
 import { PrismaService } from '../database/prisma.service';
 
 /** Saqlangan javob shu muddatdan keyin tozalanadi (`API.md` §4.2). */
 export const IDEMPOTENCY_TTL_HOURS = 24;
-
-type AuthedRequest = Request & { id?: string; user?: RequestUser };
 
 /**
  * Takroriy so'rovni to'sadi (§17.6, `API.md` §4).

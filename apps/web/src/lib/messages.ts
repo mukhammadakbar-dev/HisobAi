@@ -20,6 +20,9 @@ const ERROR_MESSAGES: Partial<Record<string, string>> = {
   [ErrorCode.VALIDATION_FAILED]: "Forma to'ldirilishida xato bor.",
   [ErrorCode.STALE_RESOURCE]:
     "Bu yozuv boshqa joyda o'zgartirildi. Sahifani yangilab, qaytadan urinib ko'ring.",
+  // Bu — ishlab chiquvchi xatosi (qulf tokeni yuborilmagan). Foydalanuvchi
+  // baribir matn ko'radi, shuning uchun u ham amaliy bo'lsin.
+  [ErrorCode.PRECONDITION_REQUIRED]: 'Sahifani yangilab, qaytadan urinib ko‘ring.',
 
   [ErrorCode.AUTH_REQUIRED]: 'Tizimga kiring.',
   [ErrorCode.AUTH_INVALID_CREDENTIALS]: "Email yoki parol noto'g'ri.",
@@ -77,6 +80,8 @@ const ERROR_MESSAGES: Partial<Record<string, string>> = {
   [ErrorCode.CATALOG_DUPLICATE_NAME]: 'Bunday nom allaqachon mavjud.',
   [ErrorCode.CUSTOMER_PHONE_TAKEN]: 'Bu telefon raqami boshqa mijozda bor.',
   [ErrorCode.EXCHANGE_RATE_MISSING]: 'Valyuta kursi topilmadi. Sozlamalarda kursni kiriting.',
+  [ErrorCode.EXCHANGE_RATE_CBU_MISSING]:
+    "Bu sana uchun CBU kursi olinmagan — qaytarish uchun asos yo'q.",
 
   [ErrorCode.FILE_TOO_LARGE]: 'Fayl 10 MB dan katta.',
   [ErrorCode.FILE_TYPE_NOT_ALLOWED]: 'Bu turdagi fayl qabul qilinmaydi.',

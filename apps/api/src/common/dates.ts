@@ -54,3 +54,78 @@ export function daysBetween(from: string, to: string): number {
   const toMs = fromCalendarDate(to).getTime();
   return Math.round((toMs - fromMs) / 86_400_000);
 }
+
+/**
+ * Berilgan vaqt nuqtasida zonaning UTC'dan siljishi (millisekundda).
+ *
+ * `Intl` sanani zona bo'yicha yoyadi; o'sha qismlarni UTC deb qayta
+ * yig'sak, farq aynan siljish bo'ladi. Bu usul yozgi vaqtga ham bardosh
+ * beradi — O'zbekistonda u yo'q, lekin `TIMEZONE` sozlanadigan bo'lgani
+ * uchun formula umumiy qoladi.
+ */
+export function timeZoneOffsetMs(instant: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(instant);
+
+  const read = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((part) => part.type === type)?.value ?? '0');
+
+  // `hour12: false` ba'zi muhitlarda yarim tunni 24 deb beradi — 0 ga keltiramiz
+  const hour = read('hour') % 24;
+  const asUtc = Date.UTC(
+    read('year'),
+    read('month') - 1,
+    read('day'),
+    hour,
+    read('minute'),
+    read('second'),
+  );
+  // Millisekundlar `formatToParts` da yo'q — ularni asl qiymatdan olamiz
+  return asUtc - (instant.getTime() - instant.getMilliseconds());
+}
+
+/** Do'kon zonasidagi soat (0–23). */
+export function hourInTimeZone(instant: Date, timeZone: string): number {
+  return (
+    Number(
+      new Intl.DateTimeFormat('en-US', { timeZone, hour12: false, hour: '2-digit' }).format(
+        instant,
+      ),
+    ) % 24
+  );
+}
+
+/**
+ * Do'kon zonasida ko'rsatilgan soatning keyingi kelishi (§3.3 — 09:00).
+ *
+ * `from` shu soatdan keyin bo'lsa, ertangi kun olinadi. Siljish ikki
+ * marta hisoblanadi: birinchi taxminiy natija zona chegarasidan o'tib
+ * ketgan bo'lsa (yozgi vaqt), ikkinchi hisob uni to'g'irlaydi.
+ */
+export function nextOccurrenceOfHour(
+  hour: number,
+  timeZone: string,
+  from: Date = new Date(),
+): Date {
+  const localDay = businessDay(from, timeZone);
+  const [year = 0, month = 0, day = 0] = localDay.split('-').map(Number);
+
+  const build = (dayOffset: number): Date => {
+    const naiveUtc = Date.UTC(year, month - 1, day + dayOffset, hour, 0, 0, 0);
+    let instant = new Date(naiveUtc - timeZoneOffsetMs(new Date(naiveUtc), timeZone));
+    // Siljish o'zgargan bo'lsa bir marta qayta hisoblaymiz
+    instant = new Date(naiveUtc - timeZoneOffsetMs(instant, timeZone));
+    return instant;
+  };
+
+  const todayRun = build(0);
+  return todayRun.getTime() > from.getTime() ? todayRun : build(1);
+}

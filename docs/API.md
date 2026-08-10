@@ -129,16 +129,18 @@ Barcha xatolar bir xil shaklda:
 
 ### 3.1 HTTP kodlari
 
-| Kod   | Qachon                                                           | Misol                                                           |
-| ----- | ---------------------------------------------------------------- | --------------------------------------------------------------- |
-| `400` | So'rov shakli noto'g'ri                                          | JSON buzilgan, maydon tipi xato                                 |
-| `401` | Autentifikatsiya yo'q yoki muddati o'tgan                        | Sessiya tugagan                                                 |
-| `403` | Autentifikatsiya bor, ruxsat yo'q                                | SELLER kassaga kirmoqchi                                        |
-| `404` | Resurs topilmadi                                                 | Noto'g'ri `id`                                                  |
-| `409` | **Biznes konflikti** — holat mos emas                            | IMEI band, savdo allaqachon tasdiqlangan, kassa yozuvi kechagi  |
-| `422` | **Biznes qoidasi buzildi** — ma'lumot to'g'ri, lekin qoidaga zid | Jadval summasi qarzga teng emas (§9.6), ortiqcha to'lov (§10.2) |
-| `429` | Limit oshdi                                                      | Login urinishi, AI so'rovi                                      |
-| `500` | Ichki xato                                                       | —                                                               |
+| Kod   | Qachon                                                           | Misol                                                                   |
+| ----- | ---------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `400` | So'rov shakli noto'g'ri                                          | JSON buzilgan, maydon tipi xato                                         |
+| `401` | Autentifikatsiya yo'q yoki muddati o'tgan                        | Sessiya tugagan                                                         |
+| `403` | Autentifikatsiya bor, ruxsat yo'q                                | SELLER kassaga kirmoqchi                                                |
+| `404` | Resurs topilmadi                                                 | Noto'g'ri `id`                                                          |
+| `409` | **Biznes konflikti** — holat mos emas                            | IMEI band, savdo allaqachon tasdiqlangan, kassa yozuvi kechagi          |
+| `422` | **Biznes qoidasi buzildi** — ma'lumot to'g'ri, lekin qoidaga zid | Jadval summasi qarzga teng emas (§9.6), ortiqcha to'lov (§10.2)         |
+| `428` | **Old shart yo'q** — optimistik qulf tokeni yuborilmagan         | `PATCH` da `expectedUpdatedAt` ham, `If-Unmodified-Since` ham yo'q (§8) |
+| `429` | Limit oshdi                                                      | Login urinishi, AI so'rovi                                              |
+| `500` | Ichki xato                                                       | —                                                                       |
+| `503` | Vaqtincha ishlamayapti                                           | DB javob bermayapti (`/health/ready`)                                   |
 
 `409` va `422` farqi: `409` — **vaqt o'tishi bilan o'zgaradigan** holat
 (qayta urinish ma'noli bo'lishi mumkin); `422` — **so'rovning o'zi** qoidaga
@@ -210,7 +212,10 @@ INVENTORY_DUPLICATE_IMEI · INVENTORY_ITEM_NOT_AVAILABLE
 
 FILE_TOO_LARGE · FILE_TYPE_NOT_ALLOWED
 
+EXCHANGE_RATE_MISSING · EXCHANGE_RATE_CBU_MISSING
+
 VALIDATION_FAILED · RATE_LIMITED · IDEMPOTENCY_KEY_REUSED
+STALE_RESOURCE · PRECONDITION_REQUIRED
 ```
 
 ---
@@ -359,16 +364,50 @@ yagona foydalanuvchini bloklaydi.
 ## 8. Optimistik qulf
 
 Bir vaqtda ikki qurilmadan tahrirlanadigan resurslarda (`PATCH /sales/:id`,
-`PATCH /settings`, `PATCH /customers/:id`):
+`PATCH /settings`, `PATCH /customers/:id`) client o'zi ko'rgan holat
+vaqtini yuboradi. Ikki manbadan **biri majburiy**:
 
 ```
-If-Unmodified-Since: 2026-08-09T14:30:00+05:00
+If-Unmodified-Since: 2026-08-09T14:30:00Z
 ```
 
-yoki body ichida `expectedUpdatedAt`. Mos kelmasa — `409 STALE_RESOURCE`.
+yoki body ichida:
 
-Bularsiz "oxirgi yozgan yutadi" bo'ladi va foydalanuvchi o'z o'zgarishi
-yo'qolganini bilmaydi.
+```jsonc
+{ "lowStockThreshold": 4, "expectedUpdatedAt": "2026-08-09T14:30:00.123Z" }
+```
+
+| Holat            | Javob                                                                       |
+| ---------------- | --------------------------------------------------------------------------- |
+| Token mos keladi | `200` — o'zgarish yoziladi                                                  |
+| Token eskirgan   | `409 STALE_RESOURCE`; `details` da `expectedUpdatedAt` va `actualUpdatedAt` |
+| Token yo'q       | `428 PRECONDITION_REQUIRED`                                                 |
+
+**Ikkalasi kelsa body ustun turadi** — u millisekundgacha aniq.
+`If-Unmodified-Since` HTTP-date sifatida sekundgacha aniq, shuning uchun
+solishtiruvga 999 ms bardosh qo'shiladi; usiz `14:30:00.123` da yozilgan
+yozuv `14:30:00` tokeni bilan **har doim** eskirgan ko'rinardi va sarlavha
+varianti umuman ishlamasdi.
+
+Siljishsiz vaqt (`2026-08-09T14:30:00`) qabul qilinmaydi: uni `new Date()`
+mahalliy vaqt deb o'qiydi va Toshkentda 5 soatga siljigan qiymat chiqadi —
+aynan qulf to'sishi kerak bo'lgan konflikt jimgina o'tib ketardi.
+
+**Nega majburiy.** Ixtiyoriy qulf — qulf emas: uni yubormagan client
+himoyasiz qoladi va buni hech kim sezmaydi. Bularsiz "oxirgi yozgan
+yutadi" bo'ladi va foydalanuvchi o'z o'zgarishi yo'qolganini bilmaydi.
+`Idempotency-Key` (§4) ayni shu sababdan majburiy qilingan.
+
+**Nega faqat tekshirish yetarli emas.** `SELECT` keyin `UPDATE` — TOCTOU
+poygasi: `READ COMMITTED` da ikkala tranzaksiya ham "mos keladi" deb
+ko'radi. Shuning uchun `updated_at` `UPDATE` ning `WHERE` shartiga
+qo'yiladi va mos qator topilmasa Prisma `P2025` beradi — §17.5 dagi ombor
+poygasi bilan bir xil mexanizm.
+
+Amalga oshirish: `apps/api/src/common/optimistic-lock.ts`. Web tomonda
+token formadan emas, query keshidagi holatdan olinadi
+(`features/settings/queries.ts`) — har forma uni qo'lda uzatsa, bittasida
+unutiladi.
 
 ---
 
@@ -378,7 +417,19 @@ yo'qolganini bilmaydi.
 | ------------------------- | --------------------------------------- |
 | `X-Request-Id`            | Har javobda; log bilan bog'lash uchun   |
 | `Cache-Control: no-store` | Barcha moliyaviy javoblar uchun default |
-| `Retry-After`             | `429` va `503` da                       |
+| `Retry-After`             | `429` va `503` da (sekundda)            |
+
+Brauzer CORS ostida faqat `exposedHeaders` ga tushgan sarlavhalarni ko'radi
+(`main.ts`: `X-Request-Id`, `Retry-After`). Shu sababli kutish vaqti
+**javob tanasida ham** takrorlanadi — `error.details.retryAfterSeconds`.
+UI shuni o'qiydi: sarlavha ro'yxatdan tushib qolsa, xato jimgina
+yo'qolmasin.
+
+Qiymat manbai, tartib bilan: xatoning o'zi aytgan muddat (masalan §2.9
+login bloki) → throttler qo'ygan `Retry-After-<profil>` sarlavhasi →
+zaxira (throttler oynasi 60 s, `503` uchun 15 s). Nomlangan throttler
+standart `Retry-After` ni **o'zi qo'ymaydi** — uni `AllExceptionsFilter`
+tiklaydi.
 
 ---
 

@@ -17,7 +17,16 @@ export const ErrorCode = {
   FORBIDDEN: 'FORBIDDEN',
   RATE_LIMITED: 'RATE_LIMITED',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
+  /** `API.md` §8 — yozuv client o'qigandan keyin o'zgargan. */
   STALE_RESOURCE: 'STALE_RESOURCE',
+  /**
+   * `API.md` §8 — `expectedUpdatedAt` ham, `If-Unmodified-Since` ham
+   * yuborilmagan. `STALE_RESOURCE` dan ataylab ajratilgan: u yerda
+   * konflikt bor, bu yerda esa konflikt bor-yo'qligini **aniqlab
+   * bo'lmaydi**. Ikkalasi bir kod bo'lsa, qulfni umuman yubormaydigan
+   * client "konflikt yo'q" degan yolg'on xulosaga asos berardi.
+   */
+  PRECONDITION_REQUIRED: 'PRECONDITION_REQUIRED',
   /** Faqat web tomonida yaratiladi — server javob bermadi. */
   NETWORK_ERROR: 'NETWORK_ERROR',
 
@@ -34,6 +43,11 @@ export const ErrorCode = {
   AUTH_TOKEN_INVALID: 'AUTH_TOKEN_INVALID',
   AUTH_TOKEN_USED: 'AUTH_TOKEN_USED',
   AUTH_CSRF_INVALID: 'AUTH_CSRF_INVALID',
+  /** Parol o'zgartirishda joriy parol xato — `AUTH_INVALID_CREDENTIALS` dan
+   *  ataylab ajratilgan: bu yerda sessiya haqiqiy, faqat tasdiq muvaffaqiyatsiz. */
+  AUTH_CURRENT_PASSWORD_INVALID: 'AUTH_CURRENT_PASSWORD_INVALID',
+  /** `users.is_active = false` — parol to'g'ri bo'lsa ham kiritilmaydi. */
+  AUTH_USER_INACTIVE: 'AUTH_USER_INACTIVE',
 
   // ── Savdo (§7, §8) ────────────────────────────────────────────────────
   SALE_NOT_DRAFT: 'SALE_NOT_DRAFT',
@@ -85,6 +99,12 @@ export const ErrorCode = {
 
   // ── Kurs (§3) ─────────────────────────────────────────────────────────
   EXCHANGE_RATE_MISSING: 'EXCHANGE_RATE_MISSING',
+  /**
+   * §16.8 — CBU kursiga qaytarib bo'lmaydi, chunki o'sha kun uchun CBU
+   * qiymati olinmagan. `EXCHANGE_RATE_MISSING` dan farqli: kurs qatori
+   * bor, faqat qaytariladigan asos yo'q.
+   */
+  EXCHANGE_RATE_CBU_MISSING: 'EXCHANGE_RATE_CBU_MISSING',
 
   // ── Fayl (§15) ────────────────────────────────────────────────────────
   FILE_TOO_LARGE: 'FILE_TOO_LARGE',

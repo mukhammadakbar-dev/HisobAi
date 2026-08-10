@@ -1,6 +1,6 @@
 import { ExecutionContext, HttpStatus } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { ErrorCode, UserRole } from '@hisobai/contracts';
+import { ErrorCode, Theme, UserRole } from '@hisobai/contracts';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AppException } from './app.exception';
@@ -30,7 +30,14 @@ function makeGuard(metadata: { public?: boolean; roles?: UserRole[] }): RolesGua
   return new RolesGuard(reflector);
 }
 
-const owner: RequestUser = { id: 'user-1', role: UserRole.OWNER };
+const owner: RequestUser = {
+  id: 'user-1',
+  email: 'ega@hisobai.uz',
+  displayName: "Do'kon egasi",
+  role: UserRole.OWNER,
+  theme: Theme.SYSTEM,
+  sessionId: 'session-1',
+};
 
 describe('RolesGuard — default DENY', () => {
   it("dekoratorsiz endpoint YOPIQ (foydalanuvchi bo'lsa ham)", () => {

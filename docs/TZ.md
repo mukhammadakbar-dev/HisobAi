@@ -387,7 +387,14 @@ keyin alohida relizda qo'shiladi.
    `PERMISSIONS.md`, schema tuzatishlari va cheklovlar migratsiyasi.
 1. **Kesuvchi poydevor:** xato formati va global filter, DTO validatsiyasi
    (whitelist), idempotency, pagination, `Decimal` ↔ JSON serializatsiyasi,
-   audit interceptor, rate limiting, `trust proxy`.
+   **audit servisi**, optimistik qulf, rate limiting va `Retry-After`,
+   `trust proxy`.
+
+   > Audit **interceptor emas, servis**: `ARCHITECTURE.md` §6 audit
+   > yozuvini asosiy o'zgarish bilan **bitta tranzaksiyada** talab
+   > qiladi, interceptor esa tranzaksiyadan tashqarida ishlaydi va bu
+   > kafolatni bera olmaydi. `AuditService.record(tx, …)` — tranzaksiya
+   > ichida, `recordDetached(…)` — o'qish amallari uchun (§6.7).
 
 **MVP-1 — ishlaydigan do'kon (naqd savdo)**
 

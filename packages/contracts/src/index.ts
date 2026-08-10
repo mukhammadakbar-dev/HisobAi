@@ -2,3 +2,8 @@ export * from './enums';
 export * from './errors';
 export * from './money';
 export * from './pagination';
+export * from './rates';
+export * from './schemas/auth';
+export * from './schemas/common';
+export * from './schemas/exchange-rate';
+export * from './schemas/settings';

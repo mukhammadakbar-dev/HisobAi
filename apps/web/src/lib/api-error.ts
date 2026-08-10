@@ -51,4 +51,16 @@ export class ApiError extends Error {
   get isRetriable(): boolean {
     return this.status === 0 || this.status >= 500 || this.status === 429;
   }
+
+  /**
+   * `429` va `503` da — necha sekund kutish kerakligi (`API.md` §9).
+   *
+   * Qiymat `Retry-After` sarlavhasidan emas, javob tanasidan olinadi:
+   * sarlavhani brauzer faqat CORS `exposedHeaders` ga tushgan holda
+   * ko'radi, tana esa har doim yetib keladi.
+   */
+  get retryAfterSeconds(): number | undefined {
+    const value = this.details?.retryAfterSeconds;
+    return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
+  }
 }

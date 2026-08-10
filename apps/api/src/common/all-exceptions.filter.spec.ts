@@ -1,6 +1,12 @@
-import { ArgumentsHost, HttpStatus, NotFoundException } from '@nestjs/common';
+import {
+  ArgumentsHost,
+  HttpStatus,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ErrorCode } from '@hisobai/contracts';
 import type { ApiErrorBody } from '@hisobai/contracts';
+import { ThrottlerException } from '@nestjs/throttler';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AllExceptionsFilter } from './all-exceptions.filter';
@@ -9,6 +15,7 @@ import { AppException } from './app.exception';
 interface Captured {
   status: number;
   body: ApiErrorBody;
+  headers: Record<string, string | number>;
 }
 
 function makeHost(captured: Captured): ArgumentsHost {
@@ -20,6 +27,17 @@ function makeHost(captured: Captured): ArgumentsHost {
     json(body: ApiErrorBody) {
       captured.body = body;
       return this;
+    },
+    setHeader(name: string, value: string | number) {
+      captured.headers[name] = value;
+      return this;
+    },
+    // Node `getHeaders()` nomlarni doim kichik harfda qaytaradi —
+    // filter aynan shunga tayanadi, shuning uchun dublyor ham shunday
+    getHeaders() {
+      return Object.fromEntries(
+        Object.entries(captured.headers).map(([name, value]) => [name.toLowerCase(), value]),
+      );
     },
   };
 
@@ -38,7 +56,7 @@ describe('AllExceptionsFilter', () => {
   let captured: Captured;
 
   beforeEach(() => {
-    captured = { status: 0, body: {} as ApiErrorBody };
+    captured = { status: 0, body: {} as ApiErrorBody, headers: {} };
     // 5xx da stack loglanadi — test chiqishini iflos qilmasin
     vi.spyOn(filter['logger'], 'error').mockImplementation(() => undefined);
     vi.spyOn(filter['logger'], 'debug').mockImplementation(() => undefined);
@@ -97,5 +115,57 @@ describe('AllExceptionsFilter', () => {
   it("har javobda requestId bo'ladi", () => {
     filter.catch(new Error('x'), makeHost(captured));
     expect(captured.body.error.requestId).toBe('req-123');
+  });
+
+  /**
+   * `API.md` §9 — `Retry-After` `429` va `503` da. Usiz client "biroz
+   * kutib turing" degan matnni ko'radi, lekin qancha kutishni bilmaydi
+   * va odatda darhol qayta uradi.
+   */
+  describe('Retry-After (§9)', () => {
+    it('xato aytgan qiymatni sarlavhaga ham, body ga ham qo‘yadi', () => {
+      filter.catch(
+        AppException.tooManyRequests(ErrorCode.AUTH_BLOCKED, 'Kirish bloklandi', 754),
+        makeHost(captured),
+      );
+
+      expect(captured.status).toBe(HttpStatus.TOO_MANY_REQUESTS);
+      expect(captured.headers['Retry-After']).toBe('754');
+      expect(captured.body.error.details).toMatchObject({ retryAfterSeconds: 754 });
+    });
+
+    /**
+     * Throttler nomlangan profil uchun `Retry-After-mutation` yozadi —
+     * standart nomni hech kim qo'ymaydi. Shuning uchun filter uni
+     * tiklaydi; eng uzoq kutish tanlanadi.
+     */
+    it('throttler qo‘ygan nomlangan sarlavhadan standart nomni tiklaydi', () => {
+      captured.headers['Retry-After-read'] = 12;
+      captured.headers['Retry-After-mutation'] = 45;
+
+      filter.catch(new ThrottlerException(), makeHost(captured));
+
+      expect(captured.status).toBe(HttpStatus.TOO_MANY_REQUESTS);
+      expect(captured.headers['Retry-After']).toBe('45');
+      expect(captured.body.error.code).toBe(ErrorCode.RATE_LIMITED);
+      expect(captured.body.error.details).toMatchObject({ retryAfterSeconds: 45 });
+    });
+
+    it('manba topilmasa throttler oynasini aytadi — sarlavhasiz qoldirmaydi', () => {
+      filter.catch(new ThrottlerException(), makeHost(captured));
+      expect(captured.headers['Retry-After']).toBe('60');
+    });
+
+    it('503 da ham qo‘yiladi — DB qaytguncha monitoring kutsin', () => {
+      filter.catch(new ServiceUnavailableException(), makeHost(captured));
+
+      expect(captured.status).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+      expect(captured.headers['Retry-After']).toBe('15');
+    });
+
+    it('boshqa xatolarda sarlavha qo‘yilmaydi', () => {
+      filter.catch(new NotFoundException(), makeHost(captured));
+      expect(captured.headers['Retry-After']).toBeUndefined();
+    });
   });
 });

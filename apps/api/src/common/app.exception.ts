@@ -56,4 +56,19 @@ export class AppException extends HttpException {
   static badRequest(code: ErrorCode, message: string, field?: string): AppException {
     return new AppException(code, message, HttpStatus.BAD_REQUEST, field);
   }
+
+  /**
+   * 429 — limit oshdi (`API.md` §6). `details.retryAfterSeconds` bilan
+   * yuboriladi: UI foydalanuvchiga qancha kutishni aniq aytsin, "keyinroq
+   * urinib ko'ring" degan foydasiz matn o'rniga.
+   */
+  static tooManyRequests(
+    code: ErrorCode,
+    message: string,
+    retryAfterSeconds: number,
+  ): AppException {
+    return new AppException(code, message, HttpStatus.TOO_MANY_REQUESTS, undefined, {
+      retryAfterSeconds,
+    });
+  }
 }

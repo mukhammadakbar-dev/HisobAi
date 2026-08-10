@@ -21,7 +21,6 @@ tayyor. Biznes modullari `docs/TZ.md` §22 dagi tartibda qo'shiladi
 | [`docs/files/design.md`](docs/files/design.md) | Dizayn tizimi: rang, tipografika, komponent qoidalari, brend fayllari                |
 | [`docs/PERMISSIONS.md`](docs/PERMISSIONS.md)   | Ruxsat matritsasi va kirish nazorati qoidalari                                       |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md)         | Enum ↔ o'zbekcha atama lug'ati                                                       |
-| [`docs/proposals/`](docs/proposals/)           | Qo'llanmagan takliflar (v0.2.1 schema tuzatishlari)                                  |
 
 Kod va hujjatlardagi `§N.N` belgilari `DECISIONS.md`dagi qaror raqamiga
 ishora qiladi. **§16** — 2026-08-09 auditidagi aniqlashtirishlar,
