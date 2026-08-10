@@ -54,18 +54,19 @@ jadvalga tegadi, shuning uchun u boshidan quriladi.
 
 ### Kurs manbai
 
-| §         | Qoida                                                                                                                                                       |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 3.1       | **Ikkita kurs saqlanadi:** CBU kursi (avtomatik, ma'lumot uchun) va **do'kon kursi** (savdo va to'lovlarda ishlatiladi)                                     |
-| 3.2       | Do'kon kursi CBU'dan ustama bilan avtomatik hisoblanadi yoki qo'lda kiritiladi; ikkalasi UI'da yonma-yon ko'rinadi                                          |
-| 16.2      | **Ustama — foiz:** `do'kon kursi = round(CBU × (1 + ustama% / 100))`, butun so'mgacha. Sozlama nomi `store_rate_markup_percent`                             |
-| 3.3       | CBU kursi har kuni **09:00 (Toshkent)** da olinadi; har kun uchun bitta qator                                                                               |
-| 16.7      | **Olinmasa qayta uriniladi:** +15 daqiqa → +1 soat → +3 soat (4 urinish); server ishga tushganda ham (vaqt ≥ 09:00 va bugungi qator yo'q bo'lsa)            |
-| 1.5 · 3.4 | **Kurs eskirsa savdo to'xtamaydi:** oxirgi ma'lum kurs ishlatiladi + ekran tepasida ogohlantirish chizig'i                                                  |
-| 16.6      | **Eskirgan** = bugungi sana uchun qator yo'q. Chegara yo'q — 1 kun sariq, ≥3 kun qizil ogohlantirish                                                        |
-| 3.5       | Kurs tarixi saqlanadi: sana, CBU kursi, do'kon kursi, manba (`CBU`/`MANUAL`), olingan vaqt, kim o'zgartirgan                                                |
-| 16.8      | **Qo'lda qo'yilgan kursni avtomatik jarayon ustidan yozmaydi** (`source = MANUAL` bo'lsa `store_rate` daxlsiz). UI'da "CBU kursiga qaytarish" alohida amali |
-| 17.11     | **Orqaga qo'yilgan sana o'sha kunning kursini oladi** (savdo ham, to'lov ham); o'sha kun uchun qator bo'lmasa — undan oldingi eng yaqin qator               |
+| §         | Qoida                                                                                                                                                                  |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 3.1       | **Ikkita kurs saqlanadi:** CBU kursi (avtomatik, ma'lumot uchun) va **do'kon kursi** (savdo va to'lovlarda ishlatiladi)                                                |
+| 3.2       | Do'kon kursi CBU'dan ustama bilan avtomatik hisoblanadi yoki qo'lda kiritiladi; ikkalasi UI'da yonma-yon ko'rinadi                                                     |
+| 16.2      | **Ustama — foiz:** `do'kon kursi = round(CBU × (1 + ustama% / 100))`, butun so'mgacha. Sozlama nomi `store_rate_markup_percent`                                        |
+| 3.3       | CBU kursi har kuni **09:00 (Toshkent)** da olinadi; har kun uchun bitta qator                                                                                          |
+| 18.4      | **Kun davomida qo'lda yangilash:** `POST /exchange-rates/sync` — 09:00 ni kutmasdan CBU'dan yangi qiymat olinadi. §16.8 amal qiladi: `MANUAL` do'kon kursi o'zgarmaydi |
+| 16.7      | **Olinmasa qayta uriniladi:** +15 daqiqa → +1 soat → +3 soat (4 urinish); server ishga tushganda ham (vaqt ≥ 09:00 va bugungi qator yo'q bo'lsa)                       |
+| 1.5 · 3.4 | **Kurs eskirsa savdo to'xtamaydi:** oxirgi ma'lum kurs ishlatiladi + ekran tepasida ogohlantirish chizig'i                                                             |
+| 16.6      | **Eskirgan** = bugungi sana uchun qator yo'q. Chegara yo'q — 1 kun sariq, ≥3 kun qizil ogohlantirish                                                                   |
+| 3.5       | Kurs tarixi saqlanadi: sana, CBU kursi, do'kon kursi, manba (`CBU`/`MANUAL`), olingan vaqt, kim o'zgartirgan                                                           |
+| 16.8      | **Qo'lda qo'yilgan kursni avtomatik jarayon ustidan yozmaydi** (`source = MANUAL` bo'lsa `store_rate` daxlsiz). UI'da "CBU kursiga qaytarish" alohida amali            |
+| 17.11     | **Orqaga qo'yilgan sana o'sha kunning kursini oladi** (savdo ham, to'lov ham); o'sha kun uchun qator bo'lmasa — undan oldingi eng yaqin qator                          |
 
 ## 4. Kirish va xavfsizlik
 

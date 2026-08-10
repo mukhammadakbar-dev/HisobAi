@@ -3,7 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { ErrorCode, UserRole } from '@hisobai/contracts';
 import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { firstValueFrom, of } from 'rxjs';
+import { firstValueFrom, of, throwError } from 'rxjs';
 
 import { AppException } from './app.exception';
 import { IDEMPOTENT_KEY } from './auth.decorators';
@@ -48,6 +48,11 @@ function makeInterceptor(store: Map<string, StoredKey>): IdempotencyInterceptor 
       update: ({ where, data }: { where: { key: string }; data: Partial<StoredKey> }) => {
         const existing = store.get(where.key);
         if (existing) store.set(where.key, { ...existing, ...data });
+        return Promise.resolve(existing);
+      },
+      delete: ({ where }: { where: { key: string } }) => {
+        const existing = store.get(where.key);
+        store.delete(where.key);
         return Promise.resolve(existing);
       },
     },
@@ -178,5 +183,72 @@ describe('IdempotencyInterceptor', () => {
     await expect(
       firstValueFrom(interceptor.intercept(makeContext('key-1', {}), handler)),
     ).rejects.toBeInstanceOf(AppException);
+  });
+
+  /**
+   * Amal bajarilmagan bo'lsa kalit bo'shatilishi SHART.
+   *
+   * Aks holda foydalanuvchi qamalib qoladi: bir xil body bilan
+   * `REQUEST_IN_PROGRESS`, tuzatilgan body bilan `IDEMPOTENCY_KEY_REUSED`
+   * — ya'ni xatoni tuzatib qayta yuborishning iloji yo'q, 24 soat
+   * davomida. Qabul formasidagi dublikat IMEI aynan shu holat.
+   */
+  describe('handler xato tashlaganda', () => {
+    const failing = {
+      handle: () =>
+        throwError(() => AppException.conflict(ErrorCode.INVENTORY_DUPLICATE_IMEI, 'dublikat')),
+    } as CallHandler;
+
+    it('kalit bo‘shatiladi — qator qolib ketmaydi', async () => {
+      const interceptor = makeInterceptor(store);
+
+      await expect(
+        firstValueFrom(interceptor.intercept(makeContext('key-1', { imei: '1' }), failing)),
+      ).rejects.toMatchObject({ code: ErrorCode.INVENTORY_DUPLICATE_IMEI });
+
+      expect(store.has('key-1')).toBe(false);
+    });
+
+    it('xato tuzatilgach O‘SHA kalit bilan qayta yuborish ishlaydi', async () => {
+      const interceptor = makeInterceptor(store);
+      const ok = { handle: () => of({ id: 'item-1' }) } as CallHandler;
+
+      await expect(
+        firstValueFrom(interceptor.intercept(makeContext('key-1', { imei: '1' }), failing)),
+      ).rejects.toBeInstanceOf(AppException);
+
+      // Ega dublikatni olib tashladi va qayta yubordi — o'tishi kerak
+      const result = await firstValueFrom(
+        interceptor.intercept(makeContext('key-1', { imei: '2' }), ok),
+      );
+
+      expect(result).toEqual({ id: 'item-1' });
+      expect(store.get('key-1')?.statusCode).toBe(201);
+    });
+
+    it('bir xil body bilan qayta urinish ham to‘silmaydi', async () => {
+      const interceptor = makeInterceptor(store);
+      const ok = { handle: () => of({ id: 'item-1' }) } as CallHandler;
+
+      await expect(
+        firstValueFrom(interceptor.intercept(makeContext('key-1', { imei: '1' }), failing)),
+      ).rejects.toBeInstanceOf(AppException);
+
+      await expect(
+        firstValueFrom(interceptor.intercept(makeContext('key-1', { imei: '1' }), ok)),
+      ).resolves.toEqual({ id: 'item-1' });
+    });
+  });
+
+  it('muvaffaqiyatli javob JAVOB YUBORILISHIDAN OLDIN saqlanadi', async () => {
+    const interceptor = makeInterceptor(store);
+    const handler = { handle: () => of({ id: 'payment-1' }) } as CallHandler;
+
+    await firstValueFrom(interceptor.intercept(makeContext('key-1', { amount: '100' }), handler));
+
+    // Saqlash `await` qilinmasa, takroriy so'rov bu yerda hali `null`
+    // ko'rib `REQUEST_IN_PROGRESS` olardi
+    expect(store.get('key-1')?.statusCode).toBe(201);
+    expect(store.get('key-1')?.responseBody).toEqual({ id: 'payment-1' });
   });
 });

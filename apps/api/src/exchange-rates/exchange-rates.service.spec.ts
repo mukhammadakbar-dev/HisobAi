@@ -1,3 +1,4 @@
+import { HttpStatus } from '@nestjs/common';
 import { ErrorCode, ExchangeRateSource, RateStaleness } from '@hisobai/contracts';
 import { Prisma, type ExchangeRate } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -41,9 +42,12 @@ function toRecord(row: Row): ExchangeRate {
   } as ExchangeRate;
 }
 
-function makeService(rows: Row[], fetchedCbu = '12000') {
+function makeService(rows: Row[], fetchedCbu: string | Error = '12000') {
   const store = new Map(rows.map((row) => [row.date, toRecord(row)]));
-  const audit = { record: vi.fn(() => Promise.resolve()) };
+  const audit = {
+    record: vi.fn(() => Promise.resolve()),
+    recordDetached: vi.fn(() => Promise.resolve()),
+  };
 
   const model = {
     findUnique: ({ where }: { where: { date: Date } }) =>
@@ -97,7 +101,12 @@ function makeService(rows: Row[], fetchedCbu = '12000') {
     prisma as never,
     { get: () => TIMEZONE } as never,
     { get: () => Promise.resolve({ storeRateMarkupPercent: MARKUP }) } as never,
-    { fetchUsdRate: () => Promise.resolve({ rate: fetchedCbu, fetchedAt: new Date() }) } as never,
+    {
+      fetchUsdRate: () =>
+        fetchedCbu instanceof Error
+          ? Promise.reject(fetchedCbu)
+          : Promise.resolve({ rate: fetchedCbu, date: '' }),
+    } as never,
     audit as never,
   );
 
@@ -226,7 +235,7 @@ describe('ExchangeRatesService', () => {
     it('do‘kon kursini ustama bo‘yicha hisoblab yozadi', async () => {
       const { service, store } = makeService([], '12000');
 
-      expect(await service.syncFromCbu()).toBe('WRITTEN');
+      expect((await service.syncFromCbu()).outcome).toBe('WRITTEN');
 
       const saved = store.get(today(TIMEZONE));
       // 12000 × 1.02 = 12240
@@ -247,7 +256,7 @@ describe('ExchangeRatesService', () => {
         '12000',
       );
 
-      expect(await service.syncFromCbu()).toBe('MANUAL_PRESERVED');
+      expect((await service.syncFromCbu()).outcome).toBe('MANUAL_PRESERVED');
 
       const saved = store.get(today(TIMEZONE));
       // Ega qo'ygan kurs daxlsiz qoldi
@@ -293,6 +302,58 @@ describe('ExchangeRatesService', () => {
       } catch (error) {
         expect((error as AppException).code).toBe(ErrorCode.EXCHANGE_RATE_CBU_MISSING);
       }
+    });
+
+    /**
+     * §18.4 — kun davomida qo'lda yangilash. Cron bilan bir xil kod,
+     * farqi faqat audit va xato shaklida.
+     */
+    it("qo'lda yangilash audit'ga tushadi, cron esa tushmaydi (§3.10)", async () => {
+      const manual = makeService([], '12100');
+      await manual.service.syncFromCbu({ actor, ip: '::1' });
+      expect(manual.audit.recordDetached).toHaveBeenCalledOnce();
+
+      const cron = makeService([], '12100');
+      await cron.service.syncFromCbu();
+      expect(cron.audit.recordDetached).not.toHaveBeenCalled();
+    });
+
+    it("qo'lda yangilash MANUAL kursni ham ustidan yozmaydi (§16.8)", async () => {
+      const { service, store } = makeService(
+        [
+          {
+            date: today(TIMEZONE),
+            cbuRate: '11900',
+            storeRate: '12500',
+            source: ExchangeRateSource.MANUAL,
+          },
+        ],
+        '12100',
+      );
+
+      const result = await service.syncFromCbu({ actor, ip: null });
+
+      // Ega CBU'ni ko'rishni so'radi, do'kon kursini almashtirishni emas
+      expect(result.outcome).toBe('MANUAL_PRESERVED');
+      expect(result.rate.storeRate).toBe('12500');
+      expect(result.rate.cbuRate).toBe('12100');
+      expect(store.get(today(TIMEZONE))?.source).toBe(ExchangeRateSource.MANUAL);
+    });
+
+    it('CBU javob bermasa — 503 va tipli xato, 500 emas', async () => {
+      const { service, store } = makeService([], new Error('ECONNREFUSED'));
+
+      try {
+        await service.syncFromCbu({ actor, ip: null });
+        expect.unreachable('xato kutilgan edi');
+      } catch (error) {
+        const exception = error as AppException;
+        expect(exception.code).toBe(ErrorCode.EXCHANGE_RATE_FETCH_FAILED);
+        expect(exception.getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+      }
+
+      // §1.5 — mavjud kurs buzilmaydi
+      expect(store.size).toBe(0);
     });
 
     it('resetToCbu — qator umuman yo‘q bo‘lsa 404', async () => {

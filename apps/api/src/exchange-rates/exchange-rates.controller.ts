@@ -11,6 +11,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle, seconds } from '@nestjs/throttler';
 import {
   UserRole,
   calendarDate,
@@ -20,6 +21,7 @@ import {
 import type {
   ExchangeRateDto,
   ExchangeRateQuery,
+  SyncExchangeRateResultDto,
   TodayExchangeRateDto,
   UpsertExchangeRateInput,
 } from '@hisobai/contracts';
@@ -71,6 +73,31 @@ export class ExchangeRatesController {
     @Req() request: AuthedRequest,
   ): Promise<ExchangeRateDto> {
     return this.rates.upsertManual(date, body, user, request.ip ?? null);
+  }
+
+  /**
+   * §18.4 — CBU'dan hozir yangilash.
+   *
+   * 09:00 dagi cron bilan **bir xil kodni** ishlatadi, farqi faqat
+   * boshlovchisida: bu yerda odam bor, shuning uchun §3.10 bo'yicha
+   * audit yoziladi.
+   *
+   * `:date` yo'q — CBU faqat joriy kursni beradi, o'tgan kunga uni
+   * yozish soxta tarix bo'lardi (§1.7 kurs snapshot falsafasi).
+   *
+   * Cheklov qo'yilgan: bu tashqi servisga chiquvchi so'rov, tugmani
+   * ketma-ket bosish cbu.uz ga yuk bo'lmasin.
+   */
+  @Post('sync')
+  @Roles(UserRole.OWNER)
+  @Throttle({ mutation: { limit: 10, ttl: seconds(5 * 60) } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "CBU'dan kursni hozir olish (§18.4)" })
+  sync(
+    @CurrentUser() user: RequestUser,
+    @Req() request: AuthedRequest,
+  ): Promise<SyncExchangeRateResultDto> {
+    return this.rates.syncFromCbu({ actor: user, ip: request.ip ?? null });
   }
 
   /**

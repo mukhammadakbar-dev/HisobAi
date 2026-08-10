@@ -82,6 +82,8 @@ const ERROR_MESSAGES: Partial<Record<string, string>> = {
   [ErrorCode.EXCHANGE_RATE_MISSING]: 'Valyuta kursi topilmadi. Sozlamalarda kursni kiriting.',
   [ErrorCode.EXCHANGE_RATE_CBU_MISSING]:
     "Bu sana uchun CBU kursi olinmagan — qaytarish uchun asos yo'q.",
+  [ErrorCode.EXCHANGE_RATE_FETCH_FAILED]:
+    "CBU javob bermadi. Oxirgi ma'lum kurs saqlanib qoldi — birozdan keyin urinib ko'ring.",
 
   [ErrorCode.FILE_TOO_LARGE]: 'Fayl 10 MB dan katta.',
   [ErrorCode.FILE_TYPE_NOT_ALLOWED]: 'Bu turdagi fayl qabul qilinmaydi.',

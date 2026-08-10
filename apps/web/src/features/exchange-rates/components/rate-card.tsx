@@ -3,12 +3,14 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   ExchangeRateSource,
+  ExchangeRateSyncOutcome,
   RateStaleness,
   computeStoreRate,
   formatRate,
   upsertExchangeRateSchema,
 } from '@hisobai/contracts';
 import type { UpsertExchangeRateInput } from '@hisobai/contracts';
+import { RefreshCw } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 
 import { ErrorState, TableSkeleton } from '../../../components/states';
@@ -17,7 +19,13 @@ import { todayInShopZone } from '../../../lib/format';
 import { applyApiFieldErrors, isFieldOwnedError } from '../../../lib/form-errors';
 import { FormError } from '../../auth/components/form-error';
 import { useSettings } from '../../settings/queries';
-import { useRateHistory, useResetRateToCbu, useTodayRate, useUpsertRate } from '../queries';
+import {
+  useRateHistory,
+  useResetRateToCbu,
+  useSyncRateFromCbu,
+  useTodayRate,
+  useUpsertRate,
+} from '../queries';
 
 /**
  * Valyuta kursi (§3.1–§3.5, §16.2, §16.6, §16.8).
@@ -44,6 +52,7 @@ export function RateCard() {
   const settings = useSettings();
   const upsert = useUpsertRate();
   const resetToCbu = useResetRateToCbu();
+  const syncNow = useSyncRateFromCbu();
 
   const {
     register,
@@ -92,7 +101,51 @@ export function RateCard() {
   return (
     <div className="flex flex-col gap-4">
       <Card className="flex flex-col gap-4">
-        <h2 className="m-0 text-lg font-semibold">Bugungi kurs</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="m-0 text-lg font-semibold">Bugungi kurs</h2>
+
+          {/*
+            §18.4 — CBU har kuni 09:00 da avtomatik olinadi, lekin kun
+            davomida ham yangilash mumkin: CBU kun ichida kursni
+            o'zgartirsa, ertagacha kutish shart emas.
+          */}
+          <Button
+            type="button"
+            onClick={() => {
+              syncNow.mutate();
+            }}
+            disabled={syncNow.isPending}
+          >
+            <RefreshCw
+              size={16}
+              aria-hidden="true"
+              className={syncNow.isPending ? 'animate-spin' : undefined}
+            />
+            <span className="ml-2">{syncNow.isPending ? 'Olinmoqda…' : 'CBU’dan yangilash'}</span>
+          </Button>
+        </div>
+
+        <FormError error={syncNow.error} />
+
+        {/*
+          Natija ochiq aytiladi: `MANUAL_PRESERVED` bo'lsa CBU yangilandi,
+          lekin do'kon kursi o'zgarmadi (§16.8) — buni aytmasak, ega
+          "yangiladim, lekin hech narsa o'zgarmadi" degan holatda qoladi.
+        */}
+        {syncNow.isSuccess && (
+          <p
+            role="status"
+            className={`m-0 rounded-md px-3 py-2 text-sm font-medium ${
+              syncNow.data.outcome === ExchangeRateSyncOutcome.WRITTEN
+                ? 'bg-success-bg text-success'
+                : 'bg-warning-bg text-warning'
+            }`}
+          >
+            {syncNow.data.outcome === ExchangeRateSyncOutcome.WRITTEN
+              ? `CBU kursi olindi (${formatRate(syncNow.data.rate.cbuRate ?? '0')}) va do‘kon kursi qayta hisoblandi.`
+              : 'CBU kursi yangilandi. Do‘kon kursi qo‘lda qo‘yilgani uchun o‘zgarmadi — uni ham yangilash uchun “CBU kursiga qaytarish” tugmasini bosing.'}
+          </p>
+        )}
 
         {today.isPending ? (
           <TableSkeleton rows={2} />

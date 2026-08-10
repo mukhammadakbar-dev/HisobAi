@@ -87,7 +87,8 @@ export class ExchangeRateSyncService implements OnModuleInit, OnModuleDestroy {
     if (this.stopped) return;
 
     try {
-      const outcome = await this.rates.syncFromCbu();
+      // Cron `context` yubormaydi — bu tizim amali, audit'ga tushmaydi (§18.4)
+      const { outcome } = await this.rates.syncFromCbu();
       this.logger.log(`Kurs sinxronizatsiyasi tugadi: ${outcome}`);
     } catch (error) {
       const delay = RETRY_DELAYS_MS[attempt];

@@ -400,6 +400,7 @@ GET    /auth/login-attempts
 
 GET    /settings              PATCH /settings
 GET    /exchange-rates        GET  /exchange-rates/today   PUT /exchange-rates/:date
+POST   /exchange-rates/sync                 # §18.4 — CBU'dan hozir olish
 POST   /exchange-rates/:date/reset-to-cbu   # §16.8 — MANUAL dan qaytish
 
 GET    /categories            POST /categories             PATCH /categories/:id

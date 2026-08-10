@@ -105,6 +105,12 @@ export const ErrorCode = {
    * bor, faqat qaytariladigan asos yo'q.
    */
   EXCHANGE_RATE_CBU_MISSING: 'EXCHANGE_RATE_CBU_MISSING',
+  /**
+   * CBU manbasi javob bermadi (§18.4 — qo'lda yangilash).
+   * Vaqtinchalik holat: `503` va `Retry-After` bilan qaytadi, §1.5 ga
+   * ko'ra ilova to'xtamaydi — oxirgi ma'lum kurs o'z joyida qoladi.
+   */
+  EXCHANGE_RATE_FETCH_FAILED: 'EXCHANGE_RATE_FETCH_FAILED',
 
   // ── Fayl (§15) ────────────────────────────────────────────────────────
   FILE_TOO_LARGE: 'FILE_TOO_LARGE',

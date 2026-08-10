@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query';
 import type {
   ExchangeRateDto,
+  SyncExchangeRateResultDto,
   TodayExchangeRateDto,
   UpsertExchangeRateInput,
 } from '@hisobai/contracts';
@@ -24,6 +25,7 @@ export const ratesApi = {
     api.put(`/exchange-rates/${date}`, input),
   resetToCbu: (date: string): Promise<ExchangeRateDto> =>
     api.post(`/exchange-rates/${date}/reset-to-cbu`),
+  syncNow: (): Promise<SyncExchangeRateResultDto> => api.post('/exchange-rates/sync'),
 };
 
 /** Kurs chizig'i har sahifada ko'rinadi (§14.5) — shuning uchun uzoq `staleTime`. */
@@ -67,6 +69,21 @@ export function useResetRateToCbu(): UseMutationResult<ExchangeRateDto, ApiError
 
   return useMutation<ExchangeRateDto, ApiError, string>({
     mutationFn: ratesApi.resetToCbu,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: rateKeys.all }),
+  });
+}
+
+/**
+ * §18.4 — CBU'dan hozir yangilash (09:00 dagi cron'ni kutmasdan).
+ *
+ * `useResetRateToCbu` bilan chalkashtirmaslik kerak: bu **yangi qiymat
+ * oladi**, u esa saqlangan qiymatdan qayta hisoblaydi.
+ */
+export function useSyncRateFromCbu(): UseMutationResult<SyncExchangeRateResultDto, ApiError, void> {
+  const queryClient = useQueryClient();
+
+  return useMutation<SyncExchangeRateResultDto, ApiError, void>({
+    mutationFn: ratesApi.syncNow,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: rateKeys.all }),
   });
 }

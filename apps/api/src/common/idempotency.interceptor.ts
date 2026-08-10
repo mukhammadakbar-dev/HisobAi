@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto';
 
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import { CallHandler, ExecutionContext, Injectable, Logger, NestInterceptor } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ErrorCode } from '@hisobai/contracts';
 import { Prisma } from '@prisma/client';
 import type { Response } from 'express';
 import type { Observable } from 'rxjs';
-import { from, of, switchMap, tap } from 'rxjs';
+import { catchError, concatMap, from, of, switchMap, throwError } from 'rxjs';
 
 import { AppException } from './app.exception';
 import { IDEMPOTENT_KEY } from './auth.decorators';
@@ -31,6 +31,8 @@ export const IDEMPOTENCY_TTL_HOURS = 24;
  */
 @Injectable()
 export class IdempotencyInterceptor implements NestInterceptor {
+  private readonly logger = new Logger(IdempotencyInterceptor.name);
+
   constructor(
     private readonly reflector: Reflector,
     private readonly prisma: PrismaService,
@@ -70,9 +72,30 @@ export class IdempotencyInterceptor implements NestInterceptor {
         }
 
         return next.handle().pipe(
-          tap((body: unknown) => {
-            void this.store(key, response.statusCode, body);
+          // `concatMap` — javob yuborilishidan OLDIN saqlanadi. Aks holda
+          // takroriy so'rov saqlashdan tezroq kelib, `REQUEST_IN_PROGRESS`
+          // olishi mumkin edi.
+          concatMap(async (body: unknown) => {
+            await this.store(key, response.statusCode, body);
+            return body;
           }),
+          /**
+           * **Amal bajarilmadi — kalit bo'shatiladi.**
+           *
+           * Usiz qator `status_code = null` bo'lib qolib ketardi va o'sha
+           * kalit 24 soat davomida o'lik bo'lardi: bir xil body bilan
+           * `REQUEST_IN_PROGRESS`, tuzatilgan body bilan esa
+           * `IDEMPOTENCY_KEY_REUSED`. Ya'ni xatoni tuzatib qayta
+           * yuborishning iloji qolmasdi — 50 ta IMEI ichida 3 tasi
+           * dublikat chiqqan qabul formasida aynan shu holat.
+           *
+           * Bo'shatish xavfsiz, chunki moliyaviy handler'lar bitta
+           * tranzaksiyada ishlaydi: xato tashlangan bo'lsa, hech narsa
+           * commit qilinmagan.
+           */
+          catchError((error: unknown) =>
+            from(this.release(key)).pipe(concatMap(() => throwError(() => error))),
+          ),
         );
       }),
     );
@@ -130,17 +153,46 @@ export class IdempotencyInterceptor implements NestInterceptor {
     return { statusCode: existing.statusCode, body: existing.responseBody };
   }
 
+  /**
+   * Javobni saqlaydi. Yozib bo'lmasa ham so'rov MUVAFFAQIYATLI qoladi:
+   * amal allaqachon bajarilgan, uni xato deb ko'rsatish yolg'on bo'lardi.
+   * Bunday holatda kalit `null` bo'lib qoladi va takroriy so'rov
+   * `REQUEST_IN_PROGRESS` oladi — bu xavfsiz tomon: moliyaviy amalni
+   * ikkinchi marta bajarishdan ko'ra to'sib qo'ygan yaxshi.
+   */
   private async store(key: string, statusCode: number, body: unknown): Promise<void> {
-    await this.prisma.idempotencyKey.update({
-      where: { key },
-      data: {
-        statusCode,
-        // `Decimal` JSONB ga xom holda tushmasin — qaytarilganda ham
-        // birinchi javob bilan bir xil shakl bo'lishi kerak.
-        responseBody: serializeDecimals(body) as Prisma.InputJsonValue,
-      },
-    });
+    try {
+      await this.prisma.idempotencyKey.update({
+        where: { key },
+        data: {
+          statusCode,
+          // `Decimal` JSONB ga xom holda tushmasin — qaytarilganda ham
+          // birinchi javob bilan bir xil shakl bo'lishi kerak.
+          responseBody: serializeDecimals(body) as Prisma.InputJsonValue,
+        },
+      });
+    } catch (error) {
+      this.logger.error(`Idempotency javobi saqlanmadi (${key}): ${describe(error)}`);
+    }
   }
+
+  /**
+   * Band qilingan kalitni bo'shatadi — amal bajarilmagani uchun.
+   *
+   * Bu yerda ham xato yutiladi: asosiy xato foydalanuvchiga yetib
+   * borishi kerak, bo'shatolmaganimiz uni almashtirmasin.
+   */
+  private async release(key: string): Promise<void> {
+    try {
+      await this.prisma.idempotencyKey.delete({ where: { key } });
+    } catch (error) {
+      this.logger.warn(`Idempotency kaliti bo'shatilmadi (${key}): ${describe(error)}`);
+    }
+  }
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function hashBody(body: unknown): string {

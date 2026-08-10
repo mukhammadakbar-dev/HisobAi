@@ -212,7 +212,7 @@ INVENTORY_DUPLICATE_IMEI · INVENTORY_ITEM_NOT_AVAILABLE
 
 FILE_TOO_LARGE · FILE_TYPE_NOT_ALLOWED
 
-EXCHANGE_RATE_MISSING · EXCHANGE_RATE_CBU_MISSING
+EXCHANGE_RATE_MISSING · EXCHANGE_RATE_CBU_MISSING · EXCHANGE_RATE_FETCH_FAILED
 
 VALIDATION_FAILED · RATE_LIMITED · IDEMPOTENCY_KEY_REUSED
 STALE_RESOURCE · PRECONDITION_REQUIRED
@@ -288,6 +288,12 @@ GET /sales?limit=50&cursor=eyJpZCI6…
 ```
 
 `limit` — default `50`, maksimum `200`.
+
+**Istisno — chegaralangan ro'yxatlar.** `GET /exchange-rates` kursor
+qabul qilmaydi va konvertsiz massiv qaytaradi: kurs tarixi kuniga bitta
+qatordan iborat (§3.3) va `limit` bilan to'liq qamraladi. Bu **e'lon
+qilingan istisno**, e'tibordan chetda qolgan joy emas — sxema `.strict()`
+bo'lgani uchun `?cursor=` yuborilsa `400` qaytadi, jimgina yutilmaydi.
 
 **Nega offset emas:** moliyaviy ro'yxatlar doimo o'sib turadi. `?page=2`
 yuklanguncha yangi savdo qo'shilsa, foydalanuvchi bitta yozuvni **ikki marta**

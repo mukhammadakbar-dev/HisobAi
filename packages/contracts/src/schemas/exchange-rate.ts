@@ -31,13 +31,21 @@ export const upsertExchangeRateSchema = z
   .strict();
 export type UpsertExchangeRateInput = z.infer<typeof upsertExchangeRateSchema>;
 
-/** Ro'yxat filtri: `?from=2026-08-01&to=2026-08-31` (`API.md` §5.2). */
+/**
+ * Ro'yxat filtri: `?from=2026-08-01&to=2026-08-31` (`API.md` §5.2).
+ *
+ * **Kursor ataylab yo'q.** Kurs tarixi — kuniga bitta qator (§3.3), ya'ni
+ * chegaralangan ro'yxat: `limit` (maksimum 200) yetarli va UI 30 tasini
+ * so'raydi. Ilgari sxemada `cursor` bor edi, lekin servis uni umuman
+ * ishlatmasdi — ya'ni `?cursor=…` jimgina e'tiborsiz qolardi. Bu
+ * `API.md` §5.2 ning o'z qoidasini buzardi: noma'lum parametr xato
+ * berishi kerak, jimgina yutilmasligi. `.strict()` endi uni rad etadi.
+ */
 export const exchangeRateQuerySchema = z
   .object({
     from: calendarDate.optional(),
     to: calendarDate.optional(),
     limit: z.coerce.number().int().positive().max(200).optional(),
-    cursor: z.string().optional(),
   })
   .strict();
 export type ExchangeRateQuery = z.infer<typeof exchangeRateQuerySchema>;
@@ -53,6 +61,28 @@ export interface ExchangeRateDto {
   fetchedAt: string | null;
   updatedById: string | null;
   updatedAt: string;
+}
+
+/**
+ * `POST /exchange-rates/sync` natijasi (§18.4).
+ *
+ * Ikki natija ataylab ajratilgan: `MANUAL_PRESERVED` — CBU qiymati
+ * yangilandi, lekin do'kon kursi qo'lda qo'yilgani uchun daxlsiz qoldi
+ * (§16.8). UI shuni aytishi kerak, aks holda ega "yangiladim, lekin
+ * kurs o'zgarmadi" degan javobsiz holatga tushadi.
+ */
+export const ExchangeRateSyncOutcome = {
+  /** CBU olindi va do'kon kursi ustama bo'yicha qayta hisoblandi. */
+  WRITTEN: 'WRITTEN',
+  /** CBU olindi; do'kon kursi `MANUAL` bo'lgani uchun o'zgarmadi. */
+  MANUAL_PRESERVED: 'MANUAL_PRESERVED',
+} as const;
+export type ExchangeRateSyncOutcome =
+  (typeof ExchangeRateSyncOutcome)[keyof typeof ExchangeRateSyncOutcome];
+
+export interface SyncExchangeRateResultDto {
+  outcome: ExchangeRateSyncOutcome;
+  rate: ExchangeRateDto;
 }
 
 /**

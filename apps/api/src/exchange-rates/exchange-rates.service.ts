@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   ErrorCode,
@@ -239,51 +239,103 @@ export class ExchangeRatesService {
   /**
    * CBU kursini olib, do'kon kursini hisoblab yozadi (§3.3, §16.2).
    *
-   * Xato bo'lsa **tashlanadi** — qayta urinish jadvalini
-   * `ExchangeRateSyncService` boshqaradi (§16.7).
+   * Ikki chaqiruvchisi bor va ular AYNAN bir xil kodni ishlatadi (§18.4):
+   *  - **09:00 cron** — `context` yo'q, audit yozilmaydi (tizim amali);
+   *  - **kun davomida qo'lda yangilash** — `context` bor, §3.10 bo'yicha
+   *    audit yoziladi.
+   *
+   * Ikkinchisini alohida yozmaslik ataylab: mantiq ikkiga bo'linsa,
+   * §16.8 himoyasi bitta yo'lda unutilishi mumkin edi.
+   *
+   * Xato **tashlanadi**: cron uni tutib qayta urinish jadvalini yuritadi
+   * (§16.7), HTTP qatlami esa `503` ga aylantiradi.
    */
-  async syncFromCbu(): Promise<SyncOutcome> {
-    const fetched = await this.cbu.fetchUsdRate();
+  async syncFromCbu(context?: {
+    actor: RequestUser;
+    ip: string | null;
+  }): Promise<{ outcome: SyncOutcome; rate: ExchangeRateDto }> {
+    const fetched = await this.fetchOrFail();
     const todayDate = today(this.timeZone);
     const calendarDate = fromCalendarDate(todayDate);
 
     const existing = await this.prisma.exchangeRate.findUnique({ where: { date: calendarDate } });
 
     // §16.8 — qo'lda qo'yilgan kursga tegilmaydi; CBU qiymati faqat
-    // ma'lumot uchun yangilanadi
+    // ma'lumot uchun yangilanadi. Qoida qo'lda yangilashda ham amal
+    // qiladi: ega CBU'ni ko'rishni so'radi, do'kon kursini almashtirishni
+    // emas — buning uchun alohida "CBU kursiga qaytarish" amali bor.
     if (existing?.source === ExchangeRateSource.MANUAL) {
-      await this.prisma.exchangeRate.update({
+      const preserved = await this.prisma.exchangeRate.update({
         where: { date: calendarDate },
         data: { cbuRate: new Prisma.Decimal(fetched.rate), fetchedAt: new Date() },
       });
       this.logger.log(
         `CBU kursi yangilandi, do'kon kursi qo'lda qo'yilgani uchun saqlandi (§16.8)`,
       );
-      return 'MANUAL_PRESERVED';
+      await this.auditSync(context, existing, preserved);
+      return { outcome: 'MANUAL_PRESERVED', rate: toDto(preserved) };
     }
 
     const settings = await this.settings.get();
     const storeRate = computeStoreRate(fetched.rate, settings.storeRateMarkupPercent);
+    const data = {
+      cbuRate: new Prisma.Decimal(fetched.rate),
+      storeRate: new Prisma.Decimal(storeRate),
+      source: ExchangeRateSource.CBU,
+      fetchedAt: new Date(),
+    };
 
-    await this.prisma.exchangeRate.upsert({
+    const saved = await this.prisma.exchangeRate.upsert({
       where: { date: calendarDate },
-      update: {
-        cbuRate: new Prisma.Decimal(fetched.rate),
-        storeRate: new Prisma.Decimal(storeRate),
-        source: ExchangeRateSource.CBU,
-        fetchedAt: new Date(),
-      },
-      create: {
-        date: calendarDate,
-        cbuRate: new Prisma.Decimal(fetched.rate),
-        storeRate: new Prisma.Decimal(storeRate),
-        source: ExchangeRateSource.CBU,
-        fetchedAt: new Date(),
-      },
+      update: data,
+      create: { date: calendarDate, ...data },
     });
 
     this.logger.log(`Kurs yozildi: CBU ${fetched.rate} → do'kon ${storeRate}`);
-    return 'WRITTEN';
+    await this.auditSync(context, existing, saved);
+    return { outcome: 'WRITTEN', rate: toDto(saved) };
+  }
+
+  /**
+   * Tashqi manba xatosini tipli holatga keltiradi.
+   *
+   * Xom `Error` HTTP qatlamida `500 INTERNAL_ERROR` bo'lib chiqardi — bu
+   * yolg'on: server sog'lom, javob bermayotgani CBU. `503` esa
+   * `Retry-After` bilan keladi (`API.md` §9) va §1.5 ga mos — oxirgi
+   * ma'lum kurs o'z joyida qoladi, savdo to'xtamaydi.
+   */
+  private async fetchOrFail(): Promise<{ rate: string }> {
+    try {
+      return await this.cbu.fetchUsdRate();
+    } catch (error) {
+      this.logger.warn(
+        `CBU manbasi javob bermadi: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw new AppException(
+        ErrorCode.EXCHANGE_RATE_FETCH_FAILED,
+        "CBU javob bermadi. Oxirgi ma'lum kurs saqlanib qoldi — birozdan keyin urinib ko'ring.",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+  }
+
+  /** §3.10 — faqat odam boshlagan yangilash audit'ga tushadi. */
+  private async auditSync(
+    context: { actor: RequestUser; ip: string | null } | undefined,
+    before: ExchangeRate | null,
+    after: ExchangeRate,
+  ): Promise<void> {
+    if (!context) return;
+
+    await this.audit.recordDetached({
+      actorId: context.actor.id,
+      action: 'EXCHANGE_RATE_SYNCED',
+      entityType: 'ExchangeRate',
+      entityId: after.id,
+      before: before ? toDto(before) : null,
+      after: toDto(after),
+      ip: context.ip,
+    });
   }
 
   /** Bugun uchun qator bormi — startup catch-up qarori uchun (§16.7). */
