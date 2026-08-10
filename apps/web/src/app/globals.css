@@ -1,88 +1,253 @@
+@import 'tailwindcss';
+
+/* ═══════════════════════════════════════════════════════════════════════
+   1-QATLAM — xom palitra
+   Manba: docs/files/design.md §3. O'ZGARTIRILMASDAN ko'chirilgan.
+   Bu qatlam `bg-blue-500`, `text-neutral-400` kabi utilitalarni beradi.
+   ═══════════════════════════════════════════════════════════════════════ */
+@theme {
+  --color-ink: #020d1f;
+  --color-brand: #052572;
+  --color-brand-action: #274fb5;
+  --color-brand-soft: #eef2fb;
+
+  --color-blue-50: #eef2fb;
+  --color-blue-100: #d8e1f6;
+  --color-blue-200: #b0c2ed;
+  --color-blue-300: #7e9ae0;
+  --color-blue-400: #4a6fd0;
+  --color-blue-500: #274fb5;
+  --color-blue-600: #103a94;
+  --color-blue-700: #052572;
+  --color-blue-800: #041c57;
+  --color-blue-900: #02133b;
+
+  --color-neutral-0: #ffffff;
+  --color-neutral-50: #f7f8fa;
+  --color-neutral-100: #eef0f4;
+  --color-neutral-200: #dde1e8;
+  --color-neutral-300: #c2c8d3;
+  --color-neutral-400: #98a0af;
+  --color-neutral-500: #6b7484;
+  --color-neutral-600: #4a5261;
+  --color-neutral-700: #2e3542;
+  --color-neutral-800: #171d28;
+  --color-neutral-900: #020d1f;
+
+  /* §4 — shriftlar hali yuklanmagan (FRONTEND.md §15.1), zaxira stack
+     ishlaydi. `woff2` fayllari kelganda `next/font/local` bilan ulanadi. */
+  --font-display: 'Poppins', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+  /* §5 — burchaklar: input/tugma 10, karta/modal 14, badge 6 */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  --shadow-card: 0 1px 2px rgba(2, 13, 31, 0.06);
+  --shadow-pop: 0 8px 24px rgba(2, 13, 31, 0.12);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   2-QATLAM — semantik tokenlar (FRONTEND.md §8.1)
+   Mavzuga qarab qiymati almashadi. Komponentlar FAQAT shularga tayanadi.
+   ═══════════════════════════════════════════════════════════════════════ */
 :root {
-  --bg: #ffffff;
-  --fg: #111214;
-  --muted: #5f6570;
-  --border: #e3e6ea;
-  --accent: #1f6feb;
+  --surface-page: #f7f8fa;
+  --surface-card: #ffffff;
+  --surface-raised: #eef0f4;
+  --border-default: #dde1e8;
+  --border-soft: #eef0f4;
+
+  --text-primary: #020d1f;
+  --text-secondary: #4a5261;
+  --text-tertiary: #6b7484;
+
+  --action-bg: #274fb5;
+  --action-bg-hover: #103a94;
+  --action-text: #ffffff;
+  --link-text: #274fb5;
+  --row-selected: #eef2fb;
+  --focus-ring: #274fb5;
+
+  --status-success: #17835a;
+  --status-success-bg: #e7f5ef;
+  --status-warning: #b7791f;
+  --status-warning-bg: #fdf3e2;
+  --status-danger: #c02b2b;
+  --status-danger-bg: #fbeaea;
+  --status-info: #274fb5;
+  --status-info-bg: #eef2fb;
+  --status-muted: #6b7484;
+  --status-muted-bg: #eef0f4;
+
+  --logo-base: #020d1f;
+  --logo-accent: #052572;
+
+  --shadow-elevation: 0 1px 2px rgba(2, 13, 31, 0.06);
+
   color-scheme: light;
 }
 
-:root[data-theme='dark'] {
-  --bg: #0d0f12;
-  --fg: #f2f4f7;
-  --muted: #9aa3b0;
-  --border: #262b33;
-  --accent: #4c8dff;
-  color-scheme: dark;
-}
-
+/* Tizim sozlamasi qorong'i, foydalanuvchi esa yorug'ni QO'LDA tanlamagan.
+   `:not([data-theme='light'])` shuning uchun: aniq tanlov media so'rovidan
+   ustun turishi kerak. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --bg: #0d0f12;
-    --fg: #f2f4f7;
-    --muted: #9aa3b0;
-    --border: #262b33;
-    --accent: #4c8dff;
+    --surface-page: #020d1f;
+    --surface-card: #171d28;
+    --surface-raised: #2e3542;
+    --border-default: #2e3542;
+    --border-soft: #232a36;
+
+    --text-primary: #f7f8fa;
+    --text-secondary: #c2c8d3;
+    --text-tertiary: #98a0af;
+
+    --action-bg: #4a6fd0;
+    --action-bg-hover: #7e9ae0;
+    --action-text: #ffffff;
+    --link-text: #7e9ae0;
+    --row-selected: #02133b;
+    --focus-ring: #7e9ae0;
+
+    --status-success: #3fb98a;
+    --status-success-bg: #0e2a21;
+    --status-warning: #d9a441;
+    --status-warning-bg: #2a2113;
+    --status-danger: #e36464;
+    --status-danger-bg: #2e1516;
+    --status-info: #4a6fd0;
+    --status-info-bg: #02133b;
+    --status-muted: #98a0af;
+    --status-muted-bg: #232a36;
+
+    --logo-base: #ffffff;
+    --logo-accent: #4a6fd0;
+
+    --shadow-elevation: 0 1px 2px rgba(0, 0, 0, 0.4);
+
     color-scheme: dark;
   }
 }
 
-* {
-  box-sizing: border-box;
+/* Foydalanuvchi qorong'ini qo'lda tanladi — tizim yorug' bo'lsa ham. */
+:root[data-theme='dark'] {
+  --surface-page: #020d1f;
+  --surface-card: #171d28;
+  --surface-raised: #2e3542;
+  --border-default: #2e3542;
+  --border-soft: #232a36;
+
+  --text-primary: #f7f8fa;
+  --text-secondary: #c2c8d3;
+  --text-tertiary: #98a0af;
+
+  --action-bg: #4a6fd0;
+  --action-bg-hover: #7e9ae0;
+  --action-text: #ffffff;
+  --link-text: #7e9ae0;
+  --row-selected: #02133b;
+  --focus-ring: #7e9ae0;
+
+  --status-success: #3fb98a;
+  --status-success-bg: #0e2a21;
+  --status-warning: #d9a441;
+  --status-warning-bg: #2a2113;
+  --status-danger: #e36464;
+  --status-danger-bg: #2e1516;
+  --status-info: #4a6fd0;
+  --status-info-bg: #02133b;
+  --status-muted: #98a0af;
+  --status-muted-bg: #232a36;
+
+  --logo-base: #ffffff;
+  --logo-accent: #4a6fd0;
+
+  --shadow-elevation: 0 1px 2px rgba(0, 0, 0, 0.4);
+
+  color-scheme: dark;
 }
 
-html,
-body {
-  margin: 0;
-  padding: 0;
+/* ═══════════════════════════════════════════════════════════════════════
+   3-QATLAM — semantik tokenlarni utilita sifatida ochish
+   `inline` MAJBURIY: usiz Tailwind qiymatni build paytida qotirib qo'yadi
+   va mavzu almashganda rang o'zgarmaydi (FRONTEND.md §8.1).
+   ═══════════════════════════════════════════════════════════════════════ */
+@theme inline {
+  --color-surface-page: var(--surface-page);
+  --color-surface-card: var(--surface-card);
+  --color-surface-raised: var(--surface-raised);
+  --color-border-default: var(--border-default);
+  --color-border-soft: var(--border-soft);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+
+  --color-action: var(--action-bg);
+  --color-action-hover: var(--action-bg-hover);
+  --color-action-text: var(--action-text);
+  --color-link: var(--link-text);
+  --color-row-selected: var(--row-selected);
+
+  --color-success: var(--status-success);
+  --color-success-bg: var(--status-success-bg);
+  --color-warning: var(--status-warning);
+  --color-warning-bg: var(--status-warning-bg);
+  --color-danger: var(--status-danger);
+  --color-danger-bg: var(--status-danger-bg);
+  --color-info: var(--status-info);
+  --color-info-bg: var(--status-info-bg);
+  --color-muted: var(--status-muted);
+  --color-muted-bg: var(--status-muted-bg);
 }
 
-body {
-  background: var(--bg);
-  color: var(--fg);
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
-  line-height: 1.55;
-  -webkit-font-smoothing: antialiased;
-}
+/* ═══════════════════════════════════════════════════════════════════════
+   Asosiy uslublar
+   ═══════════════════════════════════════════════════════════════════════ */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
 
-main {
-  max-width: 46rem;
-  margin: 0 auto;
-  padding: 3rem 1.25rem;
-}
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+  }
 
-h1 {
-  font-size: 1.6rem;
-  margin: 0 0 0.25rem;
-}
+  body {
+    /* Fon ALBATTA tokendan: shaffof qolsa brauzer o'z fonini ko'rsatadi
+       va mavzular aralashib ketadi. */
+    background: var(--surface-page);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
 
-.muted {
-  color: var(--muted);
-}
+  /* design.md §4 — raqamlar ustunlarda tik tursin */
+  .tabular,
+  table td,
+  table th {
+    font-variant-numeric: tabular-nums;
+  }
 
-ul {
-  padding-left: 1.1rem;
-}
+  /* design.md §6 — fokus halqasi hech qachon o'chirilmaydi */
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
 
-li {
-  margin: 0.3rem 0;
-}
-
-code {
-  background: color-mix(in srgb, var(--fg) 8%, transparent);
-  padding: 0.1rem 0.35rem;
-  border-radius: 4px;
-  font-size: 0.9em;
-}
-
-.card {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1rem 1.15rem;
-  margin-top: 1.5rem;
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }

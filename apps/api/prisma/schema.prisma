@@ -1,7 +1,8 @@
-// HisobAI CRM — ma'lumotlar modeli (v0.2)
+// HisobAI CRM — ma'lumotlar modeli (v0.2.1)
 //
 // Manba: docs/DECISIONS.md va docs/ARCHITECTURE.md §7.
 // Izohlardagi §N.N — DECISIONS.md dagi qaror raqami.
+// §16.N — 2026-08-09 auditidagi aniqlashtirishlar, §17.N — blocker qarorlari.
 //
 // QOIDALAR (ARCHITECTURE §4):
 //  1. Har bir pul ustuni O'Z VALYUTA ustuni bilan yuradi. Valyutasiz summa bo'lmaydi.
@@ -9,6 +10,11 @@
 //  3. Konvertatsiya bo'lgan joyda kurs SNAPSHOT saqlanadi va qayta hisoblanmaydi.
 //  4. Tasdiqlangan moliyaviy yozuv o'chirilmaydi — teskari yozuv bilan tuzatiladi.
 //  5. Hisoblanadigan qiymat (qarz qoldig'i, "muddati o'tgan") saqlanmaydi.
+//  6. Barcha vaqt ustunlari `timestamptz` (§17.9). "Bugun" Asia/Tashkent da
+//     hisoblanadi. `@db.Date` — kalendar sana, vaqt zonasiga bog'liq emas.
+//
+// DIQQAT: bu schema'da ifodalab bo'lmaydigan cheklovlar (CHECK, trigger,
+// qisman unique index) alohida migratsiyada — `migrations/*_constraints_v0_2_1`.
 
 generator client {
   provider = "prisma-client-js"
@@ -28,10 +34,12 @@ enum Currency {
   USD
 }
 
+/// §16.14 — MVP'da bitta rol. MANAGER/SELLER amalga oshirilmagani uchun
+/// enum'ga kiritilmaydi: sinovdan o'tmagan rol — xavfsizlik illyuziyasi.
+/// Ikkinchi xodim paydo bo'lganda `ALTER TYPE ... ADD VALUE` bilan qo'shiladi
+/// (docs/PERMISSIONS.md dagi matritsa bo'yicha).
 enum UserRole {
   OWNER
-  MANAGER
-  SELLER
 }
 
 enum Theme {
@@ -51,6 +59,8 @@ enum ProductType {
 }
 
 /// §5.4 — "rezerv" yo'q: qoralama mahsulotni ushlab turmaydi.
+/// §16.4 — RETURNED doimiy holat emas: ko'zdan kechirilgach AVAILABLE ga
+/// qaytadi, `returnReason` esa saqlanib qoladi va savdo formasida belgi bo'ladi.
 enum InventoryStatus {
   AVAILABLE
   SOLD
@@ -85,12 +95,16 @@ enum SaleKind {
   INSTALLMENT
 }
 
+/// §17.4 — REVERSAL: qaytarish/bekor qilish teskari yozuvi. U alohida `sales`
+/// qatori va yagona haqiqat manbai; asl savdodagi `returnedQuantity` va
+/// PARTIALLY_RETURNED/RETURNED statuslari undan hosila kesh.
 enum SaleStatus {
   DRAFT
   CONFIRMED
   PARTIALLY_RETURNED
   RETURNED
   CANCELLED
+  REVERSAL
 }
 
 /// §8 — bekor qilish va qaytarish qat'iy ajratiladi.
@@ -108,6 +122,8 @@ enum ReversalReason {
 }
 
 /// §9.7 — "muddati o'tgan" holat emas (§9.8 ga qarang).
+/// §17.18 — CLOSED faqat qarz to'liq to'langanda; savdo qaytarilsa yoki
+/// bekor qilinsa CANCELLED.
 enum ContractStatus {
   ACTIVE
   CLOSED
@@ -147,13 +163,16 @@ enum CashDirection {
 
 /// §11.7 — MANUAL bo'lmagani qo'lda tahrirlanmaydi.
 /// §11.4, §11.6 — OPENING_BALANCE va EXCHANGE daromad deb sanalmaydi.
+///
+/// §17.2 — `SALE` OLIB TASHLANDI: kassaga pul faqat `Payment` orqali tushadi,
+///   aks holda bir pul ikki yo'ldan yozilib ikki marta sanalardi.
+/// §17.12 — `PERSONAL_USE` OLIB TASHLANDI: shaxsiy foydalanishda kassadan pul
+///   chiqmaydi. U pul bo'lmagan xarajat — `stock_movements` dan hisoblanadi.
 enum CashSourceType {
-  SALE
   PAYMENT
   MANUAL
   OPENING_BALANCE
   EXCHANGE
-  PERSONAL_USE
   REVERSAL
 }
 
@@ -200,8 +219,8 @@ model User {
   role         UserRole @default(OWNER)
   theme        Theme    @default(SYSTEM)
   isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   sessions           Session[]
   passwordResets     PasswordResetToken[]
@@ -215,6 +234,7 @@ model User {
   filesUploaded      FileAsset[]
   ratesUpdated       ExchangeRate[]
   settingsUpdated    Settings[]
+  idempotencyKeys    IdempotencyKey[]
 
   @@map("users")
 }
@@ -226,10 +246,10 @@ model Session {
   tokenHash  String    @unique @map("token_hash")
   userAgent  String?   @map("user_agent")
   ip         String?
-  lastSeenAt DateTime  @default(now()) @map("last_seen_at")
-  expiresAt  DateTime  @map("expires_at")
-  revokedAt  DateTime? @map("revoked_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
+  lastSeenAt DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -245,7 +265,7 @@ model LoginAttempt {
   ip        String?
   userAgent String?  @map("user_agent")
   success   Boolean
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([email, createdAt])
   @@index([ip, createdAt])
@@ -257,19 +277,41 @@ model PasswordResetToken {
   id        String    @id @default(uuid()) @db.Uuid
   userId    String    @map("user_id") @db.Uuid
   tokenHash String    @unique @map("token_hash")
-  expiresAt DateTime  @map("expires_at")
-  usedAt    DateTime? @map("used_at")
-  createdAt DateTime  @default(now()) @map("created_at")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("password_reset_tokens")
 }
 
+/// §17.6 — takroriy so'rovdan himoya. Telefon internetida so'rov yuborilib
+/// javob yo'qolishi oddiy hol; foydalanuvchi tugmani qayta bosadi. UI'da
+/// tugmani bloklash yetarli emas — so'rov allaqachon serverga yetgan bo'lishi
+/// mumkin. Tafsilot: docs/API.md §4.
+model IdempotencyKey {
+  key          String   @id
+  userId       String   @map("user_id") @db.Uuid
+  endpoint     String
+  requestHash  String   @map("request_hash")
+  statusCode   Int?     @map("status_code")
+  responseBody Json?    @map("response_body")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@map("idempotency_keys")
+}
+
 // ──────────────────────── Sozlamalar va valyuta kursi ────────────────────────
 
 /// Bitta qator (id = 1). Tipli ustunlar — JSON blob emas, chunki
 /// har bir sozlama alohida validatsiya va audit talab qiladi (§3.10).
+///
+/// §17.18 — `baseCurrency` ustuni YO'Q: bazaviy valyuta doim UZS (§1.1) va
+/// `packages/contracts` dagi `BASE_CURRENCY` konstantasi yagona manba.
 model Settings {
   id Int @id @default(1)
 
@@ -291,14 +333,15 @@ model Settings {
   defaultInstallmentMonths  Int     @default(6) @map("default_installment_months")
   defaultDownPaymentPercent Decimal @default(30) @map("default_down_payment_percent") @db.Decimal(5, 2)
 
-  // §3.2 — do'kon kursi CBU'dan ustama bilan hisoblanadi
-  baseCurrency    Currency @default(UZS) @map("base_currency")
-  storeRateMarkup Decimal  @default(0) @map("store_rate_markup") @db.Decimal(12, 4)
+  /// §16.2 — ustama FOIZ: storeRate = round(cbuRate × (1 + p/100)).
+  /// Absolyut ustama kurs o'sishi bilan jimgina siqilardi (200 so'm 12 000 da
+  /// 1.67%, 15 000 da 1.33%), §3.2 esa "avtomatik hisoblanadi" deydi.
+  storeRateMarkupPercent Decimal @default(0) @map("store_rate_markup_percent") @db.Decimal(5, 2)
 
   reminderHour Int @default(9) @map("reminder_hour")
 
   updatedById String?  @map("updated_by_id") @db.Uuid
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   logo      FileAsset? @relation(fields: [logoFileId], references: [id], onDelete: SetNull)
   updatedBy User?      @relation(fields: [updatedById], references: [id], onDelete: SetNull)
@@ -307,6 +350,8 @@ model Settings {
 }
 
 /// §3.1, §3.5 — har kun uchun bitta qator; ikkala kurs ham saqlanadi.
+/// §16.6 — bugungi sana uchun qator yo'q bo'lsa, kurs "eskirgan" hisoblanadi.
+/// §16.8 — `source = MANUAL` bo'lsa CBU sync `storeRate` ni ustidan yozmaydi.
 model ExchangeRate {
   id   String   @id @default(uuid()) @db.Uuid
   date DateTime @unique @db.Date
@@ -316,11 +361,11 @@ model ExchangeRate {
   /// Do'kon kursi — savdo va to'lovlarda AYNAN shu ishlatiladi (§3.1).
   storeRate Decimal            @map("store_rate") @db.Decimal(12, 4)
   source    ExchangeRateSource @default(CBU)
-  fetchedAt DateTime?          @map("fetched_at")
+  fetchedAt DateTime?          @map("fetched_at") @db.Timestamptz(3)
 
   updatedById String?  @map("updated_by_id") @db.Uuid
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   updatedBy User? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
 
@@ -336,8 +381,8 @@ model Category {
   name      String
   slug      String   @unique
   isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   products Product[]
 
@@ -349,8 +394,8 @@ model Brand {
   name      String
   slug      String   @unique
   isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   products Product[]
 
@@ -363,27 +408,29 @@ model Product {
   categoryId String @map("category_id") @db.Uuid
   brandId    String @map("brand_id") @db.Uuid
 
-  model   String
-  storage String? // §4.7 — aksessuarlarda bo'sh
-  color   String?
+  model       String
+  storage     String? // §4.7 — aksessuarlarda bo'sh
+  color       String?
   /// §4.6 — brend + model + xotira + rang dan avtomatik yig'iladi
-  displayName String @map("display_name")
+  displayName String  @map("display_name")
 
   type     ProductType
-  currency Currency // §1.2 — mahsulotga bitta valyuta
+  /// §1.2 — mahsulotga bitta valyuta. §16.9 — ombor birligi va partiyaning
+  /// `costCurrency` si shunga teng bo'lishi trigger bilan ta'minlanadi.
+  currency Currency
 
   /// §4.2 — faqat ma'lumot uchun; qabul formasida oldindan to'ldiriladi
-  suggestedPrice   Decimal? @map("suggested_price") @db.Decimal(18, 2)
-  lastCostPrice    Decimal? @map("last_cost_price") @db.Decimal(18, 2)
+  suggestedPrice    Decimal? @map("suggested_price") @db.Decimal(18, 2)
+  lastCostPrice     Decimal? @map("last_cost_price") @db.Decimal(18, 2)
   /// §3.8 — null bo'lsa sozlamalardagi umumiy chegara ishlatiladi
-  lowStockThreshold Int?    @map("low_stock_threshold")
+  lowStockThreshold Int?     @map("low_stock_threshold")
 
-  description  String?
-  imageFileId  String?  @map("image_file_id") @db.Uuid
+  description String?
+  imageFileId String?  @map("image_file_id") @db.Uuid
   /// §4.8 — o'chirilmaydi, arxivlanadi
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   category       Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   brand          Brand            @relation(fields: [brandId], references: [id], onDelete: Restrict)
@@ -396,6 +443,8 @@ model Product {
 
   @@index([brandId, model])
   @@index([displayName])
+  /// Matn qidiruvi: btree `%...%` da ishlatilmaydi, GIN + pg_trgm kerak.
+  @@index([displayName(ops: raw("gin_trgm_ops"))], map: "products_display_name_trgm_idx", type: Gin)
   @@map("products")
 }
 
@@ -416,12 +465,14 @@ model InventoryItem {
   costCurrency Currency        @map("cost_currency")
   status       InventoryStatus @default(AVAILABLE)
 
-  receivedAt   DateTime  @default(now()) @map("received_at")
-  /// §8.2 — qaytgan mahsulotda sabab saqlanadi
-  returnReason String?   @map("return_reason")
+  receivedAt   DateTime @default(now()) @map("received_at") @db.Timestamptz(3)
+  /// §8.2 — qaytgan mahsulotda sabab saqlanadi.
+  /// §16.4 — status AVAILABLE ga qaytsa ham BU USTUN TOZALANMAYDI: savdo
+  /// formasida "qaytarilgan mahsulot" belgisi shundan chiqadi.
+  returnReason String?  @map("return_reason")
   note         String?
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   product        Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
   stockMovements StockMovement[]
@@ -438,14 +489,18 @@ model InventoryBatch {
   productId String @map("product_id") @db.Uuid
 
   quantityReceived  Int      @map("quantity_received")
+  /// §17.5 — kamaytirish faqat shartli UPDATE bilan:
+  ///   UPDATE ... SET quantity_remaining = quantity_remaining - $n
+  ///    WHERE id = $1 AND quantity_remaining >= $n
+  /// Manfiy bo'lmasligi CHECK bilan ham ta'minlanadi.
   quantityRemaining Int      @map("quantity_remaining")
   unitCost          Decimal  @map("unit_cost") @db.Decimal(18, 2)
   costCurrency      Currency @map("cost_currency")
 
-  receivedAt DateTime @default(now()) @map("received_at")
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz(3)
   note       String?
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   product        Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
   stockMovements StockMovement[]
@@ -456,6 +511,8 @@ model InventoryBatch {
 }
 
 /// §5.10 — har o'zgarish yoziladi va HECH QACHON o'chirilmaydi.
+/// §17.12 — PERSONAL_USE va yo'qotishlar (LOST/DEFECTIVE) pul bo'lmagan
+/// xarajat sifatida shu jadvaldan hisoblanadi; kassaga tegmaydi.
 model StockMovement {
   id              String  @id @default(uuid()) @db.Uuid
   productId       String  @map("product_id") @db.Uuid
@@ -471,18 +528,20 @@ model StockMovement {
   referenceType String? @map("reference_type")
   referenceId   String? @map("reference_id") @db.Uuid
 
-  occurredAt DateTime @default(now()) @map("occurred_at")
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(3)
   actorId    String?  @map("actor_id") @db.Uuid
   note       String?
-  createdAt  DateTime @default(now()) @map("created_at")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  product       Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
-  inventoryItem InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  product       Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  inventoryItem InventoryItem?  @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
   batch         InventoryBatch? @relation(fields: [batchId], references: [id], onDelete: Restrict)
-  actor         User?          @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actor         User?           @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([productId, occurredAt])
   @@index([referenceType, referenceId])
+  @@index([inventoryItemId, occurredAt])
+  @@index([type, occurredAt])
   @@map("stock_movements")
 }
 
@@ -490,8 +549,8 @@ model StockMovement {
 model Stocktake {
   id          String          @id @default(uuid()) @db.Uuid
   status      StocktakeStatus @default(IN_PROGRESS)
-  startedAt   DateTime        @default(now()) @map("started_at")
-  completedAt DateTime?       @map("completed_at")
+  startedAt   DateTime        @default(now()) @map("started_at") @db.Timestamptz(3)
+  completedAt DateTime?       @map("completed_at") @db.Timestamptz(3)
   actorId     String?         @map("actor_id") @db.Uuid
   note        String?
 
@@ -502,9 +561,9 @@ model Stocktake {
 }
 
 model StocktakeLine {
-  id          String @id @default(uuid()) @db.Uuid
-  stocktakeId String @map("stocktake_id") @db.Uuid
-  productId   String @map("product_id") @db.Uuid
+  id              String  @id @default(uuid()) @db.Uuid
+  stocktakeId     String  @map("stocktake_id") @db.Uuid
+  productId       String  @map("product_id") @db.Uuid
   /// Seriyali mahsulotda aniq birlik ko'rsatiladi.
   inventoryItemId String? @map("inventory_item_id") @db.Uuid
 
@@ -535,7 +594,7 @@ model Customer {
   address String?
   note    String?
 
-  // §6.5 — nasiya shartnomasi PDF'ida chiqadi
+  // §6.5 — nasiya shartnomasi PDF'ida chiqadi (§16.10)
   passportSeries String? @map("passport_series")
   passportNumber String? @map("passport_number")
   pinfl          String?
@@ -547,8 +606,8 @@ model Customer {
 
   /// §6.13 — savdosi bor mijoz o'chirilmaydi
   isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   passportFile     FileAsset?        @relation(fields: [passportFileId], references: [id], onDelete: SetNull)
   sales            Sale[]
@@ -556,43 +615,53 @@ model Customer {
 
   @@index([fullName])
   @@index([phoneSecondary])
+  /// Matn qidiruvi (§6.4 — ism bo'yicha qidiriladi).
+  @@index([fullName(ops: raw("gin_trgm_ops"))], map: "customers_full_name_trgm_idx", type: Gin)
   @@map("customers")
 }
 
 // ─────────────────────────────── Savdo ───────────────────────────────
 
+/// §17.1 — savdo raqami QORALAMADA YO'Q: u tasdiqlash tranzaksiyasi ichida
+/// `sale_counters` dan ajratiladi. Shu sabab o'chirilgan qoralama raqam
+/// teshigi qoldirmaydi.
 model Sale {
-  id String @id @default(uuid()) @db.Uuid
-  /// §7.6 — yil + ketma-ket raqam, masalan `2026-00147`
-  number String @unique
+  id     String  @id @default(uuid()) @db.Uuid
+  /// §7.6 — yil + ketma-ket raqam, masalan `2026-00147`.
+  /// Teskari yozuvda: `2026-00147-R1` (§17.4).
+  number String? @unique
 
   customerId String?    @map("customer_id") @db.Uuid // §6.1 — naqdda ixtiyoriy
   kind       SaleKind
   status     SaleStatus @default(DRAFT)
 
-  /// §1.9 — bitta savdo, bitta valyuta
-  currency Currency
-  /// §1.7 — kurs snapshot; qaytarishda ham AYNAN shu ishlatiladi (§1.8)
-  exchangeRate Decimal @map("exchange_rate") @db.Decimal(12, 4)
+  /// §1.9, §16.1 — bitta savdo, bitta valyuta; foydalanuvchi aniq tanlaydi
+  currency     Currency
+  /// §1.7 — kurs snapshot; qaytarishda ham AYNAN shu ishlatiladi (§1.8).
+  /// §17.11 — savdo SANASIDAGI do'kon kursi olinadi (orqaga qo'yilganda ham).
+  /// Tasdiqlash paytida yoziladi, qoralamada emas (§16.1).
+  exchangeRate Decimal  @map("exchange_rate") @db.Decimal(12, 4)
 
-  /// §7.3 — alohida chegirma maydoni yo'q; narx qatorda o'zgartiriladi
-  subtotal Decimal @db.Decimal(18, 2)
-  total    Decimal @db.Decimal(18, 2)
+  /// §7.3 — alohida chegirma maydoni yo'q; narx qatorda o'zgartiriladi.
+  /// §17.3 — nasiyada ham NAQD NARXLAR yig'indisi; ustama shartnomada.
+  /// §17.18 — `subtotal` ustuni yo'q: u doim `total` ga teng edi.
+  total Decimal @db.Decimal(18, 2)
 
   /// §7.5 — 7 kungacha orqaga qo'yish mumkin
-  soldAt      DateTime  @map("sold_at")
-  confirmedAt DateTime? @map("confirmed_at")
+  soldAt      DateTime  @map("sold_at") @db.Timestamptz(3)
+  confirmedAt DateTime? @map("confirmed_at") @db.Timestamptz(3)
 
   createdById String? @map("created_by_id") @db.Uuid
 
-  // §8 — teskari yozuv asl savdoga bog'lanadi; asl savdo o'chirilmaydi
+  // §8, §17.4 — teskari yozuv alohida qator va yagona haqiqat manbai.
+  // Qaytarish o'z sanasiga (§8.7), bekor qilish asl savdo sanasiga (§16.5).
   reversesSaleId String?         @map("reverses_sale_id") @db.Uuid
   reversalKind   ReversalKind?   @map("reversal_kind")
   reversalReason ReversalReason? @map("reversal_reason")
   reversalNote   String?         @map("reversal_note")
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   customer     Customer?            @relation(fields: [customerId], references: [id], onDelete: Restrict)
   createdBy    User?                @relation(fields: [createdById], references: [id], onDelete: SetNull)
@@ -601,11 +670,23 @@ model Sale {
   items        SaleItem[]
   contract     InstallmentContract?
   payments     Payment[]
-  cashEntries  CashEntry[]
 
   @@index([status, soldAt])
   @@index([customerId, soldAt])
+  @@index([reversesSaleId])
   @@map("sales")
+}
+
+/// §17.1 — savdo raqamini poygasiz ajratish. `MAX(number)+1` naqshi ikki
+/// parallel tasdiqlashda bir xil raqam berardi.
+///   INSERT INTO sale_counters(year) VALUES ($1) ON CONFLICT DO NOTHING;
+///   UPDATE sale_counters SET last_seq = last_seq + 1 WHERE year = $1
+///     RETURNING last_seq;   -- qator qulfi poygani hal qiladi
+model SaleCounter {
+  year    Int @id
+  lastSeq Int @default(0) @map("last_seq")
+
+  @@map("sale_counters")
 }
 
 /// §7.11 — snapshotlar: keyingi narx o'zgarishi eski foydani o'zgartirmaydi.
@@ -619,6 +700,7 @@ model SaleItem {
 
   quantity  Int     @default(1)
   /// Savdo valyutasida. Boshqa valyutali mahsulot savdo kursida aylantiriladi (§1.9).
+  /// §17.3 — nasiyada ham NAQD NARX (ustamasiz).
   unitPrice Decimal @map("unit_price") @db.Decimal(18, 2)
 
   /// §7.11 — tannarx snapshot, o'z valyutasi bilan
@@ -628,10 +710,12 @@ model SaleItem {
   /// §7.4 — chegirma hisoboti = tavsiya narx − haqiqiy narx
   suggestedPriceSnapshot Decimal? @map("suggested_price_snapshot") @db.Decimal(18, 2)
 
-  /// §8.4 — qisman qaytarish
+  /// §8.4 — qisman qaytarish.
+  /// §17.4 — bu KESH: haqiqat manbai teskari `sales` qatorlari. Faqat
+  /// qaytarish tranzaksiyasi ichida yangilanadi.
   returnedQuantity Int @default(0) @map("returned_quantity")
 
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   sale          Sale            @relation(fields: [saleId], references: [id], onDelete: Cascade)
   product       Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
@@ -640,6 +724,7 @@ model SaleItem {
 
   @@index([saleId])
   @@index([productId])
+  @@index([inventoryItemId])
   @@map("sale_items")
 }
 
@@ -653,20 +738,25 @@ model InstallmentContract {
   /// §9.2 — savdo valyutasi, o'zgarmaydi
   currency Currency
 
-  /// §9.3 — naqd narx + ustama (summa yoki foiz)
+  /// §9.3, §17.3 — naqd narx + ustama (summa yoki foiz).
+  /// `cashPrice` = `sales.total`. Ustama hisobotda ALOHIDA daromad satri
+  /// bo'ladi (§9.4) va yalpi foydaga qo'shilmaydi.
   cashPrice     Decimal  @map("cash_price") @db.Decimal(18, 2)
   markupAmount  Decimal  @default(0) @map("markup_amount") @db.Decimal(18, 2)
   markupPercent Decimal? @map("markup_percent") @db.Decimal(5, 2)
 
-  /// principal = cashPrice + markupAmount − downPayment
+  /// principal = cashPrice + markupAmount − downPayment (CHECK bilan)
   principal   Decimal @db.Decimal(18, 2)
+  /// §16.3 — 0 bo'lishi mumkin: ogohlantiradi, taqiqlamaydi
   downPayment Decimal @default(0) @map("down_payment") @db.Decimal(18, 2)
 
+  /// §17.18 — CLOSED faqat qarz to'liq to'langanda; qaytarish/bekor qilishda
+  /// CANCELLED.
   status   ContractStatus @default(ACTIVE)
-  closedAt DateTime?      @map("closed_at")
+  closedAt DateTime?      @map("closed_at") @db.Timestamptz(3)
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   sale      Sale              @relation(fields: [saleId], references: [id], onDelete: Restrict)
   schedules PaymentSchedule[]
@@ -677,8 +767,11 @@ model InstallmentContract {
   @@map("installment_contracts")
 }
 
-/// §9.6 — jadval summasi qarzga teng bo'lishi shart (kod darajasida tekshiriladi).
-/// §9.8 — "muddati o'tgan" saqlanmaydi: `dueDate < bugun` va qarz qolganidan hisoblanadi.
+/// §9.6 — jadval summasi qarzga teng bo'lishi shart; yaxlitlash qoldig'i
+/// OXIRGI qatorga qo'shiladi (§17.15). Oyning kuni keyingi oyda bo'lmasa
+/// (31 → fevral), o'sha oyning oxirgi kuni olinadi (§17.15).
+/// §9.8 — "muddati o'tgan" saqlanmaydi: `dueDate < bugun` va qarz qolganidan
+/// hisoblanadi.
 model PaymentSchedule {
   id         String @id @default(uuid()) @db.Uuid
   contractId String @map("contract_id") @db.Uuid
@@ -686,11 +779,13 @@ model PaymentSchedule {
   sequence   Int
   dueDate    DateTime       @map("due_date") @db.Date
   amountDue  Decimal        @map("amount_due") @db.Decimal(18, 2)
+  /// §17.4 bilan bir mantiq — bu KESH: haqiqat manbai `payment_allocations`.
+  /// Faqat to'lov tranzaksiyasi ichida yangilanadi.
   amountPaid Decimal        @default(0) @map("amount_paid") @db.Decimal(18, 2)
   status     ScheduleStatus @default(UNPAID)
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   contract         InstallmentContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
   allocations      PaymentAllocation[]
@@ -705,17 +800,20 @@ model PaymentSchedule {
 
 /// §7.2 — savdoga ham, shartnomaga ham bog'lana oladi.
 /// v0.1 da faqat `contractId` bor edi va naqd savdo to'lovini yozadigan joy yo'q edi.
+/// §17.2 — kassaga pul AYNAN shu jadval orqali tushadi; savdo to'g'ridan-to'g'ri
+/// `cash_entries` yaratmaydi.
 model Payment {
   id         String  @id @default(uuid()) @db.Uuid
   saleId     String? @map("sale_id") @db.Uuid
   contractId String? @map("contract_id") @db.Uuid
 
   /// §10 — haqiqatda berilgan summa va uning valyutasi
-  paidAmount   Decimal  @map("paid_amount") @db.Decimal(18, 2)
-  paidCurrency Currency @map("paid_currency")
-  /// §1.7 — o'sha paytdagi do'kon kursi
-  exchangeRate Decimal  @map("exchange_rate") @db.Decimal(12, 4)
-  /// §10.5 — qarzdan qancha ayrildi, shartnoma valyutasida
+  paidAmount      Decimal  @map("paid_amount") @db.Decimal(18, 2)
+  paidCurrency    Currency @map("paid_currency")
+  /// §1.7, §17.11 — to'lov SANASIDAGI do'kon kursi
+  exchangeRate    Decimal  @map("exchange_rate") @db.Decimal(12, 4)
+  /// §10.5 — qarzdan qancha ayrildi, shartnoma valyutasida.
+  /// §16.11 — qarz qoldig'idan OSHMAYDI: ortiqcha to'lov umuman kiritilmaydi.
   appliedAmount   Decimal  @map("applied_amount") @db.Decimal(18, 2)
   appliedCurrency Currency @map("applied_currency")
 
@@ -723,8 +821,9 @@ model Payment {
   status PaymentStatus @default(PENDING_VERIFICATION)
 
   /// §10.4 — 7 kungacha orqaga qo'yish mumkin
-  paidAt         DateTime  @map("paid_at")
-  confirmedAt    DateTime? @map("confirmed_at")
+  paidAt         DateTime  @map("paid_at") @db.Timestamptz(3)
+  confirmedAt    DateTime? @map("confirmed_at") @db.Timestamptz(3)
+  confirmedById  String?   @map("confirmed_by_id") @db.Uuid
   rejectedReason String?   @map("rejected_reason")
 
   /// §10.3 — ixtiyoriy
@@ -736,8 +835,8 @@ model Payment {
   /// §10.6 — qaytarish teskari yozuv sifatida
   reversesPaymentId String? @map("reverses_payment_id") @db.Uuid
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   sale            Sale?                @relation(fields: [saleId], references: [id], onDelete: Restrict)
   contract        InstallmentContract? @relation(fields: [contractId], references: [id], onDelete: Restrict)
@@ -752,6 +851,7 @@ model Payment {
   @@index([saleId, status])
   @@index([contractId, status])
   @@index([status, paidAt])
+  @@index([cashAccountId, paidAt])
   @@map("payments")
 }
 
@@ -763,7 +863,7 @@ model PaymentAllocation {
   scheduleId String  @map("schedule_id") @db.Uuid
   amount     Decimal @db.Decimal(18, 2)
 
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   payment  Payment         @relation(fields: [paymentId], references: [id], onDelete: Cascade)
   schedule PaymentSchedule @relation(fields: [scheduleId], references: [id], onDelete: Restrict)
@@ -784,8 +884,8 @@ model CashAccount {
   isActive  Boolean         @default(true) @map("is_active")
   sortOrder Int             @default(0) @map("sort_order")
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   entries       CashEntry[]
   payments      Payment[]
@@ -805,29 +905,30 @@ model CashCategory {
   isSystem  Boolean        @default(false) @map("is_system")
   isActive  Boolean        @default(true) @map("is_active")
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   entries CashEntry[]
 
   @@map("cash_categories")
 }
 
+/// §17.2 — `saleId` ustuni YO'Q: savdo kassaga to'g'ridan-to'g'ri yozmaydi.
+/// Bog'lanish `cash_entry → payment → sale` orqali.
 model CashEntry {
   id        String        @id @default(uuid()) @db.Uuid
   accountId String        @map("account_id") @db.Uuid
   direction CashDirection
   amount    Decimal       @db.Decimal(18, 2)
-  /// Hisob valyutasi bilan bir xil bo'lishi shart (kod darajasida tekshiriladi).
+  /// Hisob valyutasi bilan bir xil bo'lishi shart (trigger bilan ta'minlanadi).
   currency  Currency
 
-  occurredAt DateTime @map("occurred_at")
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(3)
   categoryId String?  @map("category_id") @db.Uuid
 
   /// §11.7 — MANUAL bo'lmagani qo'lda tahrirlanmaydi
   sourceType CashSourceType @map("source_type")
   sourceId   String?        @map("source_id") @db.Uuid
-  saleId     String?        @map("sale_id") @db.Uuid
   paymentId  String?        @map("payment_id") @db.Uuid
 
   note             String?
@@ -837,21 +938,21 @@ model CashEntry {
   /// §11.8 — ertasiga tuzatish faqat teskari yozuv bilan
   reversesEntryId String? @map("reverses_entry_id") @db.Uuid
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  account        CashAccount   @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  category       CashCategory? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  sale           Sale?         @relation(fields: [saleId], references: [id], onDelete: Restrict)
-  payment        Payment?      @relation(fields: [paymentId], references: [id], onDelete: Restrict)
-  attachment     FileAsset?    @relation(fields: [attachmentFileId], references: [id], onDelete: SetNull)
-  createdBy      User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  reversesEntry  CashEntry?    @relation("CashEntryReversal", fields: [reversesEntryId], references: [id], onDelete: Restrict)
-  reversals      CashEntry[]   @relation("CashEntryReversal")
+  account       CashAccount   @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  category      CashCategory? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  payment       Payment?      @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  attachment    FileAsset?    @relation(fields: [attachmentFileId], references: [id], onDelete: SetNull)
+  createdBy     User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  reversesEntry CashEntry?    @relation("CashEntryReversal", fields: [reversesEntryId], references: [id], onDelete: Restrict)
+  reversals     CashEntry[]   @relation("CashEntryReversal")
 
   @@index([accountId, occurredAt])
   @@index([sourceType, sourceId])
   @@index([occurredAt])
+  @@index([paymentId])
   @@map("cash_entries")
 }
 
@@ -866,9 +967,9 @@ model CashExchange {
   toAmount   Decimal @map("to_amount") @db.Decimal(18, 2)
   rate       Decimal @db.Decimal(12, 4)
 
-  occurredAt DateTime @map("occurred_at")
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(3)
   note       String?
-  createdAt  DateTime @default(now()) @map("created_at")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   fromAccount CashAccount @relation("ExchangeFrom", fields: [fromAccountId], references: [id], onDelete: Restrict)
   toAccount   CashAccount @relation("ExchangeTo", fields: [toAccountId], references: [id], onDelete: Restrict)
@@ -880,6 +981,7 @@ model CashExchange {
 // ──────────────────── Fayllar, hujjatlar, bildirishnomalar ────────────────────
 
 /// §15.5 — hech qachon ochiq havolada bo'lmaydi. §15.7 — 10 MB, siqilmaydi.
+/// Yuklashda MIME oq ro'yxati, fayl imzosi va EXIF tozalash (docs/API.md §7).
 model FileAsset {
   id           String   @id @default(uuid()) @db.Uuid
   storageKey   String   @unique @map("storage_key")
@@ -888,7 +990,7 @@ model FileAsset {
   sizeBytes    Int      @map("size_bytes")
   kind         FileKind
   uploadedById String?  @map("uploaded_by_id") @db.Uuid
-  createdAt    DateTime @default(now()) @map("created_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   uploadedBy  User?       @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
   settings    Settings[]
@@ -902,6 +1004,7 @@ model FileAsset {
 }
 
 /// §15.2, §15.3 — har qayta tuzishda yangi versiya; eskisi ham qoladi.
+/// §16.10 — nasiya bosqichi uchun majburiy.
 model Document {
   id         String       @id @default(uuid()) @db.Uuid
   type       DocumentType @default(INSTALLMENT_CONTRACT)
@@ -910,7 +1013,7 @@ model Document {
   fileId     String       @map("file_id") @db.Uuid
 
   contentHash String?  @map("content_hash")
-  createdAt   DateTime @default(now()) @map("created_at")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   contract InstallmentContract @relation(fields: [contractId], references: [id], onDelete: Restrict)
   file     FileAsset           @relation(fields: [fileId], references: [id], onDelete: Restrict)
@@ -926,24 +1029,27 @@ model NotificationLog {
 
   /// Push uchun endpoint, SMS uchun telefon raqami.
   recipient  String
-  scheduleId String? @map("schedule_id") @db.Uuid
+  /// §17.13 — majburiy: nullable bo'lsa unique kaliti ishlamas edi
+  /// (PostgreSQL'da NULL dublikatga to'sqinlik qilmaydi).
+  scheduleId String  @map("schedule_id") @db.Uuid
   customerId String? @map("customer_id") @db.Uuid
 
   status              NotificationStatus @default(PENDING)
-  scheduledFor        DateTime           @map("scheduled_for")
-  sentAt              DateTime?          @map("sent_at")
+  scheduledFor        DateTime           @map("scheduled_for") @db.Timestamptz(3)
+  sentAt              DateTime?          @map("sent_at") @db.Timestamptz(3)
   /// 10 daqiqadan ortiq turib qolgan ishlov qayta uriniladi.
-  processingStartedAt DateTime?          @map("processing_started_at")
+  processingStartedAt DateTime?          @map("processing_started_at") @db.Timestamptz(3)
   error               String?
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  schedule PaymentSchedule? @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-  customer Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  schedule PaymentSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  customer Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
-  /// Idempotency: bitta jadval qatoriga bitta kanal bo'yicha bitta xabar.
-  @@unique([scheduleId, channel, type])
+  /// §17.13 — `scheduledFor` kalitga KIRADI: jadval qatori qayta
+  /// rejalashtirilganda (§9.10) yangi sana uchun eslatma yuborilsin.
+  @@unique([scheduleId, channel, type, scheduledFor])
   @@index([status, scheduledFor])
   @@map("notification_logs")
 }
@@ -955,8 +1061,8 @@ model PushSubscription {
   p256dh   String
   auth     String
 
-  lastUsedAt DateTime? @map("last_used_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -966,6 +1072,8 @@ model PushSubscription {
 
 /// §2.2 — har amal qaysi foydalanuvchi qilganini yozadi.
 /// §6.7 — passport rasmini kim ko'rgani ham shu yerga tushadi.
+/// Ilova DB roli uchun UPDATE/DELETE rad etiladi (docs/PERMISSIONS.md §4) —
+/// "o'zgarmas audit" e'lon emas, kafolat bo'lsin.
 model AuditLog {
   id         String  @id @default(uuid()) @db.Uuid
   actorId    String? @map("actor_id") @db.Uuid
@@ -976,12 +1084,13 @@ model AuditLog {
   beforeJson Json?    @map("before_json")
   afterJson  Json?    @map("after_json")
   ip         String?
-  createdAt  DateTime @default(now()) @map("created_at")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([entityType, entityId])
   @@index([actorId, createdAt])
   @@index([createdAt])
+  @@index([action, createdAt])
   @@map("audit_logs")
 }

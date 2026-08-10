@@ -2,20 +2,30 @@
 
 Telefon do'konlari uchun ombor, savdo, nasiya, kassa va AI tahlil CRM'i.
 
-**Holat:** v0.2 poydevor bosqichi — monorepo skeleti va to'liq ma'lumotlar
-bazasi schema'si tayyor. Biznes modullari `docs/TZ.md` §22 dagi tartibda
-qo'shiladi.
+**Holat:** v0.2.1 — **kesuvchi poydevor tayyor**. Schema, migratsiyalar va
+ma'lumot yaxlitligi cheklovlari qo'llangan; xato formati, validatsiya,
+idempotency, pul serializatsiyasi, pagination, ruxsat va rate limiting
+o'rnatilgan; frontend tokenlari, komponent primitivlari va API client
+tayyor. Biznes modullari `docs/TZ.md` §22 dagi tartibda qo'shiladi
+(keyingi bosqich — **Auth va sozlamalar**).
 
 ## Hujjatlar
 
 | Fayl                                           | Nima uchun                                                                           |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------ |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md)       | Qabul qilingan qarorlar va ularning sabablari. **Ziddiyat chiqsa shu ustun turadi.** |
-| [`docs/TZ.md`](docs/TZ.md)                     | Texnik topshiriq (v0.2) — nima qilinishi kerak                                       |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Texnik arxitektura (v0.2) — qanday qilinishi kerak                                   |
+| [`docs/TZ.md`](docs/TZ.md)                     | Texnik topshiriq (v0.2.1) — nima qilinishi kerak                                     |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Texnik arxitektura (v0.2.1) — qanday qilinishi kerak                                 |
+| [`docs/API.md`](docs/API.md)                   | API konventsiyalari: xato formati, pagination, idempotency, serializatsiya           |
+| [`docs/FRONTEND.md`](docs/FRONTEND.md)         | Frontend arxitekturasi: papka tuzilmasi, holat boshqaruvi, formalar, PWA             |
+| [`docs/files/design.md`](docs/files/design.md) | Dizayn tizimi: rang, tipografika, komponent qoidalari, brend fayllari                |
+| [`docs/PERMISSIONS.md`](docs/PERMISSIONS.md)   | Ruxsat matritsasi va kirish nazorati qoidalari                                       |
+| [`docs/GLOSSARY.md`](docs/GLOSSARY.md)         | Enum ↔ o'zbekcha atama lug'ati                                                       |
+| [`docs/proposals/`](docs/proposals/)           | Qo'llanmagan takliflar (v0.2.1 schema tuzatishlari)                                  |
 
 Kod va hujjatlardagi `§N.N` belgilari `DECISIONS.md`dagi qaror raqamiga
-ishora qiladi.
+ishora qiladi. **§16** — 2026-08-09 auditidagi aniqlashtirishlar,
+**§17** — kodlashdan oldingi blocker qarorlari.
 
 ## Texnologiyalar
 
@@ -69,11 +79,19 @@ pnpm format
 
 - **Pul hech qachon `number` bilan hisoblanmaydi** — Prisma `Decimal`,
   `numeric(18,2)`. Har pul ustuni o'z valyuta ustuni bilan yuradi.
+  JSON'da ham pul **string** bo'lib uzatiladi (§17.7).
 - **Kurs snapshot** — konvertatsiya bo'lgan joyda kurs saqlanadi va qayta
   hisoblanmaydi (§1.7). Qaytarish asl kursda bajariladi (§1.8).
 - **Tasdiqlangan moliyaviy yozuv o'chirilmaydi** — faqat teskari yozuv.
 - **Hisoblanadigan qiymat saqlanmaydi** — qarz qoldig'i va "muddati o'tgan"
   har safar tranzaksiyalardan hisoblanadi (§6.12, §9.8).
+- **Kassaga pul faqat to'lov orqali tushadi** — savdo to'g'ridan-to'g'ri
+  kassa yozuvi yaratmaydi (§17.2).
+- **Moliyaviy `POST` idempotent** — `Idempotency-Key` majburiy (§17.6).
+- **Ruxsat: default DENY** — `@Roles()` yoki `@Public()` yo'q endpoint
+  hech kimga ochilmaydi.
+- **UI'da faqat semantik rang tokenlari** — `bg-neutral-900` emas,
+  `bg-surface-page`. Aks holda element bir mavzuda o'qilmas bo'ladi.
 - Build artifaktlari (`.js`, `.d.ts`, `*.tsbuildinfo`) git'ga kirmaydi.
 - Secretlar (`.env`, VAPID, SMS/AI kalitlari) hech qachon repoga kirmaydi.
 

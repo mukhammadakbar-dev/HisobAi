@@ -1,7 +1,15 @@
+import { fileURLToPath } from 'node:url';
+
 import swc from 'unplugin-swc';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  // tsconfig'dagi `@/*` aliasi Vite resolveriga avtomatik o'tmaydi — bu yerda takrorlanadi.
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
   test: {
     globals: true,
     environment: 'node',

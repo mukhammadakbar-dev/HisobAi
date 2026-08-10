@@ -16,14 +16,21 @@ if (!connectionString) {
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 
-/** §11.10 — tizim kategoriyalari; yangisini admin qo'shishi mumkin. */
+/**
+ * §11.10 — tizim kategoriyalari; yangisini admin qo'shishi mumkin.
+ *
+ * §17.12 — "Shaxsiy foydalanish" bu yerda ATAYLAB YO'Q: mahsulotni shaxsiy
+ * ehtiyojga olishda kassadan pul chiqmaydi. U pul bo'lmagan xarajat va
+ * hisobotda `stock_movements(PERSONAL_USE)` dan hisoblanadi. Kassa yozuvi
+ * yaratilsa, tizimdagi qoldiq jismoniy naqd puldan farq qilib qolardi —
+ * §11.3 da aynan shu muammo sabab hisoblar ajratilgan edi.
+ */
 const CASH_CATEGORIES = [
   { slug: 'ijara', name: 'Ijara', direction: 'OUT' as const },
   { slug: 'kommunal', name: 'Kommunal', direction: 'OUT' as const },
   { slug: 'maosh', name: 'Maosh', direction: 'OUT' as const },
   { slug: 'reklama', name: 'Reklama', direction: 'OUT' as const },
   { slug: 'yetkazib-berish', name: 'Yetkazib berish', direction: 'OUT' as const },
-  { slug: 'shaxsiy-foydalanish', name: 'Shaxsiy foydalanish', direction: 'OUT' as const },
   { slug: 'boshqa-chiqim', name: 'Boshqa chiqim', direction: 'OUT' as const },
   { slug: 'boshqa-kirim', name: 'Boshqa kirim', direction: 'IN' as const },
 ];

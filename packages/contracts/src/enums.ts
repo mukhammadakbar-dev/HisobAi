@@ -25,11 +25,16 @@ export const CURRENCY_SCALE: Record<Currency, number> = {
   USD: 2,
 };
 
-/** §2.1 — MVP'da faqat OWNER faol, lekin baza ko'p rolni ko'taradi. */
+/**
+ * §2.1, §16.14 — MVP'da faqat OWNER.
+ *
+ * `MANAGER` va `SELLER` ataylab YO'Q: amalga oshirilmagan rol — sinovdan
+ * o'tmagan xavfsizlik kodi, ya'ni xavfsizlik illyuziyasi. Ikkinchi xodim
+ * paydo bo'lganda `docs/PERMISSIONS.md` dagi matritsa bo'yicha qo'shiladi
+ * (PostgreSQL'da `ALTER TYPE ... ADD VALUE` — arzon amal).
+ */
 export const UserRole = {
   OWNER: 'OWNER',
-  MANAGER: 'MANAGER',
-  SELLER: 'SELLER',
 } as const;
 export type UserRole = (typeof UserRole)[keyof typeof UserRole];
 
@@ -95,13 +100,21 @@ export const SaleKind = {
 } as const;
 export type SaleKind = (typeof SaleKind)[keyof typeof SaleKind];
 
-/** §7 — qoralama hech narsaga ta'sir qilmaydi; tasdiqlangani o'zgarmaydi. */
+/**
+ * §7 — qoralama hech narsaga ta'sir qilmaydi; tasdiqlangani o'zgarmaydi.
+ *
+ * §17.4 — `REVERSAL`: qaytarish/bekor qilish teskari yozuvi. U alohida `sales`
+ * qatori (`reversesSaleId`, manfiy `total`, raqami `2026-00147-R1`) va
+ * qaytarish bo'yicha YAGONA haqiqat manbai. `PARTIALLY_RETURNED`/`RETURNED`
+ * hamda `saleItems.returnedQuantity` — undan hosila kesh.
+ */
 export const SaleStatus = {
   DRAFT: 'DRAFT',
   CONFIRMED: 'CONFIRMED',
   PARTIALLY_RETURNED: 'PARTIALLY_RETURNED',
   RETURNED: 'RETURNED',
   CANCELLED: 'CANCELLED',
+  REVERSAL: 'REVERSAL',
 } as const;
 export type SaleStatus = (typeof SaleStatus)[keyof typeof SaleStatus];
 
@@ -170,14 +183,19 @@ export type CashDirection = (typeof CashDirection)[keyof typeof CashDirection];
 /**
  * §11.7 — MANUAL bo'lmagan yozuv qo'lda tahrirlanmaydi.
  * §11.4, §11.6 — OPENING_BALANCE va EXCHANGE daromad deb sanalmaydi.
+ *
+ * §17.2 — `SALE` YO'Q: kassaga pul faqat `Payment` orqali tushadi. Savdo
+ *   to'g'ridan-to'g'ri kassa yozuvi yaratsa, bir pul ikki yo'ldan yozilib
+ *   ikki marta sanalardi — bu jim moliyaviy xato.
+ * §17.12 — `PERSONAL_USE` YO'Q: shaxsiy foydalanishda kassadan pul chiqmaydi.
+ *   U pul bo'lmagan xarajat va `stockMovements` dan hisoblanadi. Kassa yozuvi
+ *   yaratilsa, qoldiq jismoniy naqd puldan farq qilardi (§11.3).
  */
 export const CashSourceType = {
-  SALE: 'SALE',
   PAYMENT: 'PAYMENT',
   MANUAL: 'MANUAL',
   OPENING_BALANCE: 'OPENING_BALANCE',
   EXCHANGE: 'EXCHANGE',
-  PERSONAL_USE: 'PERSONAL_USE',
   REVERSAL: 'REVERSAL',
 } as const;
 export type CashSourceType = (typeof CashSourceType)[keyof typeof CashSourceType];

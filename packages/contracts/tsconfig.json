@@ -4,6 +4,9 @@
     "rootDir": "./src",
     "outDir": "./dist"
   },
+  // Testlar ham typecheck va lint qamrovida qoladi.
+  // `dist` ga tushmasligi uchun build alohida `tsconfig.build.json` bilan
+  // bajariladi — aks holda vitest `dist` dagi CJS nusxani ham topib oladi.
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
