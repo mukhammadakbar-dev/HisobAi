@@ -455,7 +455,14 @@ model InventoryItem {
   id        String @id @default(uuid()) @db.Uuid
   productId String @map("product_id") @db.Uuid
 
-  /// §5.3 — ikkalasi ham unique; qidiruv ikkala ustunni qamraydi
+  /// §5.3 — ikkalasi ham unique; qidiruv ikkala ustunni qamraydi.
+  ///
+  /// DIQQAT: quyidagi `@unique` lar faqat O'Z ustuni ichida ishlaydi.
+  /// Ustunlararo takrorlanishni (A.imei_1 = B.imei_2) esa
+  /// `inventory_items_identifier_guard` trigger to'sadi —
+  /// `migrations/20260810154500_imei_cross_column_unique/`.
+  /// Trigger bir xil qiymat uchun advisory lock oladi, shuning uchun
+  /// parallel qabul qilishda ham poyga yo'q.
   imei1        String? @unique @map("imei_1")
   imei2        String? @unique @map("imei_2")
   serialNumber String? @unique @map("serial_number")

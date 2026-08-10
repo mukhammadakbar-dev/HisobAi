@@ -497,6 +497,16 @@ hal qilinishi shart bo'lganlari.
 
 ---
 
+## 18. 3-bosqich qarorlari (2026-08-10 — katalog va ombordan oldin)
+
+| #    | Qaror | Sabab |
+|------|-------|-------|
+| 18.1 | **Mahsulot rasmi (§4.10) 3-bosqichda yo'q** — u 9-bosqichda `Storage` moduli bilan birga keladi | §4.10 MinIO'ni talab qiladi, `StorageProvider` porti esa hali yozilmagan va §22 uni 9-bosqichga (shartnoma PDF'i bilan birga) qo'ygan. Bitta ixtiyoriy maydon uchun MinIO o'rnatish, vaqtinchalik havola (§15.5) va fayl validatsiyasini katalog bosqichiga tortish — bosqichni ikki barobar kattalashtiradi. Rasmsiz mahsulot to'liq ishlaydi; `products.image_file_id` ustuni schema'da **allaqachon bor**, ya'ni keyin qo'shish bitta forma maydoni, migratsiya emas |
+| 18.2 | **IMEI skaneri (§4.9) MVP'da yo'q** — qo'lda kiritish | `FRONTEND.md` §14 qo'lda kiritishni allaqachon zaxira deb nomlagan. Kamera skaneri shtrix-kod kutubxonasi, ruxsat so'rash va qurilmalarda sinovni talab qiladi, lekin **ma'lumot modeliga umuman tegmaydi**: `imei_1`/`imei_2` ikkala holatda ham oddiy matn. Ya'ni skaner — sof kiritish usuli va uni keyin API'ga tegmasdan qo'shish mumkin |
+| 18.3 | **IMEI ustunlararo takrorlanishi trigger bilan to'siladi** (§5.3) | Ustunlardagi `@unique` faqat o'z ustuni ichida ishlardi: `A.imei_1 = B.imei_2` ruxsat etilardi, ya'ni bitta telefon bazada ikki marta tura olardi. Trigger uchala identifikatorni (`imei_1`, `imei_2`, `serial_number`) barcha qatorlarning uchalasi bilan solishtiradi. Tekshirishdan oldin qiymat bo'yicha `pg_advisory_xact_lock` olinadi — usiz `READ COMMITTED` da ikkita parallel qabul bir-birini ko'rmasdan o'tib ketardi (§17.5 rad etgan TOCTOU naqshi). Katalog bo'sh ekan bu bitta migratsiya; ma'lumot to'plangach dublikatlarni ajratish ancha qimmat |
+
+---
+
 ## Ochiq savollar
 
 | Mavzu | Savol |

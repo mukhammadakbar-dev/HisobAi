@@ -105,8 +105,8 @@ tursa, foyda noto'g'ri hisoblanadi.
 | 4.6  | **Nomi avtomatik yig'iladi:** brend + model + xotira + rang → "Apple iPhone 15 Pro 256GB Qora"                                            |
 | 4.7  | Aksessuarlarda xotira va rang bo'sh qoladi                                                                                                |
 | 4.8  | **Mahsulot o'chirilmaydi — arxivlanadi.** Yangi savdoda ko'rinmaydi, eski yozuvlar butun qoladi                                           |
-| 4.9  | **IMEI/shtrix-kodni telefon kamerasi bilan skanerlash** — qabul va savdo formasida                                                        |
-| 4.10 | **Mahsulot shabloniga rasm** biriktirish                                                                                                  |
+| 4.9  | **IMEI/shtrix-kodni telefon kamerasi bilan skanerlash** — qabul va savdo formasida. **§18.2: MVP'da yo'q**, qo'lda kiritish               |
+| 4.10 | **Mahsulot shabloniga rasm** biriktirish. **§18.1: 9-bosqichda**, `Storage` moduli bilan birga                                            |
 
 ## 7. Ombor
 
