@@ -411,7 +411,8 @@ GET    /products              POST /products               PATCH /products/:id
 GET    /products/:id
 
 GET    /inventory             POST /inventory/receive      GET  /inventory/:id
-GET    /inventory/movements   POST /inventory/adjust       POST /inventory/personal-use
+GET    /inventory/batches     GET  /inventory/movements    # partiya qoldiqlari (§5.2)
+POST   /inventory/adjust      POST /inventory/personal-use
 POST   /inventory/:id/restock                            # §16.4 sotuvga qaytarish
 GET    /stocktakes            POST /stocktakes             GET  /stocktakes/:id
 POST   /stocktakes/:id/complete   POST /stocktakes/:id/cancel

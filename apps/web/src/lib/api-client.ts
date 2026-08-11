@@ -36,6 +36,35 @@ function readCookie(name: string): string | undefined {
   return match ? decodeURIComponent(match[1] ?? '') : undefined;
 }
 
+/**
+ * CSRF cookie'si yo'q bo'lsa — uni oldindan oldiradi (`API.md` §1).
+ *
+ * Server cookie'ni **istalgan** so'rovda qo'yadi (`CsrfCookieMiddleware`),
+ * lekin `/login` sahifasi hech qanday so'rov yubormaydi: `(auth)` qobig'i
+ * ataylab `GET /auth/me` ni chaqirmaydi (sessiya talab qilmaydigan sahifa).
+ * Natijada **birinchi** login urinishi har doim `403 AUTH_CSRF_INVALID`
+ * bilan tugardi va faqat ikkinchisi o'tardi — yangi brauzerda, incognito'da
+ * va cookie tozalangandan keyin ham. Ishga tushirib tekshirilganda aynan shu
+ * chiqdi.
+ *
+ * Nega bu yerda: `api-client` — CSRF sarlavhasi qo'yiladigan yagona joy,
+ * ya'ni tuzatish ham shu yerda turishi kerak. Login formasiga qo'yilsa,
+ * keyingi ochiq forma (parol tiklash) uni qaytadan unutardi.
+ *
+ * `GET /health/live` tanlangan: u `@Public()`, javobi kichik va hech qanday
+ * yon ta'siri yo'q. `GET /auth/me` esa `401` qaytarib, sessiya tugagan deb
+ * keshni tozalash oqimini ishga tushirardi.
+ */
+async function ensureCsrfToken(): Promise<string | undefined> {
+  const existing = readCookie(CSRF_COOKIE);
+  if (existing) return existing;
+
+  // Xato yutiladi: cookie olinmasa ham asosiy so'rov yuboriladi va
+  // serverning o'z javobi (`403`) foydalanuvchiga ko'rinadi
+  await fetch(`${BASE_URL}/health/live`, { credentials: 'include' }).catch(() => undefined);
+  return readCookie(CSRF_COOKIE);
+}
+
 function buildUrl(path: string, query: RequestOptions['query']): string {
   const url = new URL(`${BASE_URL}${path}`);
   if (query) {
@@ -58,7 +87,7 @@ async function request<T>(
   if (body !== undefined) headers['Content-Type'] = 'application/json';
 
   if (isMutation) {
-    const csrf = readCookie(CSRF_COOKIE);
+    const csrf = await ensureCsrfToken();
     if (csrf) headers['X-CSRF-Token'] = csrf;
   }
 

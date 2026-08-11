@@ -511,6 +511,20 @@ hal qilinishi shart bo'lganlari.
 
 ---
 
+## 19. 4-bosqich qarorlari (2026-08-11 — mijozlar)
+
+| #    | Qaror | Sabab |
+|------|-------|-------|
+| 19.1 | **Qarz mijoz kartasida hali yo'q** (§6.11) — maydon ham, so'rov ham qo'shilmadi; u savdo va to'lov modullari bilan birga (5- va 7-bosqich) keladi | §6.12 qarzni **faqat tranzaksiyalardan** hisoblashni talab qiladi, tranzaksiyalar esa hali yo'q. "0 so'm qarz" deb ko'rsatish texnik jihatdan to'g'ri, lekin ma'nosi yolg'on bo'lardi: ega buni "qarzi yo'q mijoz" deb o'qiydi, aslida esa tizim hali savdoni umuman bilmaydi. Bu 2-bosqichda dashboard bilan qilingan tanlovning o'zi — bo'lmagan raqamni chizmaslik |
+| 19.2 | **Passport matni kiritiladi (§6.5), rasmi esa 9-bosqichda** (§6.6, §6.7) | §18.1 dagi mahsulot rasmi bilan aynan bir xil sabab: rasm `Storage` modulini, vaqtinchalik havolani (§15.5) va fayl validatsiyasini talab qiladi. Matn maydonlari esa shartnoma PDF'i (§16.10) uchun yetarli va ular hech qanday yangi infratuzilma talab qilmaydi. `passport_file_id` ustuni schema'da allaqachon bor |
+| 19.3 | **Telefon normalizatsiyasi `contracts/phone.ts` da** — `+` bilan boshlansa chet el raqami, aks holda `+998` qo'shiladi; eski trunk prefiksi (`8 90 …`) faqat uzunlik aynan mos kelganda qabul qilinadi | §6.2 "takrorlanmaydi" kafolati `phone_primary` ustunidagi `@unique` ga tayanadi, u esa normalizatsiya izchilligiga. Funksiya `slugifyCatalogName` kabi **ikkala ilovada** ishlatiladi: forma saqlanadigan qiymatni oldindan ko'rsatadi, server esa aynan o'shani yozadi. Trunk prefiksining kengroq qoidasi ataylab yozilmadi — qo'shni davlatlarda ham `8` trunk prefiksi va raqam uzunligi boshqacha |
+| 19.4 | **Passport qiymatlari audit jurnaliga yozilmaydi** — faqat `hasPassport` fakti | §16.13 shaxsga doir ma'lumotni lokalizatsiya qilishni talab qiladi; audit jurnali esa `UPDATE`/`DELETE` dan himoyalangan (`PERMISSIONS.md` §4), ya'ni unga tushgan JSHSHIR **abadiy** qoladi va uni o'chirib bo'lmaydi. Jurnalning vazifasi — kim nimani o'zgartirganini ko'rsatish; buning uchun qiymatning o'zi shart emas |
+| 19.5 | **`GET /customers/:id/history` hozircha yo'q** | U savdo va to'lovlardan iborat. Bo'sh massiv qaytaradigan endpoint "bu mijozda savdo bo'lmagan" degan yolg'on xulosaga asos berardi — §18 dagi `restock` bilan bir xil mulohaza (holat hali paydo bo'lmagan bo'lsa, endpoint ham kerak emas) |
+| 19.6 | **Passport seriyasi va raqami — erkin matn**, faqat uzunlik va belgilar to'plami tekshiriladi (lotin harflari, raqam, tire; seriya ≤ 10, raqam 3–20 belgi, katta harfga keltiriladi). **JSHSHIR — istisno:** aynan 14 raqam | §6.5 bu maydonlarni ataylab "matn maydonlari" deb ta'riflagan. Dastlabki kodda qat'iy naqsh bor edi (`AA` + 7 raqam) va u hujjatdan chetga chiqardi: ID-karta, chet el pasporti hamda eski namunadagi hujjat rad etilardi. Zarar zanjiri uzun — passportsiz mijoz kiritilmaydi, mijozsiz nasiya rasmiylashtirilmaydi (§6.1), ya'ni validatsiya savdoni to'xtatardi. Buning evaziga yutuq yo'q: maydonning yagona iste'molchisi — PDF (§16.10), u esa qiymatni **ko'chiradi**, tekshirmaydi. JSHSHIR boshqacha: 14 raqam formatning taxmini emas, tushunchaning ta'rifi; chet el fuqarosida u umuman yo'q va maydon `null` bo'lib qolaveradi |
+| 19.7 | **Do'kon logosi (§3.6) 9-bosqichda** — `Storage` moduli bilan birga. `settings.logo_file_id` ustuni va `FileKind.SHOP_LOGO` schema'da allaqachon bor; `PATCH /settings` uni **qabul qilmaydi** | §18.1 (mahsulot rasmi) va §19.2 (passport rasmi) bilan aynan bir xil sabab: rasm MinIO'ni, vaqtinchalik havolani (§15.5) va fayl validatsiyasini (`API.md` §7) talab qiladi. Logosiz do'kon sozlamalari to'liq ishlaydi. Bu qator ataylab yozilmoqda: qolgan ikkita rasm kechiktirilgani hujjatda bor edi, logo esa yo'q edi — ya'ni u "unutilgan" bo'lib ko'rinardi |
+
+---
+
 ## Ochiq savollar
 
 | Mavzu | Savol |

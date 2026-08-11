@@ -56,6 +56,18 @@ export default function SettingsPage() {
             Parol, sessiyalar va kirish jurnali →
           </Link>
         </div>
+
+        {/* §4.4 — kategoriya va brendni tahrirlash, arxivlash, birlashtirish */}
+        {can(user.data, 'catalog.view') && (
+          <div className="border-t border-border-soft pt-4">
+            <Link
+              href="/settings/catalog"
+              className="text-sm font-medium text-link hover:underline"
+            >
+              Kategoriya va brendlar →
+            </Link>
+          </div>
+        )}
       </Card>
 
       {can(user.data, 'settings.editShop') && <ShopSettingsForm />}

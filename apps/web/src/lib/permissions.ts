@@ -23,6 +23,12 @@ export type Action =
   | 'catalog.edit'
   | 'inventory.view'
   | 'inventory.receive'
+  | 'customer.view'
+  | 'customer.edit'
+  /** `PERMISSIONS.md` §2 — arxivlash va belgilash `SELLER` ga yopiq. */
+  | 'customer.archive'
+  /** §6.5, §6.7 — passport ma'lumoti. */
+  | 'passport.view'
   /** `PERMISSIONS.md` P7 — `SELLER` tannarxni ko'rmaydi. */
   | 'cost.view';
 
@@ -43,6 +49,8 @@ const RESTRICTED: readonly Action[] = [
   'catalog.edit',
   'inventory.receive',
   'cost.view',
+  'customer.archive',
+  'passport.view',
 ];
 
 export function can(user: CurrentUserDto | undefined, action: Action): boolean {

@@ -17,6 +17,7 @@ import { RequestIdMiddleware } from './common/request-id.middleware';
 import { RolesGuard } from './common/roles.guard';
 import { SessionGuard } from './common/session.guard';
 import { validateEnv } from './config/env';
+import { CustomersModule } from './customers/customers.module';
 import { DatabaseModule } from './database/database.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 import { HealthModule } from './health/health.module';
@@ -77,6 +78,7 @@ function isMutation(context: ExecutionContext): boolean {
     ExchangeRatesModule,
     CatalogModule,
     InventoryModule,
+    CustomersModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

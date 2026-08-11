@@ -1,0 +1,115 @@
+'use client';
+
+import { normalizePhone } from '@hisobai/contracts';
+import type {
+  CreateCustomerInput,
+  CustomerDto,
+  CustomerSummaryDto,
+  Page,
+  UpdateCustomerInput,
+} from '@hisobai/contracts';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query';
+
+import { api } from '../../lib/api-client';
+import type { ApiError } from '../../lib/api-error';
+
+/**
+ * Mijoz so'rovlari (§6).
+ *
+ * Qarz so'rovi yo'q: u savdo va to'lovlardan hisoblanadi (§6.12) va
+ * mijoz kartasiga 5-bosqichda qo'shiladi.
+ */
+
+export interface CustomerFilters {
+  q?: string;
+  isActive?: 'active' | 'archived' | 'all';
+  isFlagged?: 'true';
+}
+
+export const customerKeys = {
+  all: ['customers'] as const,
+  list: (filters: CustomerFilters) => [...customerKeys.all, 'list', filters] as const,
+  detail: (id: string) => [...customerKeys.all, 'detail', id] as const,
+  duplicate: (phone: string) => [...customerKeys.all, 'duplicate', phone] as const,
+};
+
+export const customersApi = {
+  list: (filters: CustomerFilters): Promise<Page<CustomerSummaryDto>> =>
+    api.get('/customers', { query: { ...filters, limit: 50 } }),
+  detail: (id: string): Promise<CustomerDto> => api.get(`/customers/${id}`),
+  create: (input: CreateCustomerInput): Promise<CustomerDto> => api.post('/customers', input),
+  update: (id: string, input: UpdateCustomerInput): Promise<CustomerDto> =>
+    api.patch(`/customers/${id}`, input),
+};
+
+export function useCustomers(
+  filters: CustomerFilters,
+): UseQueryResult<Page<CustomerSummaryDto>, ApiError> {
+  return useQuery<Page<CustomerSummaryDto>, ApiError>({
+    queryKey: customerKeys.list(filters),
+    queryFn: () => customersApi.list(filters),
+    // Filtr o'zgarganda eski ro'yxat ko'rinib tursin — jadval sakramaydi
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useCustomer(id: string): UseQueryResult<CustomerDto, ApiError> {
+  return useQuery<CustomerDto, ApiError>({
+    queryKey: customerKeys.detail(id),
+    queryFn: () => customersApi.detail(id),
+  });
+}
+
+/**
+ * §6.3 — "Bu raqam Alisher Karimovda bor. O'shami?"
+ *
+ * Tekshiruv **yuborishdan oldin** ishlaydi: forma to'ldirilib bo'lgach
+ * `409` olish — eng qimmat variant, chunki ega ismni, manzilni va
+ * passportni allaqachon terib bo'lgan bo'ladi.
+ *
+ * Qidiruv raqamlar bo'yicha ketadi (server ajratgichlarni o'zi
+ * tozalaydi), lekin taqqoslash **normallashtirilgan** qiymat bilan:
+ * `q` qisman moslikni ham qaytaradi, bizga esa aynan o'sha raqam
+ * kerak.
+ */
+export function useDuplicateCustomer(rawPhone: string): CustomerSummaryDto | null {
+  const normalized = normalizePhone(rawPhone);
+
+  const query = useQuery<Page<CustomerSummaryDto>, ApiError>({
+    queryKey: customerKeys.duplicate(normalized ?? ''),
+    queryFn: () => customersApi.list({ q: normalized ?? '', isActive: 'all' }),
+    enabled: normalized !== null,
+    // Bir xil raqam uchun qayta so'ralmasin — foydalanuvchi maydonga
+    // qaytib kelsa ham javob keshda turadi
+    staleTime: 60_000,
+  });
+
+  if (!normalized) return null;
+  return query.data?.data.find((customer) => customer.phonePrimary === normalized) ?? null;
+}
+
+export function useCreateCustomer(): UseMutationResult<CustomerDto, ApiError, CreateCustomerInput> {
+  const queryClient = useQueryClient();
+
+  return useMutation<CustomerDto, ApiError, CreateCustomerInput>({
+    mutationFn: customersApi.create,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: customerKeys.all }),
+  });
+}
+
+export function useUpdateCustomer(
+  id: string,
+): UseMutationResult<CustomerDto, ApiError, UpdateCustomerInput> {
+  const queryClient = useQueryClient();
+
+  return useMutation<CustomerDto, ApiError, UpdateCustomerInput>({
+    mutationFn: (input) => customersApi.update(id, input),
+    onSuccess: (customer) => {
+      // Javobdagi yangi `updatedAt` keshga tushadi — ketma-ket ikkinchi
+      // saqlash eski qulf tokeni bilan ketmaydi (`API.md` §8)
+      queryClient.setQueryData(customerKeys.detail(id), customer);
+      void queryClient.invalidateQueries({ queryKey: customerKeys.all });
+    },
+  });
+}

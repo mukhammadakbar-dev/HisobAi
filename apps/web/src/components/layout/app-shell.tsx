@@ -1,6 +1,6 @@
 'use client';
 
-import { Boxes, LayoutDashboard, LogOut, Settings, ShieldCheck, Tags } from 'lucide-react';
+import { Boxes, LayoutDashboard, LogOut, Settings, ShieldCheck, Tags, Users } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
@@ -17,8 +17,8 @@ import { ThemeToggle } from './theme-toggle';
  * Ilova qobig'i (`FRONTEND.md` §4).
  *
  * Telefonda pastki navigatsiya, noutbukda chap yon menyu. Ro'yxat
- * bosqichma-bosqich o'sadi: hozir boshqaruv, katalog, ombor va
- * sozlamalar bor; mijozlar, savdo va kassa o'z bosqichida qo'shiladi.
+ * bosqichma-bosqich o'sadi: hozir boshqaruv, katalog, ombor, mijozlar
+ * va sozlamalar bor; savdo va kassa o'z bosqichida qo'shiladi.
  *
  * "Yangi savdo" suzuvchi tugmasi (§14.6) 5-bosqichda qo'shiladi —
  * savdo formasi paydo bo'lgandan keyin, aks holda u hech qayerga
@@ -34,6 +34,7 @@ const NAV: NavItem[] = [
   { href: '/dashboard', label: 'Boshqaruv', icon: LayoutDashboard },
   { href: '/products', label: 'Katalog', icon: Tags },
   { href: '/inventory', label: 'Ombor', icon: Boxes },
+  { href: '/customers', label: 'Mijozlar', icon: Users },
   { href: '/settings', label: 'Sozlamalar', icon: Settings },
   { href: '/settings/security', label: 'Xavfsizlik', icon: ShieldCheck },
 ];

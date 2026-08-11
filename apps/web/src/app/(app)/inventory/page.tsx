@@ -3,6 +3,7 @@
 import { InventoryStatus } from '@hisobai/contracts';
 import { PackagePlus } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { Money } from '../../../components/money/money';
@@ -11,6 +12,7 @@ import { Badge, Card, Input, Select } from '../../../components/ui';
 import { useCurrentUser } from '../../../features/auth/queries';
 import { useBatches, useInventoryItems } from '../../../features/inventory/queries';
 import { formatDateTime } from '../../../lib/format';
+import { EMPTY_MESSAGES } from '../../../lib/messages';
 import { INVENTORY_STATUS_LABEL, INVENTORY_STATUS_TONE } from '../../../lib/labels';
 import { can } from '../../../lib/permissions';
 
@@ -23,6 +25,7 @@ import { can } from '../../../lib/permissions';
  * o'ylab ko'rishi kerak bo'lardi.
  */
 export default function InventoryPage() {
+  const router = useRouter();
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<string>(InventoryStatus.AVAILABLE);
 
@@ -114,9 +117,17 @@ export default function InventoryPage() {
         <EmptyState
           title={
             q.trim() === '' && status === InventoryStatus.AVAILABLE
-              ? 'Omborda seriyali birlik yo‘q'
+              ? EMPTY_MESSAGES.inventory.title
               : 'Bu shart bo‘yicha topilmadi'
           }
+          actionLabel={
+            q.trim() === '' && status === InventoryStatus.AVAILABLE
+              ? EMPTY_MESSAGES.inventory.action
+              : undefined
+          }
+          onAction={() => {
+            router.push('/inventory/receive');
+          }}
         />
       )}
 
