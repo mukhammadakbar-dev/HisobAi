@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import { Currency } from './enums';
-import { formatMoney, formatMoneyWithCurrency, formatRate, roundMoney, scaleOf } from './money';
+import {
+  formatMoney,
+  formatMoneyWithCurrency,
+  formatRate,
+  multiplyMoney,
+  roundMoney,
+  scaleOf,
+  sumMoney,
+} from './money';
 
 /**
  * ARCHITECTURE §12 — "pul va valyuta hisoblari, yaxlitlash" unit test
@@ -117,5 +125,52 @@ describe('formatRate (§3.1)', () => {
 
   it("noto'g'ri qiymatda tire qaytaradi", () => {
     expect(formatRate('—')).toBe('—');
+  });
+});
+
+/**
+ * Yig'indi va ko'paytirish — qabul formasidagi "jami" ekranda va
+ * serverda BIR XIL chiqishi kerak. Float bilan hisoblansa, ular
+ * ajralib ketardi va foydalanuvchi qaysi biri to'g'riligini bilmasdi.
+ */
+describe('sumMoney (§17.14)', () => {
+  it('float xatosini jamlamaydi', () => {
+    expect(sumMoney(['0.1', '0.2'], Currency.USD)).toBe('0.30');
+    expect(
+      sumMoney(
+        Array.from({ length: 10 }, () => '0.1'),
+        Currency.USD,
+      ),
+    ).toBe('1.00');
+  });
+
+  it("har qo'shiluvchi avval o'z valyutasi bo'yicha yaxlitlanadi", () => {
+    // Bazaga ham aynan shu qiymatlar yoziladi (§1.10)
+    expect(sumMoney(['12000000.6', '11500000.4'], Currency.UZS)).toBe('23500001');
+  });
+
+  it("bo'sh ro'yxat nol beradi", () => {
+    expect(sumMoney([], Currency.UZS)).toBe('0');
+    expect(sumMoney([], Currency.USD)).toBe('0.00');
+  });
+
+  it("katta summalar aniqligini yo'qotmaydi", () => {
+    // 2^53 dan katta — `number` bilan hisoblansa xato bo'lardi
+    expect(sumMoney(['9007199254740993', '1'], Currency.UZS)).toBe('9007199254740994');
+  });
+});
+
+describe('multiplyMoney', () => {
+  it('partiya jami tannarxi', () => {
+    expect(multiplyMoney('25000.4', 10, Currency.UZS)).toBe('250000');
+    expect(multiplyMoney('1.005', 3, Currency.USD)).toBe('3.03');
+  });
+
+  it('nol miqdor nol beradi', () => {
+    expect(multiplyMoney('25000', 0, Currency.UZS)).toBe('0');
+  });
+
+  it("kasr ko'paytuvchi rad etiladi", () => {
+    expect(() => multiplyMoney('25000', 1.5, Currency.UZS)).toThrow(TypeError);
   });
 });

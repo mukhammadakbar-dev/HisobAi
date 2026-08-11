@@ -18,13 +18,35 @@ export type Action =
   | 'settings.editFinancial'
   | 'exchangeRate.edit'
   | 'audit.view'
-  | 'session.manage';
+  | 'session.manage'
+  | 'catalog.view'
+  | 'catalog.edit'
+  | 'inventory.view'
+  | 'inventory.receive'
+  /** `PERMISSIONS.md` P7 — `SELLER` tannarxni ko'rmaydi. */
+  | 'cost.view';
 
-const OWNER_ONLY: readonly Action[] = ['settings.editFinancial', 'exchangeRate.edit', 'audit.view'];
+/**
+ * `OWNER` dan boshqa rollarga **yopiq** amallar (`PERMISSIONS.md` §2).
+ *
+ * Ro'yxat matritsadagi ❌ larni qamraydi va yangi amal qo'shilganda shu
+ * yerga ham tushishi kerak: unutilsa, amal jimgina **ochiq** bo'lib
+ * qoladi. Aynan shuning uchun tanlov fail-closed — `MANAGER` ba'zilarini
+ * (masalan `cost.view`, `catalog.edit`) ko'radi, lekin u rol hali
+ * `UserRole` da yo'q. Rol qo'shilganda bu ro'yxat rol bo'yicha
+ * ajratiladi; hozir ortiqcha to'sish tannarx sizishidan xavfsizroq (P7).
+ */
+const RESTRICTED: readonly Action[] = [
+  'settings.editFinancial',
+  'exchangeRate.edit',
+  'audit.view',
+  'catalog.edit',
+  'inventory.receive',
+  'cost.view',
+];
 
 export function can(user: CurrentUserDto | undefined, action: Action): boolean {
   if (!user) return false;
   if (user.role === UserRole.OWNER) return true;
-  // Kelajakdagi rollar uchun: OWNER'ga xos amallar boshqalarga yopiq
-  return !OWNER_ONLY.includes(action);
+  return !RESTRICTED.includes(action);
 }

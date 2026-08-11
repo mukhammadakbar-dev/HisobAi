@@ -111,14 +111,65 @@ export function roundMoney(amount: MoneyInput, currency: Currency): string {
   let magnitude = BigInt(kept);
   if (nextDigit >= 5) magnitude += 1n;
 
-  const asText = magnitude.toString().padStart(scale + 1, '0');
-  const wholePart = scale === 0 ? asText : asText.slice(0, asText.length - scale);
-  const fracPart = scale === 0 ? '' : asText.slice(asText.length - scale);
+  return fromMinorUnits(negative ? -magnitude : magnitude, scale);
+}
+
+/**
+ * Yig'indi — **butunlay `BigInt` ustida** (§17.14).
+ *
+ * Nega alohida funksiya: `Number(a) + Number(b)` bilan hisoblangan
+ * jami, keyin serverdagi `Decimal` yig'indisidan farq qilib qolardi.
+ * Foydalanuvchi ekranda bir raqamni, chekda esa boshqasini ko'radi va
+ * qaysi biri to'g'ri ekanini bilmaydi. Har qo'shiluvchi avval o'z
+ * valyutasi bo'yicha yaxlitlanadi — bazaga ham aynan shunday yoziladi.
+ */
+export function sumMoney(amounts: readonly MoneyInput[], currency: Currency): string {
+  const scale = scaleOf(currency);
+
+  let total = 0n;
+  for (const amount of amounts) {
+    total += toMinorUnits(roundMoney(amount, currency));
+  }
+  return fromMinorUnits(total, scale);
+}
+
+/**
+ * Butun songa ko'paytirish — partiya jami tannarxi (miqdor × donasiga).
+ *
+ * `factor` butun son bo'lishi shart: partiyada yarim dona bo'lmaydi va
+ * kasr ko'paytuvchi yaxlitlash qoidasini talab qilardi — u esa bu
+ * yerda ataylab yo'q.
+ */
+export function multiplyMoney(amount: MoneyInput, factor: number, currency: Currency): string {
+  if (!Number.isSafeInteger(factor)) {
+    throw new TypeError(`Ko'paytuvchi butun son bo'lishi kerak: ${String(factor)}`);
+  }
+  const scale = scaleOf(currency);
+  return fromMinorUnits(toMinorUnits(roundMoney(amount, currency)) * BigInt(factor), scale);
+}
+
+/**
+ * Yaxlitlangan satrni eng kichik birlikka (tiyin/sent) o'tkazadi.
+ *
+ * Kirish AYNAN `roundMoney` natijasi bo'lishi shart — u har doim `scale`
+ * ta kasr xona beradi, shuning uchun nuqtani olib tashlash yetarli.
+ */
+function toMinorUnits(rounded: string): bigint {
+  const negative = rounded.startsWith('-');
+  const magnitude = BigInt((negative ? rounded.slice(1) : rounded).replace('.', ''));
+  return negative ? -magnitude : magnitude;
+}
+
+/** Eng kichik birlikdan satrga — har doim aynan `scale` ta kasr xona. */
+function fromMinorUnits(value: bigint, scale: number): string {
+  // `-0n === 0n`, ya'ni "-0" / "-0.00" o'z-o'zidan chiqmaydi
+  const negative = value < 0n;
+  const digits = (negative ? -value : value).toString().padStart(scale + 1, '0');
+  const wholePart = scale === 0 ? digits : digits.slice(0, digits.length - scale);
+  const fracPart = scale === 0 ? '' : digits.slice(digits.length - scale);
 
   const body = scale === 0 ? wholePart : `${wholePart}.${fracPart}`;
-  // "-0" / "-0.00" bo'lmasin
-  const isZero = magnitude === 0n;
-  return negative && !isZero ? `-${body}` : body;
+  return negative ? `-${body}` : body;
 }
 
 /** Ichki: butun qismga minglik ajratgich qo'yadi. */

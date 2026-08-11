@@ -16,6 +16,7 @@ import { auditDiff, hasChanges } from '../common/audit-diff';
 import { normalizeLimit, toPage, toPrismaCursor } from '../common/pagination';
 import { staleResource, type Precondition } from '../common/optimistic-lock';
 import { isRecordNotFound, isUniqueViolation } from '../common/prisma-errors';
+import { containsInsensitive } from '../common/search';
 import type { RequestUser } from '../common/request-user';
 import { PrismaService } from '../database/prisma.service';
 
@@ -445,7 +446,8 @@ function buildWhere(query: TaxonomyQuery): TaxonomyWhere {
   const where: TaxonomyWhere = {};
 
   if (query.isActive !== 'all') where.isActive = query.isActive === 'active';
-  if (query.q) where.name = { contains: query.q, mode: 'insensitive' };
+  // Joker belgilar oddiy belgiga aylanadi — izoh `common/search.ts` da
+  if (query.q) where.name = containsInsensitive(query.q);
 
   return where;
 }

@@ -20,6 +20,7 @@ import { validateEnv } from './config/env';
 import { DatabaseModule } from './database/database.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 import { HealthModule } from './health/health.module';
+import { InventoryModule } from './inventory/inventory.module';
 import { MailModule } from './mail/mail.module';
 import { SettingsModule } from './settings/settings.module';
 
@@ -75,6 +76,7 @@ function isMutation(context: ExecutionContext): boolean {
     SettingsModule,
     ExchangeRatesModule,
     CatalogModule,
+    InventoryModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

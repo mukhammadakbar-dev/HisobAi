@@ -92,6 +92,44 @@ export function timeZoneOffsetMs(instant: Date, timeZone: string): number {
   return asUtc - (instant.getTime() - instant.getMilliseconds());
 }
 
+/**
+ * Kalendar kunning do'kon zonasidagi boshlanish nuqtasi.
+ *
+ * `"2026-08-10"` → Toshkentda 00:00 bo'lgan aniq vaqt (UTC'da 2026-08-09
+ * 19:00). Siljish ikki marta hisoblanadi — sabab `nextOccurrenceOfHour`
+ * dagi bilan bir xil: birinchi taxmin zona chegarasidan o'tib ketgan
+ * bo'lsa, ikkinchisi uni to'g'irlaydi.
+ */
+export function dayStartInstant(day: string, timeZone: string): Date {
+  const naiveUtc = fromCalendarDate(day).getTime();
+  const firstPass = new Date(naiveUtc - timeZoneOffsetMs(new Date(naiveUtc), timeZone));
+  return new Date(naiveUtc - timeZoneOffsetMs(firstPass, timeZone));
+}
+
+/**
+ * `?from=&to=` filtrini `timestamptz` oralig'iga aylantiradi (`API.md` §5.2).
+ *
+ * **Ikkala chekka ham kiritiladi**, shuning uchun yuqori chegara `to`
+ * kunining oxiri emas, **keyingi kun boshlanishi** va u `lt` bilan
+ * taqqoslanadi. `lte: to 23:59:59` varianti ataylab rad etilgan: u
+ * millisekundli qatorlarni (23:59:59.500) jimgina tashlab ketardi.
+ */
+export function dayRangeFilter(
+  from: string | undefined,
+  to: string | undefined,
+  timeZone: string,
+): { gte?: Date; lt?: Date } | undefined {
+  if (!from && !to) return undefined;
+
+  const range: { gte?: Date; lt?: Date } = {};
+  if (from) range.gte = dayStartInstant(from, timeZone);
+  if (to) {
+    const nextDay = new Date(fromCalendarDate(to).getTime() + 86_400_000);
+    range.lt = dayStartInstant(toCalendarDate(nextDay), timeZone);
+  }
+  return range;
+}
+
 /** Do'kon zonasidagi soat (0–23). */
 export function hourInTimeZone(instant: Date, timeZone: string): number {
   return (

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { businessDay, daysBetween, fromCalendarDate, toCalendarDate } from './dates';
+import {
+  businessDay,
+  dayRangeFilter,
+  dayStartInstant,
+  daysBetween,
+  fromCalendarDate,
+  toCalendarDate,
+} from './dates';
 
 const TASHKENT = 'Asia/Tashkent';
 
@@ -46,5 +53,43 @@ describe('daysBetween', () => {
   it("oy va yil chegarasidan o'tadi", () => {
     expect(daysBetween('2026-01-31', '2026-02-01')).toBe(1);
     expect(daysBetween('2026-12-31', '2027-01-01')).toBe(1);
+  });
+});
+
+/**
+ * `?from=&to=` filtri (`API.md` §5.2). Ikkala chekka ham kiritiladi va
+ * chegaralar **do'kon zonasida** hisoblanadi: aks holda ertalab 09:00 da
+ * qabul qilingan mahsulot "kechagi" harakatlar ro'yxatiga tushib qolardi
+ * (Toshkentda 09:00 — UTC'da 04:00, ya'ni o'sha kun; lekin yarim tundan
+ * keyingi soatlarda farq bir kunga yetadi).
+ */
+describe('dayStartInstant', () => {
+  it("do'kon zonasidagi yarim tunni beradi", () => {
+    expect(dayStartInstant('2026-08-10', TASHKENT).toISOString()).toBe('2026-08-09T19:00:00.000Z');
+    expect(dayStartInstant('2026-08-10', 'UTC').toISOString()).toBe('2026-08-10T00:00:00.000Z');
+  });
+});
+
+describe('dayRangeFilter', () => {
+  it('chegarasiz filtr — undefined', () => {
+    expect(dayRangeFilter(undefined, undefined, TASHKENT)).toBeUndefined();
+  });
+
+  it("yuqori chegara keyingi kun boshi bo'ladi — `to` kuni to'liq kiradi", () => {
+    const range = dayRangeFilter('2026-08-10', '2026-08-10', TASHKENT);
+
+    expect(range?.gte?.toISOString()).toBe('2026-08-09T19:00:00.000Z');
+    expect(range?.lt?.toISOString()).toBe('2026-08-10T19:00:00.000Z');
+  });
+
+  it("oy chegarasidan o'tadi", () => {
+    const range = dayRangeFilter('2026-08-31', '2026-08-31', TASHKENT);
+
+    expect(range?.lt?.toISOString()).toBe('2026-08-31T19:00:00.000Z');
+  });
+
+  it('bitta chekka ham yetarli', () => {
+    expect(dayRangeFilter('2026-08-10', undefined, TASHKENT)?.lt).toBeUndefined();
+    expect(dayRangeFilter(undefined, '2026-08-10', TASHKENT)?.gte).toBeUndefined();
   });
 });

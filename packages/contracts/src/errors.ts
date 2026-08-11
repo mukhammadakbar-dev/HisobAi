@@ -108,6 +108,16 @@ export const ErrorCode = {
   CATALOG_PRODUCT_HAS_STOCK: 'CATALOG_PRODUCT_HAS_STOCK',
   /** §4.4 — birlashtirish nishoni o'zi yoki arxivdagi yozuv bo'lmasin. */
   CATALOG_MERGE_INVALID_TARGET: 'CATALOG_MERGE_INVALID_TARGET',
+  /**
+   * §4.8 — arxivdagi kategoriya yoki brendni mahsulotga **yangidan**
+   * biriktirib bo'lmaydi.
+   *
+   * `CATALOG_MERGE_INVALID_TARGET` dan ataylab ajratilgan: u birlashtirish
+   * nishoni haqida, bu esa mahsulot formasidagi tanlov haqida. Tekshiruv
+   * faqat qiymat **o'zgarganda** ishlaydi — brend keyinroq arxivlansa,
+   * unga bog'langan mahsulotning rangini tahrirlash to'silmasligi kerak.
+   */
+  CATALOG_TAXONOMY_ARCHIVED: 'CATALOG_TAXONOMY_ARCHIVED',
   CUSTOMER_PHONE_TAKEN: 'CUSTOMER_PHONE_TAKEN',
 
   // ── Kurs (§3) ─────────────────────────────────────────────────────────

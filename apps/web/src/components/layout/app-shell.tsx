@@ -1,6 +1,6 @@
 'use client';
 
-import { LayoutDashboard, LogOut, Settings, ShieldCheck } from 'lucide-react';
+import { Boxes, LayoutDashboard, LogOut, Settings, ShieldCheck, Tags } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
@@ -16,9 +16,9 @@ import { ThemeToggle } from './theme-toggle';
 /**
  * Ilova qobig'i (`FRONTEND.md` §4).
  *
- * Telefonda pastki navigatsiya, noutbukda chap yon menyu. Hozir
- * bo'limlar kam — 2-bosqichda faqat boshqaruv va sozlamalar bor;
- * qolganlari o'z bosqichida qo'shiladi va shu ro'yxatga tushadi.
+ * Telefonda pastki navigatsiya, noutbukda chap yon menyu. Ro'yxat
+ * bosqichma-bosqich o'sadi: hozir boshqaruv, katalog, ombor va
+ * sozlamalar bor; mijozlar, savdo va kassa o'z bosqichida qo'shiladi.
  *
  * "Yangi savdo" suzuvchi tugmasi (§14.6) 5-bosqichda qo'shiladi —
  * savdo formasi paydo bo'lgandan keyin, aks holda u hech qayerga
@@ -32,12 +32,15 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { href: '/dashboard', label: 'Boshqaruv', icon: LayoutDashboard },
+  { href: '/products', label: 'Katalog', icon: Tags },
+  { href: '/inventory', label: 'Ombor', icon: Boxes },
   { href: '/settings', label: 'Sozlamalar', icon: Settings },
   { href: '/settings/security', label: 'Xavfsizlik', icon: ShieldCheck },
 ];
 
 export function AppShell({ user, children }: { user: CurrentUserDto; children: ReactNode }) {
   const pathname = usePathname();
+  const active = activeHref(pathname);
   const router = useRouter();
   const logout = useLogout();
   const settings = useSettings();
@@ -86,7 +89,7 @@ export function AppShell({ user, children }: { user: CurrentUserDto; children: R
           <ul className="flex list-none flex-col gap-1 p-0">
             {NAV.map((item) => (
               <li key={item.href}>
-                <NavLink item={item} active={isActive(pathname, item.href)} />
+                <NavLink item={item} active={active === item.href} />
               </li>
             ))}
           </ul>
@@ -105,9 +108,9 @@ export function AppShell({ user, children }: { user: CurrentUserDto; children: R
             <li key={item.href} className="flex-1">
               <Link
                 href={item.href}
-                aria-current={isActive(pathname, item.href) ? 'page' : undefined}
+                aria-current={active === item.href ? 'page' : undefined}
                 className={`flex min-h-14 flex-col items-center justify-center gap-1 text-xs ${
-                  isActive(pathname, item.href) ? 'text-action' : 'text-text-secondary'
+                  active === item.href ? 'text-action' : 'text-text-secondary'
                 }`}
               >
                 <item.icon size={20} aria-hidden="true" />
@@ -137,10 +140,19 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
 }
 
 /**
- * `/settings` `/settings/security` ochiq bo'lganda faol bo'lib
- * qolmasligi kerak — aks holda ikkita element bir vaqtda tanlangan
- * ko'rinadi va foydalanuvchi qayerdaligini bilmaydi.
+ * Faol bo'lim — **eng aniq moslik**.
+ *
+ * Ikkita talab bir-biriga zid ko'rinadi va ikkalasi ham kerak:
+ * `/products/new` da "Katalog" yonishi kerak (ichki sahifada menyu
+ * bo'sh qolmasin), lekin `/settings/security` da "Sozlamalar" **va**
+ * "Xavfsizlik" birgalikda yonmasligi kerak. Shuning uchun prefiks
+ * bo'yicha mos keladiganlardan eng uzuni tanlanadi.
  */
-function isActive(pathname: string, href: string): boolean {
-  return pathname === href;
+function activeHref(pathname: string): string | null {
+  let best: string | null = null;
+  for (const item of NAV) {
+    const matches = pathname === item.href || pathname.startsWith(`${item.href}/`);
+    if (matches && (best === null || item.href.length > best.length)) best = item.href;
+  }
+  return best;
 }

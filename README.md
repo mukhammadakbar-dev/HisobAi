@@ -2,12 +2,13 @@
 
 Telefon do'konlari uchun ombor, savdo, nasiya, kassa va AI tahlil CRM'i.
 
-**Holat:** v0.2.1 — **kesuvchi poydevor tayyor**. Schema, migratsiyalar va
-ma'lumot yaxlitligi cheklovlari qo'llangan; xato formati, validatsiya,
-idempotency, pul serializatsiyasi, pagination, ruxsat va rate limiting
-o'rnatilgan; frontend tokenlari, komponent primitivlari va API client
-tayyor. Biznes modullari `docs/TZ.md` §22 dagi tartibda qo'shiladi
-(keyingi bosqich — **Auth va sozlamalar**).
+**Holat:** v0.2.1 — **3-bosqich tugadi**. Kesuvchi poydevor (xato formati,
+validatsiya, idempotency, pul serializatsiyasi, pagination, ruxsat, rate
+limiting), auth va sozlamalar, valyuta kursi, so'ngra **katalog va ombor**
+ishlaydi: kategoriya/brend birlashtirish bilan, mahsulot shabloni, seriyali
+birlik va partiya, qabul qilish. Ekranlar: `/products`, `/inventory`,
+qabul formasi. Biznes modullari `docs/TZ.md` §22 dagi tartibda davom etadi
+(keyingi bosqich — **Mijozlar**).
 
 ## Hujjatlar
 

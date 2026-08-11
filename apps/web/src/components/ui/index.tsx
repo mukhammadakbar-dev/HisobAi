@@ -1,4 +1,9 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
+import type {
+  ButtonHTMLAttributes,
+  InputHTMLAttributes,
+  ReactNode,
+  SelectHTMLAttributes,
+} from 'react';
 
 /**
  * UI primitivlari (`design.md` §5, §6).
@@ -41,6 +46,28 @@ export function Input({ className = '', ...rest }: InputHTMLAttributes<HTMLInput
       className={`min-h-11 w-full rounded-md border border-border-default bg-surface-card px-3 text-base text-text-primary placeholder:text-text-tertiary ${className}`}
       {...rest}
     />
+  );
+}
+
+/**
+ * Tanlov ro'yxati.
+ *
+ * Brauzerning o'z `<select>` i ataylab: telefonda u tizim tanlovchisini
+ * ochadi — bu maxsus dropdown'dan tez, klaviatura bilan ishlaydi va
+ * ekran o'quvchisi uni allaqachon biladi (`design.md` §6).
+ */
+export function Select({
+  className = '',
+  children,
+  ...rest
+}: SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select
+      className={`min-h-11 w-full rounded-md border border-border-default bg-surface-card px-3 text-base text-text-primary ${className}`}
+      {...rest}
+    >
+      {children}
+    </select>
   );
 }
 

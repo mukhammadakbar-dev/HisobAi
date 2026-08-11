@@ -76,8 +76,15 @@ const ERROR_MESSAGES: Partial<Record<string, string>> = {
   [ErrorCode.INVENTORY_ITEM_NOT_AVAILABLE]: 'Bu ombor birligi sotuvga tayyor emas.',
   [ErrorCode.INVENTORY_COST_CURRENCY_MISMATCH]:
     "Tannarx valyutasi mahsulot valyutasiga mos bo'lishi kerak.",
+  [ErrorCode.INVENTORY_PRODUCT_TYPE_MISMATCH]:
+    'Qabul turi mahsulotga mos emas: seriyalida IMEI, miqdorlida partiya kiritiladi.',
 
   [ErrorCode.CATALOG_DUPLICATE_NAME]: 'Bunday nom allaqachon mavjud.',
+  [ErrorCode.CATALOG_PRODUCT_ARCHIVED]: 'Bu mahsulot arxivda — avval uni tiklang.',
+  [ErrorCode.CATALOG_PRODUCT_HAS_STOCK]: "Omborda qoldiq bor — turi va valyutasi o'zgartirilmaydi.",
+  [ErrorCode.CATALOG_TAXONOMY_ARCHIVED]:
+    "Arxivdagi kategoriya yoki brend tanlab bo'lmaydi. Uni tiklang yoki boshqasini tanlang.",
+  [ErrorCode.CATALOG_MERGE_INVALID_TARGET]: 'Birlashtirish uchun boshqa faol yozuvni tanlang.',
   [ErrorCode.CUSTOMER_PHONE_TAKEN]: 'Bu telefon raqami boshqa mijozda bor.',
   [ErrorCode.EXCHANGE_RATE_MISSING]: 'Valyuta kursi topilmadi. Sozlamalarda kursni kiriting.',
   [ErrorCode.EXCHANGE_RATE_CBU_MISSING]:

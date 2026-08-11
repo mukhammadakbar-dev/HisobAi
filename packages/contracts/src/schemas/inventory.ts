@@ -88,6 +88,21 @@ export const receiveSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
+    // Sana tekshiruvi birinchi va shartsiz: `items`/`batch` xatosidan
+    // keyin to'xtab qolsa, foydalanuvchi ikkinchi muammoni faqat
+    // birinchisini tuzatgandan keyin ko'rardi
+    if (value.receivedAt !== undefined) {
+      // Kelajakdagi sana hisobotni buzadi; kichik zaxira soat farqi uchun
+      const CLOCK_SKEW_MS = 5 * 60 * 1000;
+      if (new Date(value.receivedAt).getTime() > Date.now() + CLOCK_SKEW_MS) {
+        ctx.addIssue({
+          code: 'custom',
+          message: "Qabul sanasi kelajakda bo'lmaydi",
+          path: ['receivedAt'],
+        });
+      }
+    }
+
     const hasItems = value.items !== undefined;
     const hasBatch = value.batch !== undefined;
 
@@ -100,18 +115,6 @@ export const receiveSchema = z
         path: ['items'],
       });
       return;
-    }
-
-    if (value.receivedAt !== undefined) {
-      // Kelajakdagi sana hisobotni buzadi; kichik zaxira soat farqi uchun
-      const CLOCK_SKEW_MS = 5 * 60 * 1000;
-      if (new Date(value.receivedAt).getTime() > Date.now() + CLOCK_SKEW_MS) {
-        ctx.addIssue({
-          code: 'custom',
-          message: "Qabul sanasi kelajakda bo'lmaydi",
-          path: ['receivedAt'],
-        });
-      }
     }
 
     if (!value.items) return;
