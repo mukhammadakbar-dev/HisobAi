@@ -11,6 +11,11 @@ import type { Request } from 'express';
  *
  * `sessionId` ham bor: `/auth/sessions` ro'yxatida "shu qurilma" ni
  * belgilash va `logout` da aynan shu sessiyani bekor qilish uchun.
+ *
+ * `shopId` — §21.10: SHOP_ADMIN account Shop'siz yaratiladi, shuning uchun
+ * `null` bo'lishi **normal** holat, `undefined` emas. `RolesGuard`
+ * `SHOP_SETUP_REQUIRED`ni shundan aniqlaydi, `ShopContextInterceptor` esa
+ * shundan Prisma extension uchun Shop kontekstini ochadi (`database/shop-context.ts`).
  */
 export interface RequestUser {
   id: string;
@@ -19,6 +24,7 @@ export interface RequestUser {
   role: UserRole;
   theme: Theme;
   sessionId: string;
+  shopId: string | null;
 }
 
 /**

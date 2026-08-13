@@ -1,5 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AccountStatus } from '@prisma/client';
 
 import type { Env } from '../config/env';
 import { PrismaService } from '../database/prisma.service';
@@ -54,12 +55,18 @@ export class SessionGuard implements CanActivate {
     // Cookie bor, lekin sessiya yo'q / bekor qilingan / muddati o'tgan.
     // Buni belgilab qo'yamiz: RolesGuard "Sessiya tugadi" deb aniqroq
     // aytadi, "Tizimga kiring" degan umumiy matn o'rniga.
+    //
+    // `isActive Boolean` §21.6 bilan `status: AccountStatus`ga almashtirildi
+    // (6-bosqich, 3-qadam sxema yarmi) — bu yerdagi almashtirish shuning
+    // ustidan kompilyatsiya qilish uchun MINIMAL tuzatish, `UserRole.OWNER`
+    // bilan bog'liq boshqa nomuvofiqliklar 4-bosqich ishi (`@hisobai/contracts`
+    // hali `SHOP_ADMIN`ga o'tkazilmagan).
     const now = new Date();
     if (
       !session ||
       session.revokedAt !== null ||
       session.expiresAt <= now ||
-      !session.user.isActive
+      session.user.status !== AccountStatus.ACTIVE
     ) {
       request.sessionExpired = true;
       return true;
@@ -72,6 +79,7 @@ export class SessionGuard implements CanActivate {
       role: session.user.role,
       theme: session.user.theme,
       sessionId: session.id,
+      shopId: session.user.shopId,
     };
 
     await this.touch(session.id, session.lastSeenAt, now);

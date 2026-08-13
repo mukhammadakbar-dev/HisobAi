@@ -58,6 +58,17 @@ export class AppException extends HttpException {
   }
 
   /**
+   * 500 — kutilmagan ichki holat, foydalanuvchi xatosi emas (masalan
+   * shop-scoped so'rov Shop kontekstisiz bajarildi, `ARCHITECTURE.md`
+   * §14.8). `AllExceptionsFilter` 5xx'ni to'liq stack bilan loglaydi —
+   * `message` shuning uchun ichki: foydalanuvchiga aynan shu matn
+   * ko'rsatilishi shart emas, log va tuzatish uchun.
+   */
+  static internal(code: ErrorCode, message: string): AppException {
+    return new AppException(code, message, HttpStatus.INTERNAL_SERVER_ERROR);
+  }
+
+  /**
    * 429 — limit oshdi (`API.md` §6). `details.retryAfterSeconds` bilan
    * yuboriladi: UI foydalanuvchiga qancha kutishni aniq aytsin, "keyinroq
    * urinib ko'ring" degan foydasiz matn o'rniga.

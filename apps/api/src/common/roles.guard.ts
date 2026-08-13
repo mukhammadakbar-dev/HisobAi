@@ -3,7 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { ErrorCode, UserRole } from '@hisobai/contracts';
 
 import { AppException } from './app.exception';
-import { PUBLIC_KEY, ROLES_KEY } from './auth.decorators';
+import { PUBLIC_KEY, ROLES_KEY, SHOP_EXEMPT_KEY } from './auth.decorators';
 import type { AuthedRequest } from './request-user';
 
 export type { RequestUser } from './request-user';
@@ -53,6 +53,19 @@ export class RolesGuard implements CanActivate {
 
     if (!allowed.includes(user.role)) {
       throw AppException.forbidden(ErrorCode.FORBIDDEN, "Bu amalga ruxsatingiz yo'q.");
+    }
+
+    // §21.10, §14.8 — rol to'g'ri, lekin account'ga Shop biriktirilmagan.
+    // `@ShopExempt()` bilan belgilanmagan endpoint DEFAULT holda
+    // shop-scoped deb hisoblanadi (`auth.decorators.ts`dagi izohga qarang).
+    // `403` emas `409`: bu "ruxsat yo'q" emas, "hali sozlanmagan" — frontend
+    // shu kod bo'yicha `/app/setup-shop`ga yo'naltiradi.
+    const shopExempt = this.reflector.getAllAndOverride<boolean>(SHOP_EXEMPT_KEY, targets);
+    if (shopExempt !== true && user.shopId === null) {
+      throw AppException.conflict(
+        ErrorCode.SHOP_SETUP_REQUIRED,
+        "Avval do'koningizni sozlang.",
+      );
     }
 
     return true;

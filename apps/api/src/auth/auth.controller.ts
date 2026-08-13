@@ -33,7 +33,7 @@ import type {
 } from '@hisobai/contracts';
 import type { Response } from 'express';
 
-import { Public, Roles } from '../common/auth.decorators';
+import { Public, Roles, ShopExempt } from '../common/auth.decorators';
 import { CurrentUser } from '../common/current-user.decorator';
 import type { AuthedRequest, RequestUser } from '../common/request-user';
 import { sessionCookieOptions } from '../common/session-token';
@@ -89,6 +89,7 @@ export class AuthController {
 
   @Post('logout')
   @Roles(UserRole.OWNER)
+  @ShopExempt()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Joriy sessiyani yopish' })
   async logout(
@@ -105,6 +106,7 @@ export class AuthController {
 
   @Get('me')
   @Roles(UserRole.OWNER)
+  @ShopExempt()
   @ApiOperation({ summary: 'Joriy foydalanuvchi' })
   me(@CurrentUser() user: RequestUser): CurrentUserDto {
     // `SessionGuard` allaqachon bazadan o'qigan — ikkinchi so'rov keraksiz
@@ -121,6 +123,7 @@ export class AuthController {
 
   @Get('sessions')
   @Roles(UserRole.OWNER)
+  @ShopExempt()
   @ApiOperation({ summary: 'Faol sessiyalar (§2.7)' })
   listSessions(@CurrentUser() user: RequestUser): Promise<SessionDto[]> {
     return this.auth.listSessions(user.id, user.sessionId);
@@ -128,6 +131,7 @@ export class AuthController {
 
   @Delete('sessions/:id')
   @Roles(UserRole.OWNER)
+  @ShopExempt()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Bitta sessiyani bekor qilish' })
   revokeSession(
@@ -140,6 +144,7 @@ export class AuthController {
 
   @Delete('sessions')
   @Roles(UserRole.OWNER)
+  @ShopExempt()
   @ApiOperation({ summary: 'Joriy qurilmadan tashqari hammasini chiqarish' })
   revokeOtherSessions(
     @CurrentUser() user: RequestUser,
@@ -150,6 +155,7 @@ export class AuthController {
 
   @Get('login-attempts')
   @Roles(UserRole.OWNER)
+  @ShopExempt()
   @ApiOperation({ summary: 'Kirish jurnali (§2.10)' })
   listLoginAttempts(@Query('limit') limit?: string): Promise<LoginAttemptDto[]> {
     const parsed = Number.parseInt(limit ?? '', 10);
@@ -162,6 +168,7 @@ export class AuthController {
 
   @Post('change-password')
   @Roles(UserRole.OWNER)
+  @ShopExempt()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Parolni o'zgartirish" })
   changePassword(

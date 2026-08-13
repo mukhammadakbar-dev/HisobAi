@@ -1,5 +1,6 @@
 import { ExecutionContext } from '@nestjs/common';
 import { Theme, UserRole } from '@hisobai/contracts';
+import { AccountStatus } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { AuthedRequest } from './request-user';
@@ -24,7 +25,8 @@ const activeUser = {
   displayName: "Do'kon egasi",
   role: UserRole.OWNER,
   theme: Theme.SYSTEM,
-  isActive: true,
+  status: AccountStatus.ACTIVE,
+  shopId: 'shop-1',
 };
 
 function makeContext(cookies: Record<string, string>): {
@@ -80,7 +82,22 @@ describe('SessionGuard', () => {
       id: 'user-1',
       role: UserRole.OWNER,
       sessionId: 'session-1',
+      shopId: 'shop-1',
     });
+  });
+
+  it("Shop'siz account ham to'ldiriladi — shopId null bilan (§21.10)", async () => {
+    const { guard } = makeGuard({
+      id: 'session-1',
+      expiresAt: future,
+      revokedAt: null,
+      lastSeenAt: new Date(),
+      user: { ...activeUser, shopId: null },
+    });
+    const { context, request } = makeContext({ [COOKIE_NAME]: TOKEN });
+
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+    expect(request.user?.shopId).toBeNull();
   });
 
   it('token hash bo‘yicha qidiriladi — ochiq token bazada yo‘q', async () => {
@@ -108,8 +125,12 @@ describe('SessionGuard', () => {
     ['muddati o‘tgan', { expiresAt: past, revokedAt: null, user: activeUser }],
     ['bekor qilingan', { expiresAt: future, revokedAt: new Date(), user: activeUser }],
     [
+      'hisob to‘xtatilgan',
+      { expiresAt: future, revokedAt: null, user: { ...activeUser, status: AccountStatus.SUSPENDED } },
+    ],
+    [
       'hisob o‘chirilgan',
-      { expiresAt: future, revokedAt: null, user: { ...activeUser, isActive: false } },
+      { expiresAt: future, revokedAt: null, user: { ...activeUser, status: AccountStatus.DISABLED } },
     ],
     ['topilmadi', null],
   ])('%s sessiya — foydalanuvchi to‘ldirilmaydi', async (_name, session) => {

@@ -17,6 +17,7 @@ import { NoStoreInterceptor } from './common/no-store.interceptor';
 import { RequestIdMiddleware } from './common/request-id.middleware';
 import { RolesGuard } from './common/roles.guard';
 import { SessionGuard } from './common/session.guard';
+import { ShopContextInterceptor } from './common/shop-context.interceptor';
 import { validateEnv } from './config/env';
 import { CustomersModule } from './customers/customers.module';
 import { DatabaseModule } from './database/database.module';
@@ -112,7 +113,14 @@ function isMutation(context: ExecutionContext): boolean {
      * uchun u guard'lardan keyin (Nest'da guard'lar interceptor'lardan
      * oldin ishlaydi). Decimal serializatsiyasi eng tashqarida — u
      * idempotency keshidan qaytgan javobga ham qo'llanishi kerak.
+     *
+     * `ShopContextInterceptor` RO'YXATNING BOSHIDA: interceptor'lar piyoz
+     * kabi ishlaydi, birinchi ro'yxatga olingani eng tashqarida bo'ladi —
+     * Shop konteksti esa quyidagi ikkitasini HAM (jumladan idempotency
+     * keshidan o'tgan yo'lni) qamrab olishi kerak, chunki ular ham
+     * servis/Prisma qatlamiga tushishi mumkin (`shop-context.interceptor.ts`).
      */
+    { provide: APP_INTERCEPTOR, useClass: ShopContextInterceptor },
     { provide: APP_INTERCEPTOR, useClass: NoStoreInterceptor },
     { provide: APP_INTERCEPTOR, useClass: DecimalSerializerInterceptor },
     { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },

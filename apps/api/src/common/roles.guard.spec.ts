@@ -4,7 +4,7 @@ import { ErrorCode, Theme, UserRole } from '@hisobai/contracts';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AppException } from './app.exception';
-import { PUBLIC_KEY, ROLES_KEY } from './auth.decorators';
+import { PUBLIC_KEY, ROLES_KEY, SHOP_EXEMPT_KEY } from './auth.decorators';
 import { RolesGuard, type RequestUser } from './roles.guard';
 
 /**
@@ -20,11 +20,16 @@ function makeContext(user?: RequestUser): ExecutionContext {
   } as unknown as ExecutionContext;
 }
 
-function makeGuard(metadata: { public?: boolean; roles?: UserRole[] }): RolesGuard {
+function makeGuard(metadata: {
+  public?: boolean;
+  roles?: UserRole[];
+  shopExempt?: boolean;
+}): RolesGuard {
   const reflector = new Reflector();
   vi.spyOn(reflector, 'getAllAndOverride').mockImplementation((key: unknown) => {
     if (key === PUBLIC_KEY) return metadata.public;
     if (key === ROLES_KEY) return metadata.roles;
+    if (key === SHOP_EXEMPT_KEY) return metadata.shopExempt;
     return undefined;
   });
   return new RolesGuard(reflector);
@@ -37,7 +42,10 @@ const owner: RequestUser = {
   role: UserRole.OWNER,
   theme: Theme.SYSTEM,
   sessionId: 'session-1',
+  shopId: 'shop-1',
 };
+
+const shopLessOwner: RequestUser = { ...owner, shopId: null };
 
 describe('RolesGuard — default DENY', () => {
   it("dekoratorsiz endpoint YOPIQ (foydalanuvchi bo'lsa ham)", () => {
@@ -83,5 +91,46 @@ describe('RolesGuard — default DENY', () => {
     // Kelajakda MANAGER/SELLER qo'shilganda shu yo'l ishlaydi
     const guard = makeGuard({ roles: ['MANAGER' as UserRole] });
     expect(() => guard.canActivate(makeContext(owner))).toThrow(AppException);
+  });
+});
+
+/**
+ * §21.10, §14.8 — Shop'siz account "ruxsati yo'q" emas, "hali sozlanmagan".
+ * Bu ikkisi turli xato kodi va turli HTTP status bilan ajratiladi —
+ * frontend faqat shu farq bo'yicha `/app/setup-shop`ga yo'naltira oladi.
+ */
+describe("RolesGuard — Shop'siz account (§21.10)", () => {
+  it('shop-scoped endpoint (default) Shop’siz accountga SHOP_SETUP_REQUIRED, 409 qaytaradi', () => {
+    const guard = makeGuard({ roles: [UserRole.OWNER] });
+    try {
+      guard.canActivate(makeContext(shopLessOwner));
+      expect.unreachable('409 kutilgan edi');
+    } catch (error) {
+      expect((error as AppException).code).toBe(ErrorCode.SHOP_SETUP_REQUIRED);
+      expect((error as AppException).getStatus()).toBe(HttpStatus.CONFLICT);
+    }
+  });
+
+  it('@ShopExempt() endpoint Shop’siz accountga ham ochiq', () => {
+    const guard = makeGuard({ roles: [UserRole.OWNER], shopExempt: true });
+    expect(guard.canActivate(makeContext(shopLessOwner))).toBe(true);
+  });
+
+  it('Shop biriktirilgan accountda shop-scoped endpoint erkin o‘tadi', () => {
+    const guard = makeGuard({ roles: [UserRole.OWNER] });
+    expect(guard.canActivate(makeContext(owner))).toBe(true);
+  });
+
+  it('rol mos kelmasa, Shop tekshiruviga yetib borilmaydi — 403 birinchi', () => {
+    // Tartib muhim: avval rol, keyin Shop (`RolesGuard`dagi izohga qarang).
+    // Aks holda ruxsati yo'q foydalanuvchi ham "Shop sozlang" deb
+    // chalg'itilardi.
+    const guard = makeGuard({ roles: ['MANAGER' as UserRole] });
+    try {
+      guard.canActivate(makeContext(shopLessOwner));
+      expect.unreachable('403 kutilgan edi');
+    } catch (error) {
+      expect((error as AppException).code).toBe(ErrorCode.FORBIDDEN);
+    }
   });
 });

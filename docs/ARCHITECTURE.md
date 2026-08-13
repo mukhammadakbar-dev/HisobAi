@@ -773,8 +773,10 @@ Uchta qoida bu qatlamni ishonchli qiladi:
    so'rov `[]` qaytaradi — xato emas. Bu xatodan battar, shuning uchun
    extension kontekst yo'qligini **o'zi** aniqlaydi va bazaga umuman
    bormaydi (§21.15).
-3. Chiqish yo'li **aniq nomlangan** — `runWithoutShopScope()`, va uni
-   faqat `Platform` moduli ishlatadi. Grep bilan topiladigan yagona joy.
+3. Chiqish yo'li **aniq nomlangan** — `runWithoutShopScope()`. Uni
+   ishlatishga haqli **ikkita** joy bor va boshqasi yo'q: `Platform`
+   moduli, hamda Shop'siz hisobning account amalini audit qilish
+   (§21.18). Grep bilan topiladigan yagona nom.
 
 `$transaction` ichida kontekst saqlanadi — `AsyncLocalStorage` buni
 tabiiy qiladi, ya'ni §6 dagi savdo tasdiqlash tranzaksiyasi o'zgarmaydi;
