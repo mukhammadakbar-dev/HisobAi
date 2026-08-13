@@ -1,0 +1,13 @@
+-- §21.3, §25.17 (6-bosqich, platforma) — `audit_logs.actor_id` FK olib tashlanadi.
+--
+-- Sabab: audit yozuvini endi ikki xil aktyor yozadi — biznes `User`
+-- (`shopId` bilan) VA platforma `PlatformAdmin` (SHOP_ADMIN_CREATED va h.k.,
+-- §25.17). `PlatformAdmin` esa §21.3 bo'yicha business jadvallarga HECH
+-- QANDAY relation olmasligi shart (SUPERADMIN'ning tenant data'ga
+-- structural jihatdan kira olmasligi invarianti, §25.20 — FK qo'shilsa shu
+-- invariant boshqa tomondan teshilardi). Ikkala aktyor turi bitta ustunga
+-- yozilishi kerak va FK bitta jadvalga bog'lanishi shart bo'lgani uchun —
+-- ustun endi oddiy (indekslangan, lekin bog'lanmagan) UUID sifatida qoladi.
+-- Audit hech qachon join qilinmaydi (`GET /audit` hali yo'q) — FK yo'qligi
+-- amaliy xavf tug'dirmaydi.
+ALTER TABLE "audit_logs" DROP CONSTRAINT IF EXISTS "audit_logs_actor_id_fkey";

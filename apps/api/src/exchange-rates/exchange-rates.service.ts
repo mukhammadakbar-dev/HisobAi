@@ -200,7 +200,7 @@ export class ExchangeRatesService {
       const cbuRate = await tx.cbuRate.findUnique({ where: { date: calendarDate } });
 
       // §3.10 — kurs o'zgarishi audit'ga: kim, qachon, nimadan nimaga
-      await this.audit.record(tx, {
+      await this.audit.record(tx, actor.shopId, {
         actorId: actor.id,
         action: 'EXCHANGE_RATE_UPDATED',
         entityType: 'ShopExchangeRate',
@@ -265,7 +265,7 @@ export class ExchangeRatesService {
       });
 
       // §3.10 — kurs o'zgarishi audit'ga yoziladi
-      await this.audit.record(tx, {
+      await this.audit.record(tx, actor.shopId, {
         actorId: actor.id,
         action: 'EXCHANGE_RATE_RESET_TO_CBU',
         entityType: 'ShopExchangeRate',
@@ -442,7 +442,7 @@ export class ExchangeRatesService {
   ): Promise<void> {
     if (!context) return;
 
-    await this.audit.recordDetached({
+    await this.audit.recordDetached(context.actor.shopId, {
       actorId: context.actor.id,
       action: 'EXCHANGE_RATE_SYNCED',
       entityType: 'ShopExchangeRate',

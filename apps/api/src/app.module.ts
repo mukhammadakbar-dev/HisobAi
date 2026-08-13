@@ -25,6 +25,8 @@ import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 import { HealthModule } from './health/health.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { MailModule } from './mail/mail.module';
+import { PlatformModule } from './platform/platform.module';
+import { PlatformSessionGuard } from './platform/platform-session.guard';
 import { ReportsModule } from './reports/reports.module';
 import { SalesModule } from './sales/sales.module';
 import { ShopsModule } from './shops/shops.module';
@@ -78,6 +80,7 @@ function isMutation(context: ExecutionContext): boolean {
     MailModule,
     HealthModule,
     AuthModule,
+    PlatformModule,
     ShopsModule,
     ExchangeRatesModule,
     CatalogModule,
@@ -96,16 +99,28 @@ function isMutation(context: ExecutionContext): boolean {
      *  1. `ThrottlerGuard` — cheklovdan o'tmagan so'rov keyingi
      *     tekshiruvlarga umuman yetib bormasin;
      *  2. `CsrfGuard` — o'zgartiruvchi so'rovda token mosligi;
-     *  3. `SessionGuard` — cookie'ni foydalanuvchiga aylantiradi
+     *  3. `SessionGuard` — business cookie'ni foydalanuvchiga aylantiradi
      *     (rad etmaydi, faqat aniqlaydi);
-     *  4. `RolesGuard` — **default DENY**, yagona rad etish nuqtasi.
+     *  4. `PlatformSessionGuard` — `@PlatformOnly()` YO'Q endpointda
+     *     hech narsa qilmaydi; BOR bo'lsa platforma cookie'sini
+     *     tekshiradi va — `SessionGuard`dan farqli — RAD HAM ETADI
+     *     (§21.3: platforma yo'lida `RolesGuard`ga o'xshash ikkinchi
+     *     qatlam yo'q, chunki SUPERADMIN'da rol tushunchasi umuman yo'q);
+     *  5. `RolesGuard` — business **default DENY**, yagona rad etish
+     *     nuqtasi; `@PlatformOnly()` ko'rsa chetga chiqadi (qaror
+     *     allaqachon 4-qadamda qabul qilingan, `roles.guard.ts`).
      *
-     * 3 va 4 ning tartibi majburiy: `RolesGuard` `request.user` ga
-     * tayanadi, uni esa `SessionGuard` to'ldiradi.
+     * 3 va 5 ning tartibi majburiy: `RolesGuard` `request.user` ga
+     * tayanadi, uni esa `SessionGuard` to'ldiradi. 4-qadam ularning
+     * orasida bo'lishi shart emas (ikkalasiga ham bog'liq emas), lekin
+     * shu yerda turishi mantiqiy: "kim bu so'rovni yubordi" barcha
+     * savollari (business VA platforma) `RolesGuard`ning yakuniy
+     * qaroridan OLDIN javob topgan bo'ladi.
      */
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: CsrfGuard },
     { provide: APP_GUARD, useClass: SessionGuard },
+    { provide: APP_GUARD, useClass: PlatformSessionGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
 
     /**

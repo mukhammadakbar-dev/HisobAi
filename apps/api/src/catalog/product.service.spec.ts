@@ -106,8 +106,8 @@ function makeService(
   const locks: string[] = [];
 
   const audit = {
-    record: vi.fn((_tx: unknown, _entry: AuditEntry) => Promise.resolve()),
-    recordDetached: vi.fn((_entry: AuditEntry) => Promise.resolve()),
+    record: vi.fn((_tx: unknown, _shopId: string | null, _entry: AuditEntry) => Promise.resolve()),
+    recordDetached: vi.fn((_shopId: string | null, _entry: AuditEntry) => Promise.resolve()),
   };
   const settings = { get: () => Promise.resolve({ lowStockThreshold: SETTINGS_THRESHOLD }) };
 

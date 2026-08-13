@@ -118,7 +118,7 @@ export class SalesService {
         include: SALE_INCLUDE,
       });
 
-      await this.audit.record(tx, {
+      await this.audit.record(tx, actor.shopId, {
         actorId: actor.id,
         action: 'SALE_DRAFT_CREATED',
         entityType: 'Sale',
@@ -181,7 +181,7 @@ export class SalesService {
           throw staleResource(current?.updatedAt ?? before.updatedAt, precondition.expected);
         });
 
-      await this.audit.record(tx, {
+      await this.audit.record(tx, actor.shopId, {
         actorId: actor.id,
         action: 'SALE_DRAFT_UPDATED',
         entityType: 'Sale',
@@ -204,7 +204,7 @@ export class SalesService {
 
       await tx.sale.delete({ where: { id } });
 
-      await this.audit.record(tx, {
+      await this.audit.record(tx, actor.shopId, {
         actorId: actor.id,
         action: 'SALE_DRAFT_DELETED',
         entityType: 'Sale',

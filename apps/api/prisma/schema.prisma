@@ -372,7 +372,6 @@ model User {
   sessions             Session[]
   passwordResets       PasswordResetToken[]
   pushSubscriptions    PushSubscription[]
-  auditLogs            AuditLog[]
   stockMovements       StockMovement[]
   stocktakes           Stocktake[]
   salesCreated         Sale[]
@@ -1315,6 +1314,19 @@ model PushSubscription {
 /// h.k.) ham shu yerga yozishni talab qiladi — bunday amal SHOP_ADMIN
 /// hali Shop yaratmagan bosqichda sodir bo'ladi (§21.10), ya'ni `shopId`
 /// hali mavjud emas. Business yozuvlarda har doim to'ldiriladi.
+///
+/// `actorId` — QASDAN FK RELATSIYASIZ (6-bosqichda `User`ga bog'langan
+/// `@relation` olib tashlandi). Sabab: audit yozuvini ikki xil aktyor
+/// yozadi — biznes `User` (`shopId` bilan) VA platforma `PlatformAdmin`
+/// (§25.17, SHOP_ADMIN_CREATED va h.k.). `PlatformAdmin` esa §21.3
+/// bo'yicha business jadvallarga HECH QANDAY relation olmasligi shart —
+/// aks holda SUPERADMIN'ning "tenant data'ga structural jihatdan kira
+/// olmasligi" invarianti (§25.20) FK orqali teshilardi. Ikkala aktyor turi
+/// bitta ustunga bitta xil kalit fazosida (UUID) yozilishi mumkin emas va
+/// FK bitta jadvalga bog'lanishi shart bo'lgani uchun — `actorId` ataylab
+/// oddiy (indekslangan, lekin bog'lanmagan) ustun sifatida qoladi. Audit
+/// o'zgarmas (`PERMISSIONS.md` §4) va yozuvlar hech qachon join qilinmaydi
+/// (hozircha `GET /audit` yo'q) — FK yo'qligi amaliy xavf tug'dirmaydi.
 model AuditLog {
   id         String  @id @default(uuid()) @db.Uuid
   shopId     String? @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
@@ -1328,8 +1340,7 @@ model AuditLog {
   ip         String?
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  shop  Shop? @relation(fields: [shopId], references: [id], onDelete: SetNull)
-  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  shop Shop? @relation(fields: [shopId], references: [id], onDelete: SetNull)
 
   @@index([shopId, entityType, entityId])
   @@index([shopId, actorId, createdAt])

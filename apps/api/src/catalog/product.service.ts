@@ -125,7 +125,7 @@ export class ProductService {
         });
     });
 
-    await this.audit.recordDetached({
+    await this.audit.recordDetached(actor.shopId, {
       actorId: actor.id,
       action: 'PRODUCT_CREATED',
       entityType: 'Product',
@@ -204,7 +204,7 @@ export class ProductService {
 
       const changes = auditDiff(auditView(before), auditView(updated));
       if (hasChanges(changes)) {
-        await this.audit.record(tx, {
+        await this.audit.record(tx, actor.shopId, {
           actorId: actor.id,
           action: 'PRODUCT_UPDATED',
           entityType: 'Product',

@@ -68,8 +68,8 @@ function customer(
 function makeService(rows: Row[] = []) {
   const store = new Map(rows.map((row) => [row.id, row]));
   const audit = {
-    record: vi.fn((_tx: unknown, _entry: AuditEntry) => Promise.resolve()),
-    recordDetached: vi.fn((_entry: AuditEntry) => Promise.resolve()),
+    record: vi.fn((_tx: unknown, _shopId: string | null, _entry: AuditEntry) => Promise.resolve()),
+    recordDetached: vi.fn((_shopId: string | null, _entry: AuditEntry) => Promise.resolve()),
   };
   const queries: Prisma.CustomerWhereInput[] = [];
 
@@ -256,7 +256,7 @@ describe('CustomersService', () => {
         null,
       );
 
-      const entry = audit.recordDetached.mock.calls[0]?.[0];
+      const entry = audit.recordDetached.mock.calls[0]?.[1];
       const after = JSON.stringify(entry?.after);
       expect(after).not.toContain('7654321');
       expect(after).not.toContain('99887766554433');

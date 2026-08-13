@@ -4,8 +4,10 @@ import { ErrorCode, UserRole } from '@hisobai/contracts';
 import { AccountStatus, type PasswordResetToken, type Session, type User } from '@prisma/client';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { AuditService } from '../audit/audit.service';
 import { AppException } from '../common/app.exception';
 import type { RequestUser } from '../common/request-user';
+import { decideOperation } from '../database/prisma.service';
 import { AuthService } from './auth.service';
 import { hashPassword } from './password';
 
@@ -48,7 +50,7 @@ interface World {
   resetTokens: PasswordResetToken[];
 }
 
-function makeService(overrides: Partial<World> = {}) {
+function makeService(overrides: Partial<World> = {}, useRealAudit = false) {
   const world: World = {
     user: {
       id: ACTOR.id,
@@ -129,6 +131,21 @@ function makeService(overrides: Partial<World> = {}) {
         return Promise.resolve({ count: 1 });
       },
     },
+    /**
+     * §21.18 — REAL `decideOperation`ga ulangan (mock EMAS). `AuditLog`
+     * shop-scoped model, ya'ni ambient kontekst yo'q joyda chaqirilsa
+     * xuddi ishlab chiqarishdagi kabi `SHOP_CONTEXT_MISSING` tashlaydi.
+     * `useRealAudit=true` bo'lganda shu orqali haqiqiy `AuditService`
+     * ishlaydi — faqat qo'lda yozilgan `audit` double emas.
+     */
+    auditLog: {
+      create: (args: unknown) =>
+        decideOperation('AuditLog', 'create', {
+          runDirect: () => Promise.resolve({ id: 'log-1', ...(args as object) }),
+          runWrapped: () =>
+            Promise.reject(new Error('runWrapped chaqirilmasligi kerak edi (test)')),
+        }),
+    },
   };
 
   const prisma = {
@@ -140,11 +157,12 @@ function makeService(overrides: Partial<World> = {}) {
     get: (key: string) => (key === 'SESSION_TTL_DAYS' ? 30 : 'http://localhost:3000'),
   };
 
+  const realAudit = new AuditService(prisma as never);
   const service = new AuthService(
     prisma as never,
     config as never,
     throttle as never,
-    audit as never,
+    (useRealAudit ? realAudit : audit) as never,
     mail as never,
   );
 
@@ -244,6 +262,37 @@ describe('AuthService', () => {
 
       expect(world.user?.passwordHash).toBe(before);
       expect(activeSessionIds(world)).toHaveLength(3);
+    });
+
+    /**
+     * §21.18 — implementatsiya paytida topilgan haqiqiy xato: `AuditLog`
+     * `SHOP_SCOPE_EXEMPT_MODELS`da YO'Q, shuning uchun Shop'siz hisob
+     * (§21.10 — normal holat) uchun ambient kontekst umuman ochilmagan
+     * bo'lardi va oddiy audit yozuvi `SHOP_CONTEXT_MISSING` bilan
+     * qulab, BUTUN parol o'zgarishini (`$transaction` ROLLBACK) yiqitardi.
+     *
+     * Bu test **REAL `AuditService`** bilan ishlaydi (`makeService(...,
+     * true)`) — mock emas — shuning uchun `AuditService.record`ning
+     * `shopId === null` tarmog'i (`runWithoutShopScope()`) haqiqatan ham
+     * `decideOperation`ni to'g'ri yo'ldan o'tkazishini isbotlaydi.
+     */
+    it("§21.18 — Shop'siz SHOP_ADMIN parolini o'zgartirsa, audit yozuvi amalni YIQITMAYDI", async () => {
+      const { service, world } = makeService({}, true);
+      const shopLessActor: RequestUser = { ...ACTOR, shopId: null } as RequestUser;
+
+      await expect(
+        service.changePassword(
+          shopLessActor,
+          { currentPassword: PASSWORD, newPassword: 'yangiParol123' },
+          '10.0.0.1',
+        ),
+      ).resolves.toBeUndefined();
+
+      // Amalning o'zi HAQIQATAN bajarilgan — audit "muvaffaqiyatli
+      // qaytdi-yu, lekin tranzaksiya aslida rollback bo'ldi" degan
+      // yolg'on natija emas
+      expect(world.user?.passwordHash).not.toBe(passwordHash);
+      expect(activeSessionIds(world)).toEqual(['session-current']);
     });
   });
 

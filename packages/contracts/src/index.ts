@@ -13,5 +13,6 @@ export * from './schemas/customer';
 export * from './schemas/dashboard';
 export * from './schemas/exchange-rate';
 export * from './schemas/inventory';
+export * from './schemas/platform';
 export * from './schemas/sale';
 export * from './schemas/shop';

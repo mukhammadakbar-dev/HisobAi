@@ -18,6 +18,18 @@ const envSchema = z.object({
   SESSION_COOKIE_NAME: z.string().default('hisobai_session'),
   SESSION_TTL_DAYS: z.coerce.number().int().positive().default(30),
 
+  /**
+   * §21.3, `ARCHITECTURE.md` §14.3 — platforma (SUPERADMIN) sessiyasi
+   * **alohida** cookie'da yuradi. Bir xil cookie nomi ishlatilsa, bitta
+   * brauzerda business va platforma sessiyasi bir-birini ustidan yozib
+   * yuborardi (ikkalasi ham `SameSite=Strict`, `path=/`) — admin business
+   * panelida ochiq turgan holda `/platform/*`ga kirsa, business sessiyasi
+   * jimgina o'chib qolardi.
+   */
+  PLATFORM_SESSION_COOKIE_NAME: z.string().default('hisobai_platform_session'),
+  /** Platforma sessiyasi ham 30 kun — §2.7 bilan bir xil siyosat. */
+  PLATFORM_SESSION_TTL_DAYS: z.coerce.number().int().positive().default(30),
+
   /** §2.9 — 5 marta xato → 15 daqiqa blok. */
   LOGIN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
   LOGIN_BLOCK_MINUTES: z.coerce.number().int().positive().default(15),

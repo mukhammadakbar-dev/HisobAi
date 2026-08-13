@@ -67,10 +67,15 @@ function matchesFilter(actual: Date, filter: Date | { lte: Date } | undefined): 
   return actual.getTime() <= filter.lte.getTime();
 }
 
+interface CreateWorld {
+  shops: Shop[];
+  userShopId: string | null;
+}
+
 function makeService(initial: Shop = baseRow()) {
   let row = initial;
   // Argumentlar tiplanadi: test audit yozuvining MAZMUNINI tekshiradi
-  const audit = { record: vi.fn((_tx: unknown, _entry: AuditEntry) => Promise.resolve()) };
+  const audit = { record: vi.fn((_tx: unknown, _shopId: string | null, _entry: AuditEntry) => Promise.resolve()) };
 
   const model = {
     findUniqueOrThrow: () => Promise.resolve(row),
@@ -112,6 +117,58 @@ function makeService(initial: Shop = baseRow()) {
   return { service, audit, current: () => row };
 }
 
+/**
+ * `createShop()` (§25.6, §25.7) uchun alohida qurilma — `makeService()`
+ * dan farqli, bu yerda `user`, `cashCategory`, `cashAccount` delegatlari
+ * ham kerak (tovuq-tuxum oqimi butun qatorni yaratadi).
+ */
+function makeCreateShopService(userShopId: string | null = null) {
+  const world: CreateWorld = { shops: [], userShopId };
+  const audit = { record: vi.fn((_tx: unknown, _shopId: string | null, _entry: AuditEntry) => Promise.resolve()) };
+  const cashCategoryCreates: unknown[] = [];
+  const cashAccountCreates: unknown[] = [];
+
+  const model = {
+    shop: {
+      create: ({ data }: { data: Record<string, unknown> }) => {
+        const created = { ...baseRow(), ...data } as Shop;
+        world.shops.push(created);
+        return Promise.resolve(created);
+      },
+    },
+    user: {
+      updateMany: ({
+        where,
+        data,
+      }: {
+        where: { id: string; shopId: string | null };
+        data: { shopId: string };
+      }) => {
+        if (where.shopId !== world.userShopId) return Promise.resolve({ count: 0 });
+        world.userShopId = data.shopId;
+        return Promise.resolve({ count: 1 });
+      },
+    },
+    cashCategory: {
+      create: (args: unknown) => {
+        cashCategoryCreates.push(args);
+        return Promise.resolve({ id: `cat-${String(cashCategoryCreates.length)}` });
+      },
+    },
+    cashAccount: {
+      create: (args: unknown) => {
+        cashAccountCreates.push(args);
+        return Promise.resolve({ id: `acc-${String(cashAccountCreates.length)}` });
+      },
+    },
+  };
+
+  const prisma = { $transaction: (fn: (tx: unknown) => Promise<unknown>) => fn(model) };
+  const service = new ShopsService(prisma as never, audit as never);
+
+  return { service, audit, world, cashCategoryCreates, cashAccountCreates };
+}
+
 /** Formadan kelgan token — forma yuklangan versiyaga bog'langan. */
 function preconditionFor(updatedAt: Date) {
   return readPrecondition({ headers: {} } as unknown as Request, updatedAt.toISOString());
@@ -144,7 +201,7 @@ describe('ShopsService', () => {
     );
 
     expect(audit.record).toHaveBeenCalledOnce();
-    const entry = audit.record.mock.calls[0]?.[1];
+    const entry = audit.record.mock.calls[0]?.[2];
 
     expect(entry?.action).toBe('SHOP_UPDATED');
     expect(entry?.before).toEqual({ storeRateMarkupPercent: '0' });
@@ -207,5 +264,63 @@ describe('ShopsService', () => {
     await expect(
       withShop(() => service.update(ACTOR, { name: 'Ikkinchi' }, precondition, null)),
     ).rejects.toThrow(AppException);
+  });
+});
+
+/**
+ * `createShop()` — §25.6 (setup oqimi) va §25.7 (1 SHOP_ADMIN = 1 SHOP).
+ *
+ * Bu yerda `withShop()` ATAYLAB ishlatilmaydi: chaqiruvchi (Shop'siz
+ * SHOP_ADMIN) hech qanday ambient Shop kontekstiga ega emas — bu holat
+ * `createShop()`ning o'zi `runWithShopScope(newShopId, …)` bilan
+ * ichkaridan ochishi kerak (§25.6 izohidagi "tovuq-tuxum" mulohazasi).
+ * `withShop()` bilan o'ralgan test bu farqni yashirib qo'yardi.
+ */
+describe('ShopsService.createShop — setup oqimi (§25.6, §25.7)', () => {
+  const SHOPLESS_ACTOR: RequestUser = { ...ACTOR, shopId: null } as RequestUser;
+
+  it('Shop yaratiladi, accountga biriktiriladi va boshlang‘ich kassa tuziladi', async () => {
+    const { service, audit, world, cashCategoryCreates, cashAccountCreates } =
+      makeCreateShopService(null);
+
+    const dto = await service.createShop(SHOPLESS_ACTOR, { name: "Yangi do'kon" }, '::1');
+
+    expect(dto.name).toBe("Yangi do'kon");
+    expect(world.shops).toHaveLength(1);
+    // §25.7 — account darhol yangi Shop'ga bog'lanadi
+    expect(world.userShopId).toBe(world.shops[0]?.id);
+
+    // §11.10 — 7 kategoriya, 3 kassa hisobi (seed.mts bilan bir xil ro'yxat)
+    expect(cashCategoryCreates).toHaveLength(7);
+    expect(cashAccountCreates).toHaveLength(3);
+
+    // §21.18 emas — bu yerda Shop ALLAQACHON yaratilgan, shuning uchun
+    // audit yozuvi shopId'siz EMAS, yangi Shop'ning o'zi bilan yoziladi
+    expect(audit.record).toHaveBeenCalledOnce();
+    expect(audit.record.mock.calls[0]?.[1]).toBe(world.shops[0]?.id);
+    expect(audit.record.mock.calls[0]?.[2]?.action).toBe('SHOP_CREATED');
+  });
+
+  it("§25.7 — ikkinchi POST /shops SHOP_ALREADY_EXISTS bilan rad etiladi", async () => {
+    // Actor allaqachon Shop'ga ega (`updateMany`ning `shopId: null` sharti
+    // mos kelmaydi) — xuddi ikkinchi so'rov birinchisidan keyin kelgandek.
+    const { service, world } = makeCreateShopService('shop-mavjud');
+
+    await expect(
+      service.createShop(SHOPLESS_ACTOR, { name: 'Ikkinchi urinish' }, null),
+    ).rejects.toMatchObject({ code: ErrorCode.SHOP_ALREADY_EXISTS });
+
+    // Account eski Shop'iga bog'langanicha qoladi — ustidan yozilmagan
+    expect(world.userShopId).toBe('shop-mavjud');
+  });
+
+  it('har chaqiruvda YANGI, tasodifiy Shop id ishlatiladi (ikkinchi Shop birinchisining hisoblagichini davom ettirmaydi)', async () => {
+    const first = makeCreateShopService(null);
+    const second = makeCreateShopService(null);
+
+    const dto1 = await first.service.createShop(SHOPLESS_ACTOR, { name: 'A' }, null);
+    const dto2 = await second.service.createShop(SHOPLESS_ACTOR, { name: 'B' }, null);
+
+    expect(dto1.id).not.toBe(dto2.id);
   });
 });

@@ -121,7 +121,7 @@ export class CashAccountsService {
           throw error;
         });
 
-      await this.audit.record(tx, {
+      await this.audit.record(tx, actor.shopId, {
         actorId: actor.id,
         action: 'CASH_ACCOUNT_CREATED',
         entityType: 'CashAccount',
@@ -169,7 +169,7 @@ export class CashAccountsService {
 
       const diff = auditDiff(before, after, ['name', 'isActive', 'sortOrder']);
       if (hasChanges(diff)) {
-        await this.audit.record(tx, {
+        await this.audit.record(tx, actor.shopId, {
           actorId: actor.id,
           action: 'CASH_ACCOUNT_UPDATED',
           entityType: 'CashAccount',
@@ -223,7 +223,7 @@ export class CashAccountsService {
           throw error;
         });
 
-      await this.audit.record(tx, {
+      await this.audit.record(tx, actor.shopId, {
         actorId: actor.id,
         action: 'CASH_CATEGORY_CREATED',
         entityType: 'CashCategory',

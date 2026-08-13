@@ -111,7 +111,7 @@ export class CashEntriesService {
         include: ENTRY_INCLUDE,
       });
 
-      await this.audit.record(tx, {
+      await this.audit.record(tx, actor.shopId, {
         actorId: actor.id,
         action: 'CASH_ENTRY_CREATED',
         entityType: 'CashEntry',
@@ -171,7 +171,7 @@ export class CashEntriesService {
           throw error;
         });
 
-      await this.audit.record(tx, {
+      await this.audit.record(tx, actor.shopId, {
         actorId: actor.id,
         action: 'CASH_ENTRY_UPDATED',
         entityType: 'CashEntry',
@@ -200,7 +200,7 @@ export class CashEntriesService {
 
       await tx.cashEntry.delete({ where: { id } });
 
-      await this.audit.record(tx, {
+      await this.audit.record(tx, actor.shopId, {
         actorId: actor.id,
         action: 'CASH_ENTRY_DELETED',
         entityType: 'CashEntry',
@@ -262,7 +262,7 @@ export class CashEntriesService {
         include: ENTRY_INCLUDE,
       });
 
-      await this.audit.record(tx, {
+      await this.audit.record(tx, actor.shopId, {
         actorId: actor.id,
         action: 'CASH_OPENING_BALANCE_SET',
         entityType: 'CashEntry',
@@ -359,7 +359,7 @@ export class CashEntriesService {
         ],
       });
 
-      await this.audit.record(tx, {
+      await this.audit.record(tx, actor.shopId, {
         actorId: actor.id,
         action: 'CASH_EXCHANGED',
         entityType: 'CashExchange',

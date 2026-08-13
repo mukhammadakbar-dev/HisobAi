@@ -345,7 +345,7 @@ export class InventoryReceivingService {
     result: ReceiveResultDto,
     context: ReceiptContext,
   ): Promise<void> {
-    await this.audit.record(tx, {
+    await this.audit.record(tx, context.actor.shopId, {
       actorId: context.actor.id,
       action: 'INVENTORY_RECEIVED',
       // Qabul alohida jadval emas — `receiptId` harakatlardagi

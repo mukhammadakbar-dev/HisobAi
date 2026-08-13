@@ -92,7 +92,7 @@ export class CustomersService {
         throw await this.phoneTaken(input.phonePrimary);
       });
 
-    await this.audit.recordDetached({
+    await this.audit.recordDetached(actor.shopId, {
       actorId: actor.id,
       action: 'CUSTOMER_CREATED',
       entityType: 'Customer',
@@ -141,7 +141,7 @@ export class CustomersService {
 
       const changes = auditDiff(auditView(before), auditView(after));
       if (hasChanges(changes)) {
-        await this.audit.record(tx, {
+        await this.audit.record(tx, actor.shopId, {
           actorId: actor.id,
           action: 'CUSTOMER_UPDATED',
           entityType: 'Customer',

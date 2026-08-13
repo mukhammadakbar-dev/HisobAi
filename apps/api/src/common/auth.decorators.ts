@@ -5,6 +5,7 @@ export const PUBLIC_KEY = 'hisobai:public';
 export const ROLES_KEY = 'hisobai:roles';
 export const IDEMPOTENT_KEY = 'hisobai:idempotent';
 export const SHOP_EXEMPT_KEY = 'hisobai:shop-exempt';
+export const PLATFORM_ONLY_KEY = 'hisobai:platform-only';
 
 /**
  * Autentifikatsiyasiz ochiq endpoint (`PERMISSIONS.md` §1).
@@ -51,3 +52,25 @@ export const Idempotent = (): MethodDecorator => SetMetadata(IDEMPOTENT_KEY, tru
  */
 export const ShopExempt = (): MethodDecorator & ClassDecorator =>
   SetMetadata(SHOP_EXEMPT_KEY, true);
+
+/**
+ * Platforma (SUPERADMIN) endpointi (§21.3, `ARCHITECTURE.md` §14.3,
+ * `PERMISSIONS.md` §5).
+ *
+ * **`@Roles(...)` bilan bitta endpointda hech qachon ishlatilmaydi** —
+ * ular ikki mustaqil kirish tizimini ifodalaydi (business `SessionGuard`
+ * + `RolesGuard` va platforma `PlatformSessionGuard`). Bu qoida reviewer
+ * diqqatiga emas, `roles.guard.spec.ts` dagi struktura testiga tayanadi:
+ * u har bir kontroller metodini skanerlab, ikkalasi BIRGA
+ * qo'yilmaganini tasdiqlaydi — Nest metadata darajasida ikkalasini bitta
+ * dekoratordan qilib bo'lmaydi (`SetMetadata` mustaqil kalitlar bilan
+ * ishlaydi), shuning uchun kafolat testda.
+ *
+ * `RolesGuard` bu belgini ko'rsa business yo'lni butunlay chetlab o'tadi
+ * (`SHOP_SETUP_REQUIRED` tekshiruvi ham, rol tekshiruvi ham) — qaror
+ * allaqachon `PlatformSessionGuard`da qabul qilingan (u RAD ETADI, faqat
+ * ANIQLAMAYDI, `SessionGuard`dan farqli — platforma yo'lida bu ikkinchi
+ * qatlam yo'q).
+ */
+export const PlatformOnly = (): MethodDecorator & ClassDecorator =>
+  SetMetadata(PLATFORM_ONLY_KEY, true);

@@ -51,6 +51,21 @@ const shopFields = z
   .partial();
 
 /**
+ * `POST /shops` — SHOP_ADMIN o'ziga Shop yaratadi (§25.6, §25.7).
+ *
+ * Faqat `name` majburiy — §25.6 "kamida" nom, telefon, manzil va boshqa
+ * sozlamalarni sanaydi, lekin faqat nomsiz Shop ma'nosiz (login sahifasi,
+ * PDF va eksportlarda ko'rinadi, §3.6). Qolgan maydonlar `Shop`
+ * modelidagi default qiymatlar bilan boshlanadi va keyin `/shops/me`
+ * orqali to'ldiriladi — setup formasi bitta ekranda hammasini so'rashga
+ * majbur emas.
+ */
+export const createShopSchema = shopFields
+  .required({ name: true })
+  .strict();
+export type CreateShopInput = z.infer<typeof createShopSchema>;
+
+/**
  * `PATCH /shops/me` — `PERMISSIONS.md` P2 (mass assignment) himoyasi
  * `.strict()` bilan: `id`, `logoFileId`, `updatedById`, va endi (§21.4,
  * §21.6, §21.10) tenant-modelga xos `shopId`/`status` kabi maydonlar ham

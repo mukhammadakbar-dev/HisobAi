@@ -156,7 +156,7 @@ export class AuthService {
       throw AppException.notFound(ErrorCode.NOT_FOUND, 'Bunday faol sessiya topilmadi.');
     }
 
-    await this.audit.recordDetached({
+    await this.audit.recordDetached(actor.shopId, {
       actorId: actor.id,
       action: 'SESSION_REVOKED',
       entityType: 'Session',
@@ -172,7 +172,7 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
 
-    await this.audit.recordDetached({
+    await this.audit.recordDetached(actor.shopId, {
       actorId: actor.id,
       action: 'SESSION_REVOKED_ALL',
       entityType: 'Session',
@@ -236,7 +236,7 @@ export class AuthService {
         where: { userId: user.id, revokedAt: null, id: { not: actor.sessionId } },
         data: { revokedAt: new Date() },
       });
-      await this.audit.record(tx, {
+      await this.audit.record(tx, actor.shopId, {
         actorId: actor.id,
         action: 'PASSWORD_CHANGED',
         entityType: 'User',
@@ -326,12 +326,21 @@ export class AuthService {
         );
       }
 
-      await tx.user.update({ where: { id: record.userId }, data: { passwordHash } });
+      // `update()`ning o'zi javobida `shopId`ni beradi — §21.18 uchun
+      // qo'shimcha `findUnique` shart emas: bu @Public() yo'l (sessiyasiz),
+      // ya'ni `ShopContextInterceptor` hech qachon ambient kontekst
+      // OCHMAYDI — nishon foydalanuvchining `shopId`si bor-yo'qligidan
+      // qat'i nazar. Shuning uchun `AuditService.record` ga aniq qiymat
+      // (mumkin bo'lgan `null` bilan birga) uzatiladi.
+      const updated = await tx.user.update({
+        where: { id: record.userId },
+        data: { passwordHash },
+      });
       await tx.session.updateMany({
         where: { userId: record.userId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
-      await this.audit.record(tx, {
+      await this.audit.record(tx, updated.shopId, {
         actorId: record.userId,
         action: 'PASSWORD_RESET',
         entityType: 'User',

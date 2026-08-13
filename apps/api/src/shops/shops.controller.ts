@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Patch, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post, Req } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { UserRole, updateShopSchema } from '@hisobai/contracts';
-import type { ShopDto, UpdateShopInput } from '@hisobai/contracts';
+import { UserRole, createShopSchema, updateShopSchema } from '@hisobai/contracts';
+import type { CreateShopInput, ShopDto, UpdateShopInput } from '@hisobai/contracts';
 
-import { Roles } from '../common/auth.decorators';
+import { Roles, ShopExempt } from '../common/auth.decorators';
 import { CurrentUser } from '../common/current-user.decorator';
 import { readPrecondition } from '../common/optimistic-lock';
 import type { AuthedRequest, RequestUser } from '../common/request-user';
@@ -25,6 +25,33 @@ import { ShopsService } from './shops.service';
 @Controller('shops')
 export class ShopsController {
   constructor(private readonly shops: ShopsService) {}
+
+  /**
+   * §25.6, §25.7 — SHOP_ADMIN o'ziga Shop yaratadi.
+   *
+   * `@ShopExempt()` MAJBURIY: bu chaqiruv paytida `actor.shopId === null`
+   * (Shop hali yo'q — buni yaratish uchun chaqirilyapti). `@ShopExempt()`
+   * bo'lmasa `RolesGuard` bu yerga hech qachon yetib kelmagan bo'lardi —
+   * `SHOP_SETUP_REQUIRED` bilan aynan shu endpointning o'zini to'sib
+   * qo'yardi (`roles.guard.spec.ts`dagi "Shop'siz account" mantiqi).
+   *
+   * SUPERADMIN bu endpointni chaqira olmaydi (§25.5) — bu `@Roles(SHOP_ADMIN)`
+   * bilan avtomatik ta'minlangan: SUPERADMIN business `users` jadvalida
+   * umuman yo'q (§21.3), ya'ni `request.user` uning uchun hech qachon
+   * to'ldirilmaydi.
+   */
+  @Post()
+  @Roles(UserRole.SHOP_ADMIN)
+  @ShopExempt()
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: "Do'kon yaratish — 1 SHOP_ADMIN = 1 SHOP (§25.7)" })
+  create(
+    @Body(new ZodValidationPipe(createShopSchema)) body: CreateShopInput,
+    @CurrentUser() user: RequestUser,
+    @Req() request: AuthedRequest,
+  ): Promise<ShopDto> {
+    return this.shops.createShop(user, body, request.ip ?? null);
+  }
 
   @Get('me')
   @Roles(UserRole.SHOP_ADMIN)

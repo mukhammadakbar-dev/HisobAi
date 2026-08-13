@@ -142,8 +142,12 @@ export const ErrorCode = {
   // ── Shop / tenant (§14.4, §14.8, §21.7, §21.10) ─────────────────────────
   /** Account bor, Shop yo'q — `409`, frontend `/app/setup-shop`ga yo'naltiradi. */
   SHOP_SETUP_REQUIRED: 'SHOP_SETUP_REQUIRED',
+  /** §25.7 — 1 SHOP_ADMIN = 1 SHOP. Ikkinchi `POST /shops` — `409`. */
+  SHOP_ALREADY_EXISTS: 'SHOP_ALREADY_EXISTS',
   /** Ichki xato: shop-scoped so'rov Shop kontekstisiz bajarildi (`500`). */
   SHOP_CONTEXT_MISSING: 'SHOP_CONTEXT_MISSING',
+  /** `POST /platform/shop-admins` — email band (`CUSTOMER_PHONE_TAKEN` bilan bir xil naqsh). */
+  SHOP_ADMIN_EMAIL_TAKEN: 'SHOP_ADMIN_EMAIL_TAKEN',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

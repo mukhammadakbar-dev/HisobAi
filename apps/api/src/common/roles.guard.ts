@@ -3,7 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { ErrorCode, UserRole } from '@hisobai/contracts';
 
 import { AppException } from './app.exception';
-import { PUBLIC_KEY, ROLES_KEY, SHOP_EXEMPT_KEY } from './auth.decorators';
+import { PLATFORM_ONLY_KEY, PUBLIC_KEY, ROLES_KEY, SHOP_EXEMPT_KEY } from './auth.decorators';
 import type { AuthedRequest } from './request-user';
 
 export type { RequestUser } from './request-user';
@@ -27,6 +27,24 @@ export class RolesGuard implements CanActivate {
     const targets = [context.getHandler(), context.getClass()];
 
     if (this.reflector.getAllAndOverride<boolean>(PUBLIC_KEY, targets) === true) {
+      return true;
+    }
+
+    /**
+     * `@PlatformOnly()` — bu yo'lning ruxsat qarori `PlatformSessionGuard`da
+     * allaqachon qabul qilingan (u business `SessionGuard`dan farqli, RAD
+     * ham ETADI, faqat aniqlab qo'ymaydi — §21.3 platforma yo'lida
+     * ikkinchi qatlam yo'q). `RolesGuard` shu yerda faqat "business rol
+     * mantig'i bu endpointga aralashmasin" deb chetga chiqadi.
+     *
+     * `@Roles(...)` bilan bitta endpointda BIRGA kelmasligi
+     * `auth.decorators.ts`dagi `PlatformOnly()` izohida tasvirlangan
+     * strukturaviy testda tekshiriladi (`roles.guard.spec.ts`) — shu
+     * sabab bu yerda ikkalasi ham o'qilgan bo'lsa xato tashlash SHART
+     * emas: default DENY baribir buzilmaydi, chunki ikkalasi bir vaqtda
+     * true bo'lgan holatning o'zi kod bazasida yo'qligi testda qotiriladi.
+     */
+    if (this.reflector.getAllAndOverride<boolean>(PLATFORM_ONLY_KEY, targets) === true) {
       return true;
     }
 

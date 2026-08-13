@@ -42,6 +42,19 @@ export const UserRole = {
 } as const;
 export type UserRole = (typeof UserRole)[keyof typeof UserRole];
 
+/**
+ * §21.6 — §25.18 (Shop status) va §25.19 (account status) birlashtirilgan
+ * yagona status. `SUPERADMIN` boshqaradi (`PATCH /platform/shop-admins/:id/status`),
+ * `SessionGuard` esa har so'rovda tekshiradi — sessiya bekor qilinmagan
+ * bo'lsa ham, chunki blok faqat keyingi kirishda kuchga kirishi yetarli emas.
+ */
+export const AccountStatus = {
+  ACTIVE: 'ACTIVE',
+  SUSPENDED: 'SUSPENDED',
+  DISABLED: 'DISABLED',
+} as const;
+export type AccountStatus = (typeof AccountStatus)[keyof typeof AccountStatus];
+
 export const Theme = {
   SYSTEM: 'SYSTEM',
   LIGHT: 'LIGHT',

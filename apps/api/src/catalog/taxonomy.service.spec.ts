@@ -60,8 +60,8 @@ function makeService(
   };
   const products = new Map((options.products ?? []).map((p) => [p.id, p]));
   const audit = {
-    record: vi.fn((_tx: unknown, _entry: AuditEntry) => Promise.resolve()),
-    recordDetached: vi.fn((_entry: AuditEntry) => Promise.resolve()),
+    record: vi.fn((_tx: unknown, _shopId: string | null, _entry: AuditEntry) => Promise.resolve()),
+    recordDetached: vi.fn((_shopId: string | null, _entry: AuditEntry) => Promise.resolve()),
   };
 
   const withCount = (r: Row) => ({
@@ -398,7 +398,7 @@ describe('TaxonomyService — birlashtirish (§4.4)', () => {
     await service.merge('brand', 'src', 'tgt', precondition(UPDATED_AT), ACTOR, null);
 
     expect(audit.record).toHaveBeenCalledOnce();
-    const entry = audit.record.mock.calls[0]?.[1];
+    const entry = audit.record.mock.calls[0]?.[2];
     expect(entry?.action).toBe('BRAND_MERGED');
     expect(entry?.after).toMatchObject({ targetId: 'tgt', movedProductCount: 1 });
   });

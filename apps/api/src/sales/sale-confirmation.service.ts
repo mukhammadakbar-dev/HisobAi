@@ -139,7 +139,7 @@ export class SaleConfirmationService {
         });
 
         // 7 — audit
-        await this.audit.record(tx, {
+        await this.audit.record(tx, actor.shopId, {
           actorId: actor.id,
           action: 'SALE_CONFIRMED',
           entityType: 'Sale',

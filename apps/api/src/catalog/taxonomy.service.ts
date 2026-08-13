@@ -115,7 +115,7 @@ export class TaxonomyService {
         throw await this.duplicateName(kind, slug);
       });
 
-    await this.audit.recordDetached({
+    await this.audit.recordDetached(actor.shopId, {
       actorId: actor.id,
       action: `${AUDIT_ENTITY[kind].toUpperCase()}_CREATED`,
       entityType: AUDIT_ENTITY[kind],
@@ -187,7 +187,7 @@ export class TaxonomyService {
           { name: after.name, slug: after.slug, isActive: after.isActive },
         );
         if (hasChanges(changes)) {
-          await this.audit.record(tx, {
+          await this.audit.record(tx, actor.shopId, {
             actorId: actor.id,
             action: `${AUDIT_ENTITY[kind].toUpperCase()}_UPDATED`,
             entityType: AUDIT_ENTITY[kind],
@@ -290,7 +290,7 @@ export class TaxonomyService {
           await this.rebuildProductNames(tx, { brandId: targetId }, target.name);
         }
 
-        await this.audit.record(tx, {
+        await this.audit.record(tx, actor.shopId, {
           actorId: actor.id,
           action: `${AUDIT_ENTITY[kind].toUpperCase()}_MERGED`,
           entityType: AUDIT_ENTITY[kind],
