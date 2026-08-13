@@ -525,6 +525,22 @@ hal qilinishi shart bo'lganlari.
 
 ---
 
+## 20. 5-bosqich qarorlari (2026-08-13 — naqd savdo va kassa)
+
+| #    | Qaror | Sabab |
+|------|-------|-------|
+| 20.1 | **Nasiya savdo bu bosqichda yo'q** — `createSaleDraftSchema.kind` faqat `CASH` qabul qiladi, formada `kind` tanlovi umuman ko'rsatilmaydi | §22 nasiyani 7-bosqichga qo'ygan, chunki u shartnoma va to'lov jadvalini talab qiladi (§9.1, §9.5). Ularsiz `INSTALLMENT` savdo qarzni hech qayerda qoldirmasdan "yo'qotardi": ombor kamayadi, kassaga pul tushmaydi, qarz esa hech qanday jadvalda ko'rinmaydi. Naqd savdoda §17.10 buni to'sadi — to'lovlar summasi savdo summasiga teng bo'lmasa tasdiqlanmaydi |
+| 20.2 | **Savdo kartasida "Qaytarish" va "Bekor qilish" tugmalari yo'q** — karta faqat o'qish uchun | Qaytarish moduli 6-bosqichda (§22). Bosilganda "endpoint topilmadi" beradigan tugma — §19.5 dagi bo'sh `history` endpointi bilan bir xil xato: mavjud bo'lmagan imkoniyatni ko'rsatish. Tasdiqlangan savdo o'zgarmasligi (§21) esa ekranda shundoq ham ko'rinadi |
+| 20.3 | **Kalkulyator (§12.6) suzuvchi tugma emas** — u savdo formasida narx maydonining yonidan ochiladi | `FRONTEND.md` §4 ekranda **bitta** suzuvchi tugmaga ruxsat beradi va u — "Yangi savdo" (§14.6). Ikkinchi suzuvchi tugma telefonda birinchisining ustiga tushardi yoki pastki navigatsiyani yopardi. §12.6 dagi "har ekrandan" talabi shu bilan qisman bajarilmadi va bu ataylab: kalkulyator kerak bo'ladigan yagona ekran — savdo formasi (§7.10), qolgan joyda u hech qanday maydonni to'ldirmaydi |
+| 20.4 | **Valyuta aylantirish `contracts/money.ts` ga ko'chirildi** (`convertMoney`), server `convert` esa uni chaqiradi | To'lov boshqa valyutada bo'lsa, savdo formasi "qancha qoldi" ni ko'rsatishi kerak, server esa §17.10 ni aynan shu hisob bilan tekshiradi. Ikki joyda ikki xil yozilsa, ega "qoldi: 0" ni ko'rib tugmani bosardi va `SALE_PAYMENT_MISMATCH` olardi — hech kim tushuntira olmaydigan holat. Bu §19.3 (telefon normalizatsiyasi) va `slugifyCatalogName` bilan bir xil naqsh: qoida bitta, ikkala ilova ishlatadi (`FRONTEND.md` §6.1). Hisob butunlay `BigInt` ustida — `Decimal.div` dan farqi faqat 20-chi ahamiyatli raqamda bo'lishi mumkin, u esa pul aniqligidan ancha past |
+| 20.5 | **Valyuta ayirboshlash (§11.6) UI'siz qoldi** — `POST /cashbook/exchange` bor, ekrani yo'q | §22 uni "Kengaytirish" (10-bosqich) ro'yxatiga qo'ygan, MVP-1 ga emas. Endpoint kassa modulining ichki mantiqi bilan birga yozilgani uchun qoldirildi (uni olib tashlash `CashExchange` jadvalini ham yetim qilardi), lekin ekran qo'shilmadi: ayirboshlash kunlik ish emas va usiz kassa to'liq ishlaydi |
+| 20.6 | **Telefonda pastki navigatsiya beshta elementga bo'lindi** — Boshqaruv · Savdo · Ombor · Mijozlar · **Yana** (varaqda: Katalog, Kassa, Sozlamalar, Xavfsizlik) | `FRONTEND.md` §4 aynan shu tuzilmani talab qiladi. 4-bosqichda oltita element bir qatorda edi va hali sig'ardi; savdo bilan kassa qo'shilgach ettita bo'lardi — 375px kenglikda bosish maydoni 44px dan tor bo'lib qolardi (`design.md` §6) |
+| 20.7 | **Savdo sanasi:** bugungi kun tanlansa **hozirgi vaqt** yuboriladi, orqaga qo'yilganda esa o'sha kunning tush payti (`12:00+05:00`) | Sana maydoni faqat kunni beradi. Bugungi kun uchun `00:00` yuborilsa, savdo bir necha soat orqaga surilardi va kunlik ro'yxatda tartib buzilardi; orqadagi kun uchun esa `00:00` zona chegarasida oldingi kunga tushib ketishi mumkin. Toshkentda yozgi vaqt yo'q, ofset doimiy |
+| 20.8 | **"Tasdiqlash" avval qoralamani saqlaydi** — yangi savdo bo'lsa `POST /sales`, keyin `POST /sales/:id/confirm` | Tasdiqlash marshruti savdo `id` sini talab qiladi (`ARCHITECTURE.md` §6 — tranzaksiya mavjud qoralama ustida ishlaydi). Egadan avval "Saqlash", keyin "Tasdiqlash" bosishini talab qilish — ikki bosishlik ortiqcha qadam, va u unutilgan qoralamalar qoldirardi. `Idempotency-Key` forma ochilganda bir marta yaratilgani uchun takroriy bosish ikkinchi savdo yaratmaydi (§17.6) |
+| 20.9 | **Kassa yozuviga ilova (chek surati, §11.9) qo'shilmadi** | §18.1, §19.2 va §19.7 bilan bir xil sabab: fayl `Storage` modulini talab qiladi va u 9-bosqichda. `cash_entries` da fayl ustuni schema'da allaqachon bor, ya'ni keyin qo'shish forma maydoni bo'ladi, migratsiya emas |
+
+---
+
 ## Ochiq savollar
 
 | Mavzu | Savol |

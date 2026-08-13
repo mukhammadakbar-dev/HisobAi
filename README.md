@@ -2,16 +2,18 @@
 
 Telefon do'konlari uchun ombor, savdo, nasiya, kassa va AI tahlil CRM'i.
 
-**Holat:** v0.2.1 — **4-bosqich tugadi**. Kesuvchi poydevor (xato formati,
-validatsiya, idempotency, pul serializatsiyasi, pagination, ruxsat, rate
-limiting), auth va sozlamalar, valyuta kursi, **katalog va ombor**
-(kategoriya/brend birlashtirish bilan, mahsulot shabloni, seriyali birlik
-va partiya, qabul qilish), so'ngra **mijozlar** (E.164 normalizatsiyasi,
-dublikat tekshiruvi, belgilash va arxivlash) ishlaydi. Ekranlar:
+**Holat:** v0.2.1 — **5-bosqich tugadi, MVP-1 yakunlandi**. Kesuvchi
+poydevor (xato formati, validatsiya, idempotency, pul serializatsiyasi,
+pagination, ruxsat, rate limiting), auth va sozlamalar, valyuta kursi,
+**katalog va ombor** (kategoriya/brend birlashtirish bilan, mahsulot
+shabloni, seriyali birlik va partiya, qabul qilish), **mijozlar** (E.164
+normalizatsiyasi, dublikat tekshiruvi, belgilash va arxivlash), so'ngra
+**naqd savdo va kassa** (qoralama, tasdiqlash tranzaksiyasi, aralash
+to'lov, kassa hisoblari va yozuvlari, boshlang'ich qoldiq, dashboard)
+ishlaydi. Ekranlar: `/dashboard`, `/sales`, `/sales/new`, `/cashbook`,
 `/products`, `/inventory`, qabul formasi, `/customers`,
-`/settings/catalog`. Biznes modullari
-`docs/TZ.md` §22 dagi tartibda davom etadi (keyingi bosqich — **naqd savdo
-va kassa**).
+`/settings/catalog`. Biznes modullari `docs/TZ.md` §22 dagi tartibda
+davom etadi (keyingi bosqich — **qaytarish va bekor qilish**, MVP-2).
 
 ## Hujjatlar
 

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 
-import { ThemeToggle } from '../../../components/layout/theme-toggle';
+import { ThemeSystemReset, ThemeToggle } from '../../../components/layout/theme-toggle';
 import { Card } from '../../../components/ui';
 import { useCurrentUser } from '../../../features/auth/queries';
 import { RateCard } from '../../../features/exchange-rates/components/rate-card';
@@ -48,7 +48,12 @@ export default function SettingsPage() {
               Tanlov shu brauzerda saqlanadi (TZ §2).
             </p>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-1">
+            {/* Qo'lda tanlangandagina ko'rinadi — TZ §2 dagi "tizim
+                mavzusiga moslashish" shu tugma orqali qaytariladi */}
+            <ThemeSystemReset />
+            <ThemeToggle />
+          </div>
         </div>
 
         <div className="border-t border-border-soft pt-4">

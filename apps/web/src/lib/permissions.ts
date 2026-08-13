@@ -30,7 +30,9 @@ export type Action =
   /** §6.5, §6.7 — passport ma'lumoti. */
   | 'passport.view'
   /** `PERMISSIONS.md` P7 — `SELLER` tannarxni ko'rmaydi. */
-  | 'cost.view';
+  | 'cost.view'
+  /** `PERMISSIONS.md` §2 — kassa qoldiqlari `SELLER` ga yopiq (dashboard bloki ham). */
+  | 'cashbook.view';
 
 /**
  * `OWNER` dan boshqa rollarga **yopiq** amallar (`PERMISSIONS.md` §2).
@@ -49,6 +51,7 @@ const RESTRICTED: readonly Action[] = [
   'catalog.edit',
   'inventory.receive',
   'cost.view',
+  'cashbook.view',
   'customer.archive',
   'passport.view',
 ];

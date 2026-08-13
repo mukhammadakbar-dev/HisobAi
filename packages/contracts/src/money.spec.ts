@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { Currency } from './enums';
 import {
+  convertMoney,
   formatMoney,
   formatMoneyWithCurrency,
   formatRate,
@@ -172,5 +173,40 @@ describe('multiplyMoney', () => {
 
   it("kasr ko'paytuvchi rad etiladi", () => {
     expect(() => multiplyMoney('25000', 1.5, Currency.UZS)).toThrow(TypeError);
+  });
+});
+
+describe('convertMoney (§1.7, §1.9)', () => {
+  it("bir xil valyutada faqat yaxlitlaydi — kurs ta'sir qilmaydi", () => {
+    expect(convertMoney('12500.6', Currency.UZS, Currency.UZS, '12500')).toBe('12501');
+    expect(convertMoney('1.005', Currency.USD, Currency.USD, '12500')).toBe('1.01');
+  });
+
+  it('USD → UZS: kursga ko‘paytiriladi, butun so‘mgacha', () => {
+    expect(convertMoney('100', Currency.USD, Currency.UZS, '12500')).toBe('1250000');
+    // 1.55 × 12345.6789 = 19135.802295 → 19136
+    expect(convertMoney('1.55', Currency.USD, Currency.UZS, '12345.6789')).toBe('19136');
+  });
+
+  it('UZS → USD: kursga bo‘linadi, ikki kasr xonagacha', () => {
+    expect(convertMoney('1250000', Currency.UZS, Currency.USD, '12500')).toBe('100.00');
+    expect(convertMoney('12500', Currency.UZS, Currency.USD, '12500')).toBe('1.00');
+  });
+
+  it('yaxlitlash ROUND_HALF_UP — yarmi yuqoriga ketadi', () => {
+    // 6250 / 12500 = 0.5 so'm → 0.5 sent, ya'ni 0.01 USD ga yaxlitlanadi
+    expect(convertMoney('62.5', Currency.UZS, Currency.USD, '12500')).toBe('0.01');
+    expect(convertMoney('62', Currency.UZS, Currency.USD, '12500')).toBe('0.00');
+  });
+
+  it("katta summada aniqlik yo'qolmaydi", () => {
+    // `number` bilan hisoblansa 2^53 chegarasida xato bo'lardi
+    expect(convertMoney('9007199254740993', Currency.USD, Currency.UZS, '2')).toBe(
+      '18014398509481986',
+    );
+  });
+
+  it("kurs musbat bo'lishi shart", () => {
+    expect(() => convertMoney('100', Currency.USD, Currency.UZS, '0')).toThrow(RangeError);
   });
 });

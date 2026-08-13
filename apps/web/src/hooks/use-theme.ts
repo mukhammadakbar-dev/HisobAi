@@ -84,11 +84,44 @@ function applyTheme(next: ThemeChoice): void {
   });
 }
 
-export function useTheme(): { theme: ThemeChoice; setTheme: (next: ThemeChoice) => void } {
+/**
+ * Ekranda AYNI PAYTDA turgan ko'rinish — `'system'` hal qilingan holda.
+ *
+ * Manba `data-theme` atributi: uni `layout.tsx` dagi skript React'dan
+ * oldin qo'yadi, ya'ni atribut har doim ekrandagi haqiqatni bildiradi.
+ * Atribut yo'q bo'lsa (tizim bo'yicha) — brauzerdan so'raladi, xuddi
+ * CSS `@media` kabi.
+ *
+ * Faqat brauzerda chaqiriladi (bosish paytida), shuning uchun `document`
+ * ga murojaat xavfsiz.
+ */
+function resolvedTheme(): 'light' | 'dark' {
+  const attribute = document.documentElement.getAttribute('data-theme');
+  if (attribute === 'dark' || attribute === 'light') return attribute;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+export function useTheme(): {
+  theme: ThemeChoice;
+  setTheme: (next: ThemeChoice) => void;
+  toggleTheme: () => void;
+} {
   const theme = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const setTheme = useCallback((next: ThemeChoice) => {
     applyTheme(next);
   }, []);
 
-  return { theme, setTheme };
+  /**
+   * Joriy ko'rinishni teskarisiga o'giradi.
+   *
+   * Tizim bo'yicha turgan foydalanuvchi uchun ham javob aniq: u ekranda
+   * nimani ko'rsa, o'shaning aksiga o'tadi va tanlov shu daqiqadan
+   * boshlab **qo'lda** bo'ladi. Tizimga qaytish — Sozlamalardagi
+   * "Tizim bo'yicha" tugmasi.
+   */
+  const toggleTheme = useCallback(() => {
+    applyTheme(resolvedTheme() === 'dark' ? 'light' : 'dark');
+  }, []);
+
+  return { theme, setTheme, toggleTheme };
 }

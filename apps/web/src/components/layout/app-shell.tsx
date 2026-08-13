@@ -1,8 +1,21 @@
 'use client';
 
-import { Boxes, LayoutDashboard, LogOut, Settings, ShieldCheck, Tags, Users } from 'lucide-react';
+import {
+  Boxes,
+  LayoutDashboard,
+  LogOut,
+  MoreHorizontal,
+  Plus,
+  Receipt,
+  Settings,
+  ShieldCheck,
+  Tags,
+  Users,
+  Wallet,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { CurrentUserDto } from '@hisobai/contracts';
 
@@ -16,13 +29,14 @@ import { ThemeToggle } from './theme-toggle';
 /**
  * Ilova qobig'i (`FRONTEND.md` §4).
  *
- * Telefonda pastki navigatsiya, noutbukda chap yon menyu. Ro'yxat
- * bosqichma-bosqich o'sadi: hozir boshqaruv, katalog, ombor, mijozlar
- * va sozlamalar bor; savdo va kassa o'z bosqichida qo'shiladi.
+ * Noutbukda chap yon menyuda **hamma** bo'lim ko'rinadi. Telefonda esa
+ * pastda faqat beshta element bo'ladi — qolgani "Yana" varag'ida.
+ * Sabab jismoniy: 375px kenglikda oltinchi elementdan boshlab bosish
+ * maydoni 44px dan tor bo'lib qoladi (`design.md` §6) va yonidagini
+ * bosib yuborish oson bo'ladi.
  *
- * "Yangi savdo" suzuvchi tugmasi (§14.6) 5-bosqichda qo'shiladi —
- * savdo formasi paydo bo'lgandan keyin, aks holda u hech qayerga
- * olib bormaydigan tugma bo'lardi.
+ * Ro'yxat bosqichma-bosqich o'sadi: nasiya, to'lovlar, hisobotlar va
+ * AI tahlil o'z bosqichlarida qo'shiladi (`TZ.md` §22).
  */
 interface NavItem {
   href: string;
@@ -30,14 +44,23 @@ interface NavItem {
   icon: typeof LayoutDashboard;
 }
 
-const NAV: NavItem[] = [
+/** Telefonda pastki qatorda turadigan to'rttasi + "Yana" (§4). */
+const PRIMARY_NAV: NavItem[] = [
   { href: '/dashboard', label: 'Boshqaruv', icon: LayoutDashboard },
-  { href: '/products', label: 'Katalog', icon: Tags },
+  { href: '/sales', label: 'Savdo', icon: Receipt },
   { href: '/inventory', label: 'Ombor', icon: Boxes },
   { href: '/customers', label: 'Mijozlar', icon: Users },
+];
+
+/** "Yana" varag'idagilar; noutbukda ular ham yon menyuda turadi. */
+const SECONDARY_NAV: NavItem[] = [
+  { href: '/products', label: 'Katalog', icon: Tags },
+  { href: '/cashbook', label: 'Kassa', icon: Wallet },
   { href: '/settings', label: 'Sozlamalar', icon: Settings },
   { href: '/settings/security', label: 'Xavfsizlik', icon: ShieldCheck },
 ];
+
+const NAV: NavItem[] = [...PRIMARY_NAV, ...SECONDARY_NAV];
 
 export function AppShell({ user, children }: { user: CurrentUserDto; children: ReactNode }) {
   const pathname = usePathname();
@@ -46,6 +69,12 @@ export function AppShell({ user, children }: { user: CurrentUserDto; children: R
   const logout = useLogout();
   const settings = useSettings();
   const todayRate = useTodayRate();
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  // Varaq bo'lim almashganda ochiq qolmasin — orqaga qaytishda ham
+  useEffect(() => {
+    setMoreOpen(false);
+  }, [pathname]);
 
   const handleLogout = (): void => {
     logout.mutate(undefined, {
@@ -99,13 +128,43 @@ export function AppShell({ user, children }: { user: CurrentUserDto; children: R
         <main className="min-w-0 flex-1">{children}</main>
       </div>
 
-      {/* Telefonda pastki navigatsiya */}
+      {/*
+        §14.6 — YAGONA suzuvchi tugma: "Yangi savdo". `FRONTEND.md` §4
+        boshqa suzuvchi tugma qo'shishni taqiqlaydi, shuning uchun
+        kalkulyator ham savdo formasidagi narx maydonining yonida
+        turadi (§12.6), ekranda emas.
+
+        Savdo formasining o'zida u ko'rinmaydi: o'sha sahifada tugma
+        turgan joyni "Tasdiqlash" egallaydi va ikkitasi bir-birini
+        bosib qolardi.
+      */}
+      {!pathname.startsWith('/sales/') && (
+        <Link
+          href="/sales/new"
+          className="fixed right-4 bottom-20 inline-flex min-h-14 items-center gap-2 rounded-full bg-action px-5 text-sm font-semibold text-action-text shadow-lg md:bottom-6"
+        >
+          <Plus size={20} aria-hidden="true" />
+          Yangi savdo
+        </Link>
+      )}
+
+      {/* Telefonda pastki navigatsiya — beshta element (§4) */}
       <nav
         aria-label="Asosiy menyu"
         className="fixed inset-x-0 bottom-0 border-t border-border-default bg-surface-card md:hidden"
       >
+        {moreOpen && (
+          <ul className="m-0 flex list-none flex-col gap-1 border-b border-border-default p-2">
+            {SECONDARY_NAV.map((item) => (
+              <li key={item.href}>
+                <NavLink item={item} active={active === item.href} />
+              </li>
+            ))}
+          </ul>
+        )}
+
         <ul className="m-0 flex list-none justify-around p-0">
-          {NAV.map((item) => (
+          {PRIMARY_NAV.map((item) => (
             <li key={item.href} className="flex-1">
               <Link
                 href={item.href}
@@ -119,6 +178,24 @@ export function AppShell({ user, children }: { user: CurrentUserDto; children: R
               </Link>
             </li>
           ))}
+
+          <li className="flex-1">
+            <button
+              type="button"
+              onClick={() => {
+                setMoreOpen((open) => !open);
+              }}
+              aria-expanded={moreOpen}
+              className={`flex min-h-14 w-full flex-col items-center justify-center gap-1 text-xs ${
+                moreOpen || SECONDARY_NAV.some((item) => item.href === active)
+                  ? 'text-action'
+                  : 'text-text-secondary'
+              }`}
+            >
+              <MoreHorizontal size={20} aria-hidden="true" />
+              Yana
+            </button>
+          </li>
         </ul>
       </nav>
     </div>

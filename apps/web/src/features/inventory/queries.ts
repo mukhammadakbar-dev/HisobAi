@@ -50,12 +50,19 @@ export const inventoryApi = {
     api.post('/inventory/receive', input, { idempotencyKey }),
 };
 
+/**
+ * `enabled` — savdo formasi uchun: mahsulot tanlanmaguncha so'rov
+ * yuborilmasin. Filtrsiz `GET /inventory` butun omborni tortib kelardi
+ * va u savat qatoriga hech qanday foyda bermaydi.
+ */
 export function useInventoryItems(
   filters: InventoryFilters,
+  enabled = true,
 ): UseQueryResult<Page<InventoryItemDto>, ApiError> {
   return useQuery<Page<InventoryItemDto>, ApiError>({
     queryKey: inventoryKeys.items(filters),
     queryFn: () => inventoryApi.items(filters),
+    enabled,
     placeholderData: (previous) => previous,
   });
 }
@@ -67,10 +74,14 @@ export function useInventoryItem(id: string): UseQueryResult<InventoryItemDetail
   });
 }
 
-export function useBatches(productId?: string): UseQueryResult<Page<InventoryBatchDto>, ApiError> {
+export function useBatches(
+  productId?: string,
+  enabled = true,
+): UseQueryResult<Page<InventoryBatchDto>, ApiError> {
   return useQuery<Page<InventoryBatchDto>, ApiError>({
     queryKey: inventoryKeys.batches(productId),
     queryFn: () => inventoryApi.batches(productId),
+    enabled,
   });
 }
 

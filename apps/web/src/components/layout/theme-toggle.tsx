@@ -1,52 +1,75 @@
 'use client';
 
-import { useTheme, type ThemeChoice } from '../../hooks/use-theme';
+import { Moon, Sun } from 'lucide-react';
+
+import { useTheme } from '../../hooks/use-theme';
 
 /**
- * Mavzu tanlash (TZ §2 — tanlov saqlanadi va tizim mavzusiga moslasha oladi).
+ * Mavzu tugmasi (TZ §2 — tanlov saqlanadi va tizim mavzusiga moslasha oladi).
  *
- * Uch holat: `system` — `data-theme` umuman qo'yilmaydi va `@media`
- * ishlaydi; `light`/`dark` — atribut qo'yiladi va media so'rovidan ustun
- * turadi (`globals.css` dagi `:not([data-theme='light'])` shuning uchun).
+ * Bitta tugma, ikkita ikonka: yorug'da **oy** (bosilsa qorong'iga
+ * o'tadi), qorong'ida **quyosh**. Uchta tugmali tanlov o'rniga shu
+ * ataylab: kundalik amal bitta — "ko'zimga yorug'/qorong'i keldi", va u
+ * bir bosishda bajarilishi kerak. Tizim rejimiga qaytish kamdan-kam
+ * kerak bo'ladi, shuning uchun u Sozlamalarda (`ThemeSystemReset`).
+ *
+ * Qaysi ikonka ko'rinishini **CSS** hal qiladi (`globals.css` dagi
+ * `.theme-light-only` / `.theme-dark-only`), React emas: `data-theme`
+ * sahifa chizilishidan oldin qo'yiladi va serverdagi render mavzuni
+ * bilmaydi — JS bilan tanlansa, tugma bir zum noto'g'ri ikonka bilan
+ * miltillardi.
  *
  * Holat `useTheme` da (`hooks/use-theme.ts`), komponent ichida emas:
- * tugma bir nechta joyda turadi va ular bir xil javob berishi kerak.
+ * tugma bir nechta joyda turadi (sarlavha va Sozlamalar) va ular bir
+ * xil javob berishi kerak.
  *
  * MVP'da tanlov `localStorage` da; foydalanuvchi profili tayyor bo'lgach
  * `User.theme` ga ham yoziladi (`PATCH /settings`).
  */
-const OPTIONS: { value: ThemeChoice; label: string }[] = [
-  { value: 'system', label: 'Tizim' },
-  { value: 'light', label: "Yorug'" },
-  { value: 'dark', label: "Qorong'i" },
-];
-
 export function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
+  const { toggleTheme } = useTheme();
 
   return (
-    <div
-      role="group"
-      aria-label="Mavzu"
-      className="inline-flex rounded-md border border-border-default p-0.5"
+    <button
+      type="button"
+      onClick={toggleTheme}
+      className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-border-default text-text-secondary transition-colors hover:bg-surface-raised"
     >
-      {OPTIONS.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          aria-pressed={theme === option.value}
-          onClick={() => {
-            setTheme(option.value);
-          }}
-          className={`min-h-9 rounded-sm px-3 text-sm font-medium transition-colors ${
-            theme === option.value
-              ? 'bg-action text-action-text'
-              : 'text-text-secondary hover:bg-surface-raised'
-          }`}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
+      {/* Ikonka ham, matn ham juft: ekran o'quvchisi tugma nima
+          qilishini o'qiydi, ko'zi bilan ko'radigan esa ikonkani */}
+      <span className="theme-light-only items-center">
+        <Moon size={18} aria-hidden="true" />
+        <span className="sr-only">Qorong‘i rejimga o‘tish</span>
+      </span>
+      <span className="theme-dark-only items-center">
+        <Sun size={18} aria-hidden="true" />
+        <span className="sr-only">Yorug‘ rejimga o‘tish</span>
+      </span>
+    </button>
+  );
+}
+
+/**
+ * "Tizim bo'yicha" — qo'lda tanlovni bekor qiladi.
+ *
+ * Alohida komponent, chunki u faqat Sozlamalarda kerak: qo'lda tanlov
+ * qilinmagan bo'lsa umuman ko'rinmaydi — bosib bo'lmaydigan yoki hech
+ * narsa qilmaydigan tugma ko'rsatilmaydi.
+ */
+export function ThemeSystemReset() {
+  const { theme, setTheme } = useTheme();
+
+  if (theme === 'system') return null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setTheme('system');
+      }}
+      className="min-h-11 rounded-md px-2 text-sm font-medium text-link hover:underline"
+    >
+      Tizim bo‘yicha
+    </button>
   );
 }

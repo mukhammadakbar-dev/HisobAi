@@ -235,6 +235,47 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* ─────────────────────────────────────────────────────────────────
+     Joriy ko'rinishga qarab element ko'rsatish (mavzu tugmasi).
+
+     Nega JS emas: `data-theme` `<head>` dagi skript bilan React'dan
+     OLDIN qo'yiladi, ya'ni to'g'ri javobni faqat CSS biladi. Buni
+     komponent ichida hisoblasak, serverdagi render ("qaysi mavzu?" —
+     bilmaydi) bilan brauzerdagisi mos kelmaydi va tugma bir zum
+     noto'g'ri ikonka bilan miltillaydi.
+
+     Uch shart `globals.css` dagi mavzu qatlamlarini aynan takrorlaydi:
+     tizim qorong'i + qo'lda tanlanmagan, hamda qo'lda qorong'i.
+     ───────────────────────────────────────────────────────────────── */
+  /* Ikkala qoida ham SHU YERDA turishi shart: `inline-flex` utilitasi
+     bilan aralashtirilsa, utilita qatlami ustun keladi va qorong'i
+     rejimda ikkala ikonka birdan ko'rinib qoladi. */
+  .theme-light-only {
+    display: inline-flex;
+  }
+
+  .theme-dark-only {
+    display: none;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) .theme-dark-only {
+      display: inline-flex;
+    }
+
+    :root:not([data-theme='light']) .theme-light-only {
+      display: none;
+    }
+  }
+
+  :root[data-theme='dark'] .theme-dark-only {
+    display: inline-flex;
+  }
+
+  :root[data-theme='dark'] .theme-light-only {
+    display: none;
+  }
+
   /* design.md §6 — fokus halqasi hech qachon o'chirilmaydi */
   :focus-visible {
     outline: 2px solid var(--focus-ring);

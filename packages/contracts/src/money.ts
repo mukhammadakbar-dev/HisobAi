@@ -149,6 +149,71 @@ export function multiplyMoney(amount: MoneyInput, factor: number, currency: Curr
 }
 
 /**
+ * Valyutalar orasida aylantirish — do'kon kursi bo'yicha (§1.7, §1.9).
+ *
+ * Nega `contracts` da: bu qoida **ikkala tomonda ham** kerak. Server uni
+ * to'lovni savdo valyutasiga keltirishda ishlatadi (§17.10 tekshiruvi),
+ * savdo formasi esa "qancha qoldi" ni ekranda ko'rsatishda. Ikki joyda
+ * ikki xil yozilsa, ega "qoldi: 0" ni ko'rib tugmani bosadi va server
+ * `SALE_PAYMENT_MISMATCH` bilan rad etadi — hech kim tushuntira
+ * olmaydigan holat (`FRONTEND.md` §6.1).
+ *
+ * Hisob butunlay `BigInt` ustida: kurs `Decimal(12,4)`, ya'ni to'rt kasr
+ * xona. Bo'lishda yaxlitlash ROUND_HALF_UP bo'lib, natija valyutaning
+ * o'z aniqligiga keltiriladi — `roundMoney` bilan bir xil usul.
+ */
+export function convertMoney(
+  amount: MoneyInput,
+  from: Currency,
+  to: Currency,
+  rate: MoneyInput,
+): string {
+  if (from === to) return roundMoney(amount, to);
+
+  const fromScale = scaleOf(from);
+  const toScale = scaleOf(to);
+  const source = toMinorUnits(roundMoney(amount, from));
+  const rateMinor = rateToMinorUnits(rate);
+  if (rateMinor <= 0n) {
+    throw new RangeError(`Kurs musbat bo'lishi kerak: ${String(rate)}`);
+  }
+
+  // UZS ga — kursga ko'paytiriladi, USD ga — bo'linadi (§3.1).
+  // Ikkala yo'lda ham natija `to` valyutasining eng kichik birligida
+  // ifodalanadi, shuning uchun umumiy kasr sifatida yoziladi:
+  //   result = (source × 10^-fromScale) × rate^±1 × 10^toScale
+  const toUzs = to !== Currency.USD;
+  const numerator = toUzs
+    ? source * rateMinor * 10n ** BigInt(toScale)
+    : source * 10n ** BigInt(toScale + RATE_SCALE);
+  const denominator = toUzs
+    ? 10n ** BigInt(fromScale + RATE_SCALE)
+    : rateMinor * 10n ** BigInt(fromScale);
+
+  return fromMinorUnits(divideHalfUp(numerator, denominator), toScale);
+}
+
+/** Kurs ustunining kasr xonalari — `exchange_rates.store_rate` `Decimal(12,4)`. */
+const RATE_SCALE = 4;
+
+function rateToMinorUnits(rate: MoneyInput): bigint {
+  const { negative, intDigits, fracDigits } = parseDecimal(rate);
+  // Kursda to'rtdan ortiq xona bo'lsa — bazadagi ustun qoidasi bo'yicha
+  // kesiladi, chunki savdoda AYNAN saqlangan qiymat ishlatiladi (§1.7)
+  const digits = `${intDigits}${fracDigits.padEnd(RATE_SCALE, '0').slice(0, RATE_SCALE)}`;
+  const magnitude = BigInt(digits);
+  return negative ? -magnitude : magnitude;
+}
+
+/** ROUND_HALF_UP bo'lish — `roundMoney` bilan bir xil usul (yarmi noldan uzoqlashadi). */
+function divideHalfUp(numerator: bigint, denominator: bigint): bigint {
+  const negative = numerator < 0n;
+  const magnitude = negative ? -numerator : numerator;
+  const quotient = (magnitude * 2n + denominator) / (denominator * 2n);
+  return negative ? -quotient : quotient;
+}
+
+/**
  * Yaxlitlangan satrni eng kichik birlikka (tiyin/sent) o'tkazadi.
  *
  * Kirish AYNAN `roundMoney` natijasi bo'lishi shart — u har doim `scale`

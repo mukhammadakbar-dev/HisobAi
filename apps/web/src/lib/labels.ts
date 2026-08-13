@@ -1,4 +1,15 @@
-import { InventoryStatus, ProductType, StockMovementType } from '@hisobai/contracts';
+import {
+  CashAccountKind,
+  CashDirection,
+  CashSourceType,
+  InventoryStatus,
+  PaymentMethod,
+  PaymentStatus,
+  ProductType,
+  SaleKind,
+  SaleStatus,
+  StockMovementType,
+} from '@hisobai/contracts';
 import type { StockAdjustReason } from '@hisobai/contracts';
 
 /**
@@ -42,4 +53,73 @@ export const ADJUST_REASON_LABEL: Record<StockAdjustReason, string> = {
   DEFECTIVE: 'Nuqsonli',
   MISCOUNT: 'Xato hisob',
   OTHER: 'Boshqa',
+};
+
+// ──────────────────────────────── Savdo (§7) ────────────────────────────────
+
+export const SALE_KIND_LABEL: Record<string, string> = {
+  [SaleKind.CASH]: 'Naqd',
+  [SaleKind.INSTALLMENT]: 'Nasiya',
+};
+
+export const SALE_STATUS_LABEL: Record<string, string> = {
+  [SaleStatus.DRAFT]: 'Qoralama',
+  [SaleStatus.CONFIRMED]: 'Tasdiqlangan',
+  [SaleStatus.PARTIALLY_RETURNED]: 'Qisman qaytarilgan',
+  [SaleStatus.RETURNED]: 'Qaytarilgan',
+  [SaleStatus.CANCELLED]: 'Bekor qilingan',
+  [SaleStatus.REVERSAL]: 'Teskari yozuv',
+};
+
+export const SALE_STATUS_TONE: Record<string, 'success' | 'muted' | 'warning' | 'danger' | 'info'> =
+  {
+    [SaleStatus.DRAFT]: 'info',
+    [SaleStatus.CONFIRMED]: 'success',
+    [SaleStatus.PARTIALLY_RETURNED]: 'warning',
+    [SaleStatus.RETURNED]: 'warning',
+    [SaleStatus.CANCELLED]: 'muted',
+    [SaleStatus.REVERSAL]: 'danger',
+  };
+
+// ──────────────────────────────── To'lovlar (§10) ────────────────────────────────
+
+export const PAYMENT_METHOD_LABEL: Record<string, string> = {
+  [PaymentMethod.CASH]: 'Naqd',
+  [PaymentMethod.CARD]: 'Karta',
+  [PaymentMethod.TRANSFER]: "O'tkazma",
+};
+
+export const PAYMENT_STATUS_LABEL: Record<string, string> = {
+  [PaymentStatus.PENDING_VERIFICATION]: 'Tekshirilmoqda',
+  [PaymentStatus.CONFIRMED]: 'Tasdiqlangan',
+  [PaymentStatus.REJECTED]: 'Rad etilgan',
+  [PaymentStatus.REVERSED]: 'Qaytarilgan',
+};
+
+export const PAYMENT_STATUS_TONE: Record<string, 'success' | 'warning' | 'danger' | 'muted'> = {
+  [PaymentStatus.PENDING_VERIFICATION]: 'warning',
+  [PaymentStatus.CONFIRMED]: 'success',
+  [PaymentStatus.REJECTED]: 'danger',
+  [PaymentStatus.REVERSED]: 'muted',
+};
+
+// ──────────────────────────────── Kassa (§11) ────────────────────────────────
+
+export const CASH_ACCOUNT_KIND_LABEL: Record<string, string> = {
+  [CashAccountKind.CASH]: 'Naqd',
+  [CashAccountKind.BANK]: 'Bank',
+  [CashAccountKind.CARD]: 'Karta',
+};
+
+export const CASH_DIRECTION_LABEL: Record<string, string> = {
+  [CashDirection.IN]: 'Kirim',
+  [CashDirection.OUT]: 'Chiqim',
+};
+
+export const CASH_SOURCE_LABEL: Record<string, string> = {
+  [CashSourceType.PAYMENT]: "To'lovdan",
+  [CashSourceType.MANUAL]: "Qo'lda",
+  [CashSourceType.OPENING_BALANCE]: "Boshlang'ich qoldiq",
+  [CashSourceType.EXCHANGE]: 'Ayirboshlash',
+  [CashSourceType.REVERSAL]: 'Teskari yozuv',
 };
