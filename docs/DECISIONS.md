@@ -541,6 +541,46 @@ hal qilinishi shart bo'lganlari.
 
 ---
 
+## 21. 6-bosqich qarorlari (2026-08-13 — platforma va tenant izolyatsiyasi)
+
+`TZ.md` §25 va `ARCHITECTURE.md` multi-tenant bo'limi HisobAI'ni bitta
+do'kon CRM'idan SaaS platformaga aylantiradi. Ular MVP-1 yozilib
+bo'lgandan **keyin** qo'shilgani uchun mavjud kod bilan bir qator
+ziddiyat yuzaga keldi. Quyidagi qarorlar shu ziddiyatlarni yopadi va
+hujjat ziddiyatida ustun turadi (hujjat boshidagi qoida).
+
+> **§1–§20 dagi "Joylashuvi" jadvallari yangilanmaydi.** Ular
+> 2026-08-05/06 muhokamasining yozuvi — o'sha paytdagi sahifa, endpoint
+> va jadval nomlarini ko'rsatadi. §21 ulardan ikkitasini o'zgartiradi:
+> `settings` → `shops` (§21.4) va `exchange_rates` → `cbu_rates` +
+> `shop_exchange_rates` (§21.5). Joriy joylashuv doim
+> `ARCHITECTURE.md` §7–§8 va §14 da.
+>
+> **Bosqich raqamlari haqida.** §21.1 §22 ga yangi 6-bosqichni qo'shadi
+> va undan keyingilarini bittaga suradi. Yuqoridagi §18–§20 dagi qarorlar
+> **o'sha paytdagi** raqamlarni ishlatadi va ular ataylab tuzatilmaydi —
+> qabul qilingan qaror yozuvi, joriy reja emas. Amaliy tarjima: eski
+> "9-bosqich" (`Storage`, PDF) endi **10-bosqich**, eski "7-bosqich"
+> (nasiya) endi **8-bosqich**, eski "10-bosqich" (kengaytirish) endi
+> **11-bosqich**. Joriy reja doim `TZ.md` §22 da.
+
+| #    | Qaror | Sabab |
+|------|-------|-------|
+| 21.1 | **Tenant qatlami MVP-2 dan OLDIN, 6-bosqich sifatida quriladi.** §22 dagi keyingi bosqichlar bittaga suriladi | MVP-2 — qaytarish, nasiya, to'lov va hisobotlar, ya'ni loyihaning eng murakkab tranzaksion mantiqi (§17.17). Agar u avval single-tenant yozilsa, keyin har bir tranzaksiya, har bir hisobot so'rovi va har bir `CHECK` cheklovi qayta ko'rib chiqiladi. Hozir esa real ma'lumot yo'q va backfill migratsiyasi arzon. Qo'shimcha yutuq: 6-bosqichdan keyin yozilgan har bir yangi so'rov avtomatik shop-scoped bo'ladi va dasturchi buni unutib qo'yolmaydi |
+| 21.2 | **Rol nomlari:** `SUPERADMIN` (platforma) va `SHOP_ADMIN` (do'kon). Mavjud `OWNER` → `SHOP_ADMIN` ga qayta nomlanadi. Kelajakdagi rollar — `MANAGER` va `SELLER` | §25.2 `OWNER` ni MVP'dan chiqaradi, `PERMISSIONS.md` esa butun matritsani `OWNER` ustiga qurgan — ikkalasi bir vaqtda to'g'ri bo'lolmaydi. `OWNER` va `SHOP_ADMIN` bitta narsani anglatadi, shuning uchun qo'shimcha rol emas, **qayta nomlash**. `CASHIER` (§25.2) ishlatilmaydi: `PERMISSIONS.md` allaqachon `SELLER` deb yozgan va ikki nomni parallel yuritish keyinchalik matritsani o'qib bo'lmas qiladi |
+| 21.3 | **SUPERADMIN `users` da emas, alohida `platform_admins` jadvalida** — alohida sessiya jadvali, alohida cookie, alohida login | §25.3 va §25.20 SUPERADMIN'ning tenant business data'siga kira olmasligini **invariant** deb e'lon qiladi. Bitta `users` jadvali va `role` bilan bu invariant har so'rovdagi `if (role === SUPERADMIN)` tekshiruviga tayanadi — bitta unutilgan joy uni buzadi. Alohida jadvalda esa SUPERADMIN'da `shopId` **umuman yo'q**, ya'ni shop-scoped so'rov u uchun texnik jihatdan bajarilmaydi. Kod tekshiruviga emas, strukturaga tayangan kafolat — §17.8 dagi "oxirgi himoya qatlami" mulohazasi bilan bir xil |
+| 21.4 | **`settings` jadvali `shops` ga aylanadi** — do'kon ma'lumoti (§3.6) va biznes sozlamalari (§3.7–3.9, §16.2) bitta qatorda | `settings` hozir `id Int @id @default(1)` — ataylab bitta qator. Tenant modelida har Shop'ning o'z nomi, ish vaqti, kam qoldiq chegarasi, nasiya standartlari va kurs ustamasi bo'ladi. Ikkita jadval (`shops` + `shop_settings`) 1:1 bo'lardi va har o'qishda `join` talab qilardi; ajratish uchun sabab yo'q |
+| 21.5 | **Kurs ikkiga bo'linadi:** `cbu_rates(date)` — platforma darajasida, `shop_exchange_rates(shop_id, date)` — do'kon darajasida | CBU kursi butun O'zbekiston uchun bitta va uni har Shop qatorida takrorlash sync'ni N marta yozishga majbur qilardi. Do'kon kursi esa aynan Shop'ga tegishli: §16.2 uni `store_rate_markup_percent` dan hisoblaydi, u endi `shops` da. §16.8 (`MANUAL` daxlsizligi), §16.6 (eskirganlik) va §17.11 (orqadagi sana) shop qatorida amal qiladi; `cbu_rates` esa faqat sync yozadigan ma'lumot jadvali |
+| 21.6 | **§25.18 (Shop status) va §25.19 (account status) birlashtiriladi.** Yagona status — **`users.status`**: `ACTIVE` · `SUSPENDED` · `DISABLED`. (`shop-admins` — faqat API resurs nomi, jadval emas: SHOP_ADMIN §21.3 bo'yicha `users` da yashaydi) | 1 SHOP_ADMIN = 1 SHOP (§25.7) bo'lgan modelda ikkita mustaqil status to'rtta mantiqiy kombinatsiya beradi va ularning ikkitasi ma'nosiz ("account faol, shop to'xtatilgan" — kim va nima uchun?). §25.18 ning o'zi ham "MVP'da alohida permission sifatida belgilanadi" deb ochiq qoldirgan. Branch modeli qo'shilganda (§25.8) Shop statusi mustaqil ma'no oladi — o'shanda ajratiladi |
+| 21.7 | **Tenant izolyatsiyasi Prisma client extension bilan avtomatik**, servis kodida qo'lda `where: { shopId }` yozilmaydi. Kontekst yo'q bo'lsa so'rov **xato beradi** | 93 ta API faylida har bir so'rovga qo'lda filtr yozish — kafolat emas, intizom, va bitta unutilgan joy §25.11 dagi IDOR'ni beradi. `AsyncLocalStorage` kontekstidan avtomatik enjeksiya buni sinf darajasida hal qiladi. Kontekstsiz so'rov **jimgina hamma Shop'ni qaytarmasligi** ataylab: "bo'sh filtr = hamma qator" — aynan shu naqsh tenant tizimlarida ma'lumot sizishining eng ko'p uchraydigan sababi. Chiqish yo'li aniq nomlangan (`runWithoutShopScope`) va faqat `Platform` moduli ishlatadi |
+| 21.8 | **`$queryRaw` / `$executeRaw` so'rovlari extension'dan tashqarida qoladi** — ularga `shop_id` sharti qo'lda qo'shiladi va ro'yxati testda qotiriladi. Kod bazasida ular **uchta**: `sale_counters` ajratish (§17.1), mahsulot nomi advisory lock (§18.5) va `health` dagi `SELECT 1` (tenant jadvaliga tegmaydi). DB triggerlari (§18.3 IMEI, §17.8 `CHECK`) — alohida qatlam, ular migratsiyada SQL darajasida qayta yoziladi | Prisma extension'i `query` hodisasini faqat model metodlarida ushlaydi; raw SQL undan o'tmaydi. Ro'yxat aniq sanaladi va testda qotiriladi, chunki "xavfli istisnolar ro'yxati" noaniq bo'lsa u himoya emas, xotirjamlik illyuziyasi. **Ombor shartli `UPDATE` (§17.5) bu ro'yxatda yo'q** — dastlabki tahrirda u raw SQL deb yozilgan edi, aslida `updateMany` bilan yozilgan va extension uni qamraydi (`ARCHITECTURE.md` §6 dagi SQL — mexanizm izohi, kod nusxasi emas). Advisory lock kalitiga `shop_id` qo'shiladi: usiz bitta Shop'dagi qabul boshqasinikini kutib turardi |
+| 21.9 | **Savdo raqami hisoblagichi Shop bo'yicha mustaqil** — `sale_counters` PK `(shop_id, year)` | §7.6 raqamni "yil + ketma-ket raqam" deb ta'riflaydi va u mijozga ko'rinadigan hujjat raqami. Umumiy hisoblagichda ikkinchi do'kon `2026-00001` dan emas, birinchi do'kon qayerda to'xtagan bo'lsa o'shandan boshlardi — ya'ni raqam boshqa tenant'ning savdo hajmini oshkor qilardi |
+| 21.10 | **SHOP_ADMIN account Shop'siz yaratiladi** (§25.5), shuning uchun `users.shop_id` **nullable**. Shop-scoped endpointga Shop'siz kirilsa `SHOP_SETUP_REQUIRED` qaytadi | §25.6 setup oqimini talab qiladi, ya'ni "Shop'siz foydalanuvchi" — vaqtinchalik emas, **normal** holat. Uni 403 bilan qaytarish frontendga "ruxsat yo'q" deb tushuntirardi va u `/app/setup-shop` ga yo'naltira olmasdi. Alohida xato kodi bu ikki holatni ajratadi (`FRONTEND.md` §5.2 mantiqida) |
+| 21.11 | **`idempotency_keys` ham shop-scoped bo'ladi:** unique `(shop_id, key)`, va takrorlash yo'lida `request_hash` bilan birga **`user_id` mosligi** ham tekshiriladi | Jadval biznes ma'lumoti emas, shuning uchun §25.10 ro'yxatiga tushmagan edi — lekin uning `response_body` ustunida savdo tasdiqlash va to'lov javoblari, ya'ni **boshqa Shop'ning biznes ma'lumoti** saqlanadi. Hozirgi kodda kalit global PK va `claim()` faqat `request_hash` ni solishtiradi (`common/idempotency.interceptor.ts`): bir tenantli tizimda bu xavfsiz edi, ko'p tenantlida esa mos `request_hash` bilan boshqa tenant javobini o'qish yo'li ochiq qolardi. Ikkala chora ham qo'yiladi — kalit ajratilishi to'qnashuvni, `user_id` tekshiruvi esa qolgan yo'lni yopadi |
+| 21.12 | **`push_subscriptions` shop-scoped** (§25.10 da sanalgan) | Eslatma jarayoni (§10) obunani `payment_schedules` orqali topadi, foydalanuvchi orqali emas. Shop kontekstisiz bir do'konning to'lov eslatmasi boshqasining qurilmasiga yuborilishi mumkin edi — xabarda esa mijoz ismi va summa bor (§18) |
+
+---
+
 ## Ochiq savollar
 
 | Mavzu | Savol |

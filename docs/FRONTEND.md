@@ -407,10 +407,12 @@ to'g'ri, ikkinchisida o'qilmas bo'lib qoladi.
 `body` foni **albatta** token bilan beriladi — shaffof qoldirilsa brauzer
 o'z fonini ko'rsatadi va mavzular aralashib ketadi.
 
-**Tanlov qayerda saqlanadi.** `User.theme` (`PATCH /settings`), sahifa
-yuklanishida `<html data-theme>` ga qo'yiladi. Miltillashning oldini olish
-uchun boshlang'ich qiymat `localStorage` dan inline skript bilan
-o'qiladi — server javobini kutmaydi.
+**Tanlov qayerda saqlanadi.** Hozircha faqat `localStorage` da
+(`hisobai-theme`), sahifa yuklanishida inline skript uni `<html
+data-theme>` ga qo'yadi — miltillashning oldini olish uchun server
+javobi kutilmaydi. `users.theme` ustuni schema'da bor, lekin uni
+yozadigan endpoint hali yo'q: mavzu qurilmaga bog'liq tanlov va bitta
+foydalanuvchining telefoni bilan noutbugida boshqacha bo'lishi tabiiy.
 
 #### Ko'rinishi
 
@@ -439,9 +441,13 @@ tugmani ko'rsatmaslik.
 export function can(user: CurrentUser, action: Action): boolean;
 ```
 
-MVP'da faqat `OWNER` bo'lgani uchun deyarli hamma narsa `true` qaytaradi —
-lekin **chaqiruv joylari hozirdan qo'yiladi**. Keyin rol qo'shilganda
-qidirib yurish kerak bo'lmaydi.
+MVP'da faqat `SHOP_ADMIN` bo'lgani uchun deyarli hamma narsa `true`
+qaytaradi — lekin **chaqiruv joylari hozirdan qo'yiladi**. Keyin rol
+qo'shilganda qidirib yurish kerak bo'lmaydi.
+
+`SUPERADMIN` bu funksiyaga umuman kirmaydi: `/superadmin/*` alohida
+route guruhi, alohida layout va alohida API klienti bilan ishlaydi
+(`ARCHITECTURE.md` §14.3).
 
 Tannarx va foyda maydonlari server javobida bo'lmasligi mumkin (rolga
 bog'liq serializatsiya) — komponentlar `undefined` ni to'g'ri boshqarishi
@@ -515,8 +521,9 @@ backend uchun amal qiladigan qoida (§12) frontendda ham amal qiladi.
 | **3. Katalog va ombor**    | `/products`, `/inventory`, qabul qilish formasi, `/settings/catalog` (kategoriya/brendni tahrirlash va birlashtirish — §4.4). **IMEI skaneri yo'q** (§18.2) — qo'lda kiritish            |
 | **4. Mijozlar**            | `/customers`, dublikat tekshiruvi UI'si                                                                                                                                                  |
 | **5. Naqd savdo va kassa** | `/sales/new` (eng murakkab ekran), `/cashbook`, `/dashboard`                                                                                                                             |
-| **6–9. MVP-2**             | Qaytarish, nasiya, to'lov, hisobotlar, PDF                                                                                                                                               |
-| **10–12**                  | Inventarizatsiya, PWA/push, AI tahlil                                                                                                                                                    |
+| **6. Platforma**           | `/superadmin/*` guruhi (login, dashboard, accountlar) — `(app)` dan butunlay ajratilgan; `/setup-shop` oqimi va `shopId` null bo'lganda yo'naltirish (§25.4, §25.6)                     |
+| **7–10. MVP-2**            | Qaytarish, nasiya, to'lov, hisobotlar, PDF                                                                                                                                               |
+| **11–13**                  | Inventarizatsiya, PWA/push, AI tahlil                                                                                                                                                    |
 
 ---
 

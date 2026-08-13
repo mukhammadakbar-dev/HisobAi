@@ -22,11 +22,12 @@ izchilligini saqlaydi va egaga tezkor boshqaruv qarorlarida yordam beradi.
 
 ## 2. Foydalanuvchi va foydalanish muhiti
 
-| §   | Talab                                                                                                                                    |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| 2.1 | MVP'da **bitta foydalanuvchi** (do'kon egasi), lekin ma'lumotlar bazasi ko'p foydalanuvchini ko'taradi: `users` jadvali + `role` maydoni |
-| 2.3 | UI'da rol tanlash yo'q; ruxsat tekshiruvi kodda bor, bitta rol bilan ishlaydi                                                            |
-| 2.2 | Audit har amalni **qaysi foydalanuvchi** qilganini yozadi — keyin rol qo'shish qayta qurish talab qilmaydi                               |
+| §    | Talab                                                                                                                                        |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2.1  | **Har Shop'da bitta foydalanuvchi** — `SHOP_ADMIN` (do'kon egasi), lekin `users` jadvali ko'p foydalanuvchini ko'taradi: `role` + `shop_id`   |
+| 2.3  | UI'da rol tanlash yo'q; ruxsat tekshiruvi kodda bor, bitta biznes rol bilan ishlaydi (`PERMISSIONS.md`)                                       |
+| 2.2  | Audit har amalni **qaysi foydalanuvchi va qaysi Shop** qilganini yozadi — keyin rol qo'shish qayta qurish talab qilmaydi                      |
+| 21.2 | Rollar: `SUPERADMIN` (platforma, alohida jadval) va `SHOP_ADMIN` (do'kon). Batafsil — §25 va `PERMISSIONS.md` §5                             |
 
 - Yopiq tizim: faqat login/parol bilan kirish.
 - Asosiy qurilmalar: telefon va noutbuk brauzeri.
@@ -67,6 +68,7 @@ jadvalga tegadi, shuning uchun u boshidan quriladi.
 | 3.5       | Kurs tarixi saqlanadi: sana, CBU kursi, do'kon kursi, manba (`CBU`/`MANUAL`), olingan vaqt, kim o'zgartirgan                                                           |
 | 16.8      | **Qo'lda qo'yilgan kursni avtomatik jarayon ustidan yozmaydi** (`source = MANUAL` bo'lsa `store_rate` daxlsiz). UI'da "CBU kursiga qaytarish" alohida amali            |
 | 17.11     | **Orqaga qo'yilgan sana o'sha kunning kursini oladi** (savdo ham, to'lov ham); o'sha kun uchun qator bo'lmasa — undan oldingi eng yaqin qator                          |
+| 21.5      | **CBU kursi platforma darajasida bitta** (`cbu_rates`), **do'kon kursi esa har Shop'da alohida** (`shop_exchange_rates`). Yuqoridagi barcha qoidalar shop qatorida amal qiladi |
 
 ## 4. Kirish va xavfsizlik
 
@@ -81,6 +83,9 @@ jadvalga tegadi, shuning uchun u boshidan quriladi.
 | 2.6  | SMTP ulangunicha zaxira — server komandasi orqali parol o'rnatish                                                     |
 
 ## 5. Sozlamalar
+
+Sozlamalar **har Shop'ga tegishli** (§21.4): ular do'kon ma'lumoti bilan
+birga `shops` jadvalida saqlanadi va `/shops/me` orqali boshqariladi.
 
 | §    | Sozlama                                                                                                                               |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------- |
@@ -107,7 +112,7 @@ tursa, foyda noto'g'ri hisoblanadi.
 | 4.7  | Aksessuarlarda xotira va rang bo'sh qoladi                                                                                                |
 | 4.8  | **Mahsulot o'chirilmaydi — arxivlanadi.** Yangi savdoda ko'rinmaydi, eski yozuvlar butun qoladi                                           |
 | 4.9  | **IMEI/shtrix-kodni telefon kamerasi bilan skanerlash** — qabul va savdo formasida. **§18.2: MVP'da yo'q**, qo'lda kiritish               |
-| 4.10 | **Mahsulot shabloniga rasm** biriktirish. **§18.1: 9-bosqichda**, `Storage` moduli bilan birga                                            |
+| 4.10 | **Mahsulot shabloniga rasm** biriktirish. **§18.1: 10-bosqichda**, `Storage` moduli bilan birga (§21.1 dan keyin surildi)                 |
 
 ## 7. Ombor
 
@@ -407,21 +412,35 @@ keyin alohida relizda qo'shiladi.
 5. **Naqd savdo va kassa:** qoralama, **tasdiqlash tranzaksiyasi**, to'lovlar,
    kassa hisoblari, qo'lda kirim/chiqim, boshlang'ich qoldiq, dashboard.
 
+**Platforma (§21.1)**
+
+6. **Platforma va tenant izolyatsiyasi:** `SUPERADMIN` va `/superadmin/*`
+   panel, SHOP_ADMIN accountlari, `Shop` entity va setup oqimi, barcha
+   biznes jadvallariga `shop_id`, avtomatik shop konteksti, cross-Shop
+   IDOR testlari (§25).
+
+   > **Nega MVP-2 dan oldin (§21.1):** MVP-2 ning to'rtta moduli — eng
+   > murakkab tranzaksion mantiq. Ular avval single-tenant yozilsa,
+   > keyin har bir tranzaksiya, hisobot so'rovi va `CHECK` cheklovi
+   > qayta ko'rib chiqiladi. Hozir real ma'lumot yo'q va migratsiya
+   > arzon; 6-bosqichdan keyingi har bir yangi so'rov esa avtomatik
+   > shop-scoped bo'ladi.
+
 **MVP-2 — nasiya**
 
-6. **Qaytarish va bekor qilish:** teskari yozuv, qisman qaytarish.
-7. **Nasiya va to'lovlar:** shartnoma, jadval, to'lov taqsimoti,
+7. **Qaytarish va bekor qilish:** teskari yozuv, qisman qaytarish.
+8. **Nasiya va to'lovlar:** shartnoma, jadval, to'lov taqsimoti,
    tasdiqlash/rad etish/qaytarish, erta yopish, jadvalni qayta tuzish.
-8. **Hisobotlar:** KPI, davr hisobotlari, qarzdorlar, foyda, audit ko'rinishi.
-9. **Hujjatlar:** shartnoma PDF, fayl saqlash va vaqtinchalik havolalar.
+9. **Hisobotlar:** KPI, davr hisobotlari, qarzdorlar, foyda, audit ko'rinishi.
+10. **Hujjatlar:** shartnoma PDF, fayl saqlash va vaqtinchalik havolalar.
 
 **Kengaytirish**
 
-10. **Ombor qo'shimchalari:** inventarizatsiya, shaxsiy foydalanish,
+11. **Ombor qo'shimchalari:** inventarizatsiya, shaxsiy foydalanish,
     valyuta ayirboshlash.
-11. **PWA va bildirishnoma:** offline qobiq, push, SMS test adapteri.
-12. **AI tahlil:** read-only analitika va savol-javob.
-13. **Production:** testlar, monitoring, backup/restore sinovi, CI/CD,
+12. **PWA va bildirishnoma:** offline qobiq, push, SMS test adapteri.
+13. **AI tahlil:** read-only analitika va savol-javob.
+14. **Production:** testlar, monitoring, backup/restore sinovi, CI/CD,
     haqiqiy SMS va SMTP provideri.
 
 ## 23. Scope'dan tashqari
@@ -446,3 +465,528 @@ keyin alohida relizda qo'shiladi.
 
 > 2026-08-09 auditidagi 14 ta noaniqlik `DECISIONS.md` §16 da yopildi;
 > kodlashdan oldingi 18 ta blocker — §17 da.
+
+## 25. Platforma, SuperAdmin va Shop isolation
+
+### 25.1. Mahsulot modeli
+
+HisobAI faqat bitta do‘kon uchun ishlaydigan CRM emas, balki bir nechta mustaqil do‘konlarga xizmat ko‘rsatadigan SaaS platforma sifatida ishlaydi.
+
+Har bir do‘kon alohida tenant hisoblanadi.
+
+Platformaning asosiy tuzilmasi:
+
+SUPERADMIN
+↓
+SHOP_ADMIN account
+↓
+SHOP
+↓
+CRM business data
+
+Har bir Shop o‘zining mahsulotlari, ombori, mijozlari, savdolari, nasiya shartnomalari, to‘lovlari, kassasi, hujjatlari, hisobotlari va AI tahliliga ega bo‘ladi.
+
+---
+
+### 25.2. MVP rollari
+
+MVP'da faqat ikkita role mavjud:
+
+- `SUPERADMIN`
+- `SHOP_ADMIN`
+
+Quyidagi rollar MVP'ga kirmaydi:
+
+- `MANAGER`
+- `SELLER`
+
+Kelajakda yangi rollar alohida qaror bilan qo‘shilishi mumkin;
+ular uchun ruxsatlar `PERMISSIONS.md` §2 da allaqachon loyihalashtirilgan.
+
+> **§21.2.** Bu hujjatning dastlabki tahririda `OWNER` "MVP'ga kirmaydi"
+> deb yozilgan edi, `CASHIER` esa kelajakdagi rol sifatida sanalgandi.
+> Ikkalasi ham tuzatildi: `OWNER` va `SHOP_ADMIN` bitta rolni anglatadi
+> (qo'shimcha rol emas, **qayta nomlash**), kelajakdagi rolning nomi esa
+> `PERMISSIONS.md` bilan bir xil — `SELLER`.
+
+---
+
+### 25.3. SUPERADMIN
+
+`SUPERADMIN` — HisobAI platformasining cheklangan platform-level administratori.
+
+SUPERADMIN'ning asosiy vazifasi yangi `SHOP_ADMIN` accountlarini yaratishdir.
+
+SUPERADMIN Shop yaratmaydi.
+
+SUPERADMIN Shop ichidagi CRM ma'lumotlarini boshqarmaydi.
+
+#### SUPERADMIN huquqlari
+
+SUPERADMIN quyidagi amallarni bajarishi mumkin:
+
+- yangi SHOP_ADMIN account yaratish;
+- SHOP_ADMIN accountlar ro‘yxatini ko‘rish;
+- SHOP_ADMIN account ma'lumotlarini ko‘rish;
+- accountni aktivlashtirish;
+- accountni deaktiv qilish;
+- accountni bloklash;
+- accountni qayta aktivlashtirish;
+- platforma darajasidagi account metadata'sini boshqarish.
+
+#### SUPERADMIN huquqlari chegarasi
+
+SUPERADMIN quyidagi Shop business data'lariga kirish huquqiga ega emas:
+
+- customers;
+- products;
+- categories;
+- brands;
+- inventory;
+- inventory items;
+- stock movements;
+- sales;
+- sale items;
+- installment contracts;
+- payment schedules;
+- payments;
+- payment allocations;
+- cash accounts;
+- cash entries;
+- documents;
+- files;
+- reports;
+- AI business analytics;
+- Shop settings.
+
+SUPERADMIN SHOP_ADMIN nomidan CRM operatsiyasi bajara olmaydi.
+
+SUPERADMIN Shop ichidagi ma'lumotlarni o‘zgartira olmaydi.
+
+---
+
+### 25.4. SUPERADMIN alohida paneli
+
+SUPERADMIN uchun alohida URL namespace mavjud bo‘ladi.
+
+Tavsiya etilgan route:
+
+- `/superadmin/login`
+- `/superadmin`
+- `/superadmin/dashboard`
+- `/superadmin/accounts`
+- `/superadmin/accounts/create`
+- `/superadmin/accounts/:id`
+
+Aniq route naming frontend architecture conventioniga moslashtirilishi mumkin, lekin SUPERADMIN paneli oddiy Shop application route'laridan alohida bo‘lishi shart.
+
+SHOP_ADMIN `/superadmin/*` route'lariga kira olmaydi.
+
+---
+
+### 25.5. SHOP_ADMIN account yaratish
+
+Yangi Shop bilan hamkorlik boshlanganda platforma SUPERADMIN'i yangi SHOP_ADMIN account yaratadi.
+
+Flow:
+
+SUPERADMIN
+↓
+Create SHOP_ADMIN account
+↓
+SHOP_ADMIN login
+↓
+Shop setup
+↓
+Create own Shop
+↓
+CRM dashboard
+
+SUPERADMIN Shop yaratmaydi.
+
+SHOP_ADMIN account yaratilganda Shop avtomatik yaratilmasligi kerak.
+
+---
+
+### 25.6. SHOP_ADMIN Shop yaratishi
+
+SHOP_ADMIN login qilganda unga Shop biriktirilmagan bo‘lsa, Shop setup flow ko‘rsatiladi.
+
+Masalan:
+
+`/app/setup-shop`
+
+Shop setup muvaffaqiyatli tugagandan so‘ng foydalanuvchi:
+
+`/app/dashboard`
+
+ga yo‘naltiriladi.
+
+Shop setup davomida kamida quyidagi asosiy ma'lumotlar kiritilishi mumkin:
+
+- Shop nomi;
+- telefon;
+- manzil;
+- logo;
+- biznes sozlamalari;
+- bazaviy konfiguratsiya.
+
+Aniq fieldlar mavjud Shop Settings specification bilan moslashtiriladi.
+
+---
+
+### 25.7. 1 SHOP_ADMIN = 1 SHOP
+
+MVP uchun qat'iy qoida:
+
+> Bitta SHOP_ADMIN faqat bitta Shop'ga ega bo‘ladi.
+
+Misol:
+
+SHOP_ADMIN_A → SHOP_A
+
+SHOP_ADMIN_B → SHOP_B
+
+SHOP_ADMIN_C → SHOP_C
+
+SHOP_ADMIN boshqa SHOP_ADMIN'ning Shop'iga kira olmaydi.
+
+Bitta SHOP_ADMIN'ning bir nechta Shop yoki branch yaratishi MVP'da qo‘llab-quvvatlanmaydi.
+
+---
+
+### 25.8. Kelajakdagi Branch modeli
+
+Architecture keyinchalik tarifga bog‘liq bir nechta branch/Shop imkoniyatini qo‘llab-quvvatlashga tayyor bo‘lishi kerak.
+
+Kelajakdagi model:
+
+SHOP_ADMIN
+↓
+├── Branch A
+├── Branch B
+└── Branch C
+
+Masalan:
+
+FREE:
+1 branch
+
+PRO:
+3 branches
+
+BUSINESS:
+10 branches
+
+Aniq tarif va limitlar alohida monetization specification'da belgilanadi.
+
+Branch functionality MVP'ga kirmaydi.
+
+MVP'da:
+
+1 SHOP_ADMIN = 1 SHOP
+
+qoidasiga amal qilinadi.
+
+---
+
+### 25.9. Tenant isolation
+
+Tenant isolation HisobAI uchun majburiy security requirement hisoblanadi.
+
+> Bir Shop'ning biznes ma'lumotlari boshqa Shop'ga hech qachon ko‘rinmasligi, aralashmasligi yoki ta'sir qilmasligi kerak.
+
+Shop A:
+
+- faqat Shop A data'sini ko‘radi;
+- faqat Shop A data'sini yaratadi;
+- faqat Shop A data'sini o‘zgartiradi;
+- faqat Shop A data'sini o‘chirishi mumkin bo‘lgan amallarni bajaradi.
+
+Shop B uchun ham xuddi shu qoida amal qiladi.
+
+---
+
+### 25.10. Tenant isolation qamrovi
+
+Quyidagi ma'lumotlar Shop-scoped hisoblanadi:
+
+- users / Shop ownership;
+- settings;
+- categories;
+- brands;
+- products;
+- inventory;
+- inventory items;
+- stock movements;
+- customers;
+- sales;
+- sale items;
+- installment contracts;
+- payment schedules;
+- payments;
+- payment allocations;
+- cash accounts;
+- cash categories;
+- cash entries;
+- documents;
+- files;
+- notifications;
+- push subscriptions;
+- reports;
+- AI business analytics.
+
+Har bir data access operation current Shop context bilan cheklanishi shart.
+
+**§21.11 — texnik jadval, lekin biznes ma'lumotini saqlaydi:**
+`idempotency_keys` ham shop-scoped bo'ladi. U biznes entity emas, lekin
+`response_body` ustunida savdo tasdiqlash va to'lov javoblari yotadi.
+
+---
+
+### 25.11. Cross-Shop access taqiqlanadi
+
+SHOP_ADMIN boshqa Shop resource ID'sini bilgan taqdirda ham unga kira olmaydi.
+
+Masalan:
+
+GET /sales/{shop_b_sale_id}
+
+Shop A SHOP_ADMIN uchun Shop B sale'ini qaytarmasligi kerak.
+
+Xuddi shu qoida:
+
+- GET;
+- POST;
+- PATCH;
+- DELETE;
+- confirm;
+- reverse;
+- payment;
+- report;
+- document
+
+operatsiyalariga ham amal qiladi.
+
+Resource ID'ning o‘zi resource access uchun yetarli authorization hisoblanmaydi.
+
+---
+
+### 25.12. Backend isolation
+
+Tenant isolation faqat frontend filter orqali amalga oshirilmaydi.
+
+Backend current authenticated user orqali current Shop contextni aniqlaydi.
+
+Masalan:
+
+GET /api/v1/customers
+
+backend quyidagi mantiqqa amal qiladi:
+
+authenticated user
+↓
+SHOP_ADMIN
+↓
+current Shop
+↓
+shop-scoped query
+
+Frontend tomonidan yuborilgan `shopId` security mexanizmi sifatida ishonchli manba hisoblanmaydi.
+
+---
+
+### 25.13. Shop context
+
+MVP'da bitta SHOP_ADMIN faqat bitta Shop'ga ega bo‘lgani sababli current Shop authenticated user bilan bog‘langan Shop orqali aniqlanadi.
+
+SHOP_ADMIN uchun oddiy business API requestlarda `shopId`ni query parameter yoki custom header orqali yuborish majburiy emas.
+
+Masalan:
+
+GET /api/v1/customers
+
+GET /api/v1/products
+
+GET /api/v1/sales
+
+GET /api/v1/payments
+
+backend current userning Shop'idan foydalanadi.
+
+---
+
+### 25.14. Shop isolation va resource authorization
+
+Resource access ikki bosqichda tekshiriladi:
+
+1. User authenticated va kerakli role'ga ega ekanligi;
+2. Resource current Shop'ga tegishli ekanligi.
+
+Masalan:
+
+SHOP_ADMIN_A
+↓
+sale ID
+↓
+sale.shop_id == SHOP_A ?
+↓
+YES → allow
+NO → deny
+
+Shoplar o‘rtasida IDOR mavjud bo‘lishiga yo‘l qo‘yilmaydi.
+
+---
+
+### 25.15. Customer isolation
+
+Customer global entity emas.
+
+Customer muayyan Shop'ga tegishli.
+
+Masalan:
+
+Shop A:
+Ali +998901234567
+
+Shop B:
+Ali +998901234567
+
+ikkita mustaqil customer hisoblanadi.
+
+Customer uniqueness Shop context bilan belgilanadi.
+
+Tavsiya:
+
+UNIQUE(shop_id, phone_e164)
+
+---
+
+### 25.16. AI isolation
+
+AI faqat current Shop'ga tegishli ruxsat berilgan ma'lumotlardan foydalanadi.
+
+Shop A'dagi AI query Shop B ma'lumotlarini ko‘rmaydi.
+
+AI:
+
+- boshqa Shop salesini;
+- boshqa Shop customersini;
+- boshqa Shop paymentsini;
+- boshqa Shop inventorysini;
+- boshqa Shop reportsini
+
+tahlil qila olmaydi.
+
+AI read-only qoidasi saqlanadi.
+
+---
+
+### 25.17. Audit
+
+SUPERADMIN tomonidan bajarilgan account-level amallar audit qilinadi.
+
+Kamida quyidagi actionlar audit qilinadi:
+
+- `SHOP_ADMIN_CREATED`;
+- `SHOP_ADMIN_ACTIVATED`;
+- `SHOP_ADMIN_DEACTIVATED`;
+- `SHOP_ADMIN_BLOCKED`;
+- `SHOP_ADMIN_UNBLOCKED`.
+
+Audit log actor, action, target entity, entity ID va vaqtni saqlaydi.
+
+Mavjud audit qoidalariga muvofiq muhim mutation audit bilan bir tranzaksiyada yoziladi.
+
+---
+
+### 25.18. Shop status — MVP'da yo'q (§21.6)
+
+Shop uchun alohida platform-level status (`ACTIVE`/`SUSPENDED`/`ARCHIVED`)
+**MVP'ga kiritilmaydi**.
+
+Sabab: 1 SHOP_ADMIN = 1 SHOP modelida (§25.7) u §25.19 dagi account
+statusini takrorlaydi va to'rtta kombinatsiya beradi, ularning ikkitasi
+ma'nosiz ("account faol, Shop to'xtatilgan" — kim va nima uchun?).
+
+Branch modeli qo'shilganda (§25.8) Shop statusi mustaqil ma'no oladi —
+o'shanda ajratiladi.
+
+SUPERADMIN Shop business data'larini baribir boshqarmaydi.
+
+---
+
+### 25.19. Account status
+
+Platformadagi yagona status — SHOP_ADMIN accountida:
+
+- `ACTIVE`;
+- `SUSPENDED`;
+- `DISABLED`.
+
+Status `SUPERADMIN` tomonidan boshqariladi.
+
+Disabled yoki suspended account CRM business endpointlariga kira olmaydi.
+Tekshiruv sessiya qatlamida: sessiya bekor qilinmagan bo'lsa ham status
+tekshiriladi, aks holda blok faqat keyingi logindan ta'sir qilardi.
+
+---
+
+### 25.20. Security invariant
+
+Quyidagi invariant buzilmasligi shart:
+
+> Har bir SHOP_ADMIN request aynan bitta ruxsat berilgan Shop context bilan bajariladi.
+
+> Har bir Shop-scoped read/write operation current Shop bilan cheklangan bo‘lishi shart.
+
+> Resource ID boshqa Shop resource'iga kirish uchun yetarli authorization hisoblanmaydi.
+
+> SUPERADMIN platform-level account management huquqiga ega, lekin tenant business data access huquqiga ega emas.
+
+---
+
+### 25.21. MVP scope
+
+Ushbu featurelar MVP architecture'ning bir qismi hisoblanadi:
+
+1. SUPERADMIN role;
+2. SUPERADMIN login;
+3. alohida `/superadmin/*` panel;
+4. SHOP_ADMIN account yaratish;
+5. SHOP_ADMIN account status boshqaruvi;
+6. SHOP_ADMIN login;
+7. SHOP setup flow;
+8. SHOP yaratish;
+9. 1 SHOP_ADMIN = 1 SHOP;
+10. tenant/shop isolation;
+11. Shop-scoped customers;
+12. Shop-scoped products;
+13. Shop-scoped inventory;
+14. Shop-scoped sales;
+15. Shop-scoped payments;
+16. Shop-scoped cashbook;
+17. Shop-scoped reports;
+18. Shop-scoped AI;
+19. cross-Shop authorization protection;
+20. SUPERADMIN audit.
+
+---
+
+### 25.22. MVP scope'dan tashqari
+
+Quyidagilar ushbu feature'ning MVP qismiga kirmaydi:
+
+- bitta SHOP_ADMIN uchun bir nechta branch;
+- branch switching;
+- multi-branch inventory transfer;
+- branch-level permissions;
+- MANAGER;
+- SELLER;
+- team management;
+- subscription billing;
+- automatic subscription payment;
+- advanced plan management;
+- SuperAdminning Shop CRM'ini boshqarishi.
+
+Kelajakda tarif va branch architecture sifatida alohida relizda qo‘shiladi.

@@ -90,7 +90,9 @@ serverning lokal zonasida emas.
 
 ### 2.3 Identifikatorlar
 
-UUID v4, string. `settings.id` — yagona istisno (`Int`, doim `1`).
+UUID v4, string. Istisno yo'q: `settings.id` (`Int`, doim `1`) bilan birga
+yo'qoladi — jadval `shops` ga aylanadi va har Shop'ning UUID'si bo'ladi
+(§21.4).
 
 ### 2.4 Bo'sh qiymatlar
 
@@ -135,7 +137,7 @@ Barcha xatolar bir xil shaklda:
 | `401` | Autentifikatsiya yo'q yoki muddati o'tgan                        | Sessiya tugagan                                                         |
 | `403` | Autentifikatsiya bor, ruxsat yo'q                                | SELLER kassaga kirmoqchi                                                |
 | `404` | Resurs topilmadi                                                 | Noto'g'ri `id`                                                          |
-| `409` | **Biznes konflikti** — holat mos emas                            | IMEI band, savdo allaqachon tasdiqlangan, kassa yozuvi kechagi          |
+| `409` | **Biznes konflikti** — holat mos emas                            | IMEI band, savdo tasdiqlangan, kassa yozuvi kechagi, `SHOP_SETUP_REQUIRED` |
 | `422` | **Biznes qoidasi buzildi** — ma'lumot to'g'ri, lekin qoidaga zid | Jadval summasi qarzga teng emas (§9.6), ortiqcha to'lov (§10.2)         |
 | `428` | **Old shart yo'q** — optimistik qulf tokeni yuborilmagan         | `PATCH` da `expectedUpdatedAt` ham, `If-Unmodified-Since` ham yo'q (§8) |
 | `429` | Limit oshdi                                                      | Login urinishi, AI so'rovi                                              |
@@ -192,7 +194,9 @@ saqlanadi — frontend ham, backend ham shu yerdan oladi. Namuna:
 
 ```
 AUTH_INVALID_CREDENTIALS · AUTH_BLOCKED · AUTH_SESSION_EXPIRED
-AUTH_TOKEN_INVALID · AUTH_TOKEN_USED
+AUTH_TOKEN_INVALID · AUTH_TOKEN_USED · AUTH_ACCOUNT_SUSPENDED
+
+SHOP_SETUP_REQUIRED · SHOP_ALREADY_EXISTS · SHOP_CONTEXT_MISSING
 
 SALE_NOT_DRAFT · SALE_ALREADY_CONFIRMED · SALE_EMPTY
 SALE_ITEM_NOT_AVAILABLE · SALE_INSUFFICIENT_STOCK

@@ -23,14 +23,22 @@ Tarjima faqat bitta joyda — `apps/web` i18n lug'atida.
 
 ## Foydalanuvchi va kirish
 
-| Enum             | UI matni          |
-| ---------------- | ----------------- |
-| `UserRole.OWNER` | Do'kon egasi      |
-| `Theme.SYSTEM`   | Tizim mavzusi     |
-| `Theme.LIGHT`    | Yorug'            |
-| `Theme.DARK`     | Qorong'i          |
-| `Session`        | sessiya / qurilma |
-| `LoginAttempt`   | kirish urinishi   |
+| Enum                       | UI matni            |
+| -------------------------- | ------------------- |
+| `Shop`                     | do'kon              |
+| `UserRole.SHOP_ADMIN`      | do'kon egasi        |
+| `PlatformAdmin`            | platforma admini    |
+| `AccountStatus.ACTIVE`     | faol                |
+| `AccountStatus.SUSPENDED`  | vaqtincha to'xtatilgan |
+| `AccountStatus.DISABLED`   | o'chirilgan         |
+| `Theme.SYSTEM`             | Tizim mavzusi       |
+| `Theme.LIGHT`              | Yorug'              |
+| `Theme.DARK`               | Qorong'i            |
+| `Session`                  | sessiya / qurilma   |
+| `LoginAttempt`             | kirish urinishi     |
+
+> `UserRole.OWNER` → `SHOP_ADMIN` ga qayta nomlandi (§21.2). UI matni
+> o'zgarmadi: foydalanuvchi uchun u baribir do'kon egasi.
 
 ## Katalog va ombor
 

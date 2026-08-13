@@ -112,10 +112,11 @@ Amaliy natijalar:
 
 | Modul           | Javobgarlik                                                       |
 | --------------- | ----------------------------------------------------------------- |
+| `Platform`      | SUPERADMIN login va sessiyasi, SHOP_ADMIN accountlari, status (§14.3) |
 | `Auth`          | login, sessiya, urinishlar cheklovi va jurnali, parol tiklash     |
-| `Users`         | foydalanuvchi profili, rol (MVP'da bitta rol faol)                |
-| `Settings`      | do'kon sozlamalari, standart qiymatlar                            |
-| `ExchangeRates` | CBU sync (09:00 Toshkent), do'kon kursi, kurs tarixi              |
+| `Users`         | foydalanuvchi profili, rol (MVP'da bitta biznes rol faol)         |
+| `Shops`         | Shop yaratish (§25.6), do'kon sozlamalari va standart qiymatlar (§21.4) |
+| `ExchangeRates` | CBU sync (09:00 Toshkent), do'kon kursi, kurs tarixi (§14.6)      |
 | `Catalog`       | kategoriya, brend, mahsulot shablonlari                           |
 | `Inventory`     | seriyali birliklar, partiyalar, ombor harakati, inventarizatsiya  |
 | `Customers`     | mijoz kartasi, telefon normalizatsiyasi va dublikatlari, passport |
@@ -129,6 +130,9 @@ Amaliy natijalar:
 | `Notifications` | web push, SMS porti, yuborish tarixi                              |
 | `AiInsights`    | read-only ma'lumot tayyorlash va AI javoblari                     |
 | `Audit`         | o'zgarmas audit yozuvlari                                         |
+
+`Settings` moduli `Shops` ga qo'shildi (§21.4): sozlamalar endi alohida
+jadval emas, `shops` qatorining ustunlari.
 
 **Modul boshqa modul jadvaliga bevosita yozmaydi.** Savdo tasdiqlanganda
 `Sales` domen event chiqaradi; `Inventory`, `Cashbook`, `Installments` va
@@ -259,8 +263,9 @@ erDiagram
 
 | Jadval           | Muhim maydonlar                                                                                                                                                                                                                                                                                                                                       |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `settings`       | bitta qator, tipli ustunlar: `shop_name`, `logo_file_id`, `address`, `phone`, `work_start`, `work_end`, `weekend_days`, `low_stock_threshold`, `default_installment_months`, `default_down_payment_percent`, **`store_rate_markup_percent`** (§16.2), `reminder_hour`. `base_currency` **olib tashlandi** — bazaviy valyuta doim `UZS` (§1.1, §17.18) |
-| `exchange_rates` | `date` (unique), `cbu_rate`, `store_rate`, `source` (`CBU`/`MANUAL`), `fetched_at`, `updated_by_id` (§3.5)                                                                                                                                                                                                                                            |
+| `shops`               | Shop boshiga bitta qator (§21.4): `name`, `logo_file_id`, `address`, `phone`, `work_start`, `work_end`, `weekend_days`, `low_stock_threshold`, `default_installment_months`, `default_down_payment_percent`, **`store_rate_markup_percent`** (§16.2), `reminder_hour`. `base_currency` **yo'q** — bazaviy valyuta doim `UZS` (§1.1, §17.18) |
+| `cbu_rates`           | `date` (unique), `rate`, `fetched_at` — platforma darajasida (§21.5)                                                                                                                                                                                                                                                                       |
+| `shop_exchange_rates` | `(shop_id, date)` unique, `store_rate`, `source` (`CBU`/`MANUAL`), `updated_by_id` (§3.5, §14.6)                                                                                                                                                                                                                                           |
 
 ### Katalog
 
@@ -398,7 +403,11 @@ POST   /auth/change-password
 GET    /auth/sessions         DELETE /auth/sessions/:id  DELETE /auth/sessions
 GET    /auth/login-attempts
 
-GET    /settings              PATCH /settings
+POST   /platform/auth/login   POST /platform/auth/logout   GET /platform/auth/me
+GET    /platform/shop-admins  POST /platform/shop-admins
+GET    /platform/shop-admins/:id       PATCH /platform/shop-admins/:id/status
+
+POST   /shops                 GET  /shops/me               PATCH /shops/me
 GET    /exchange-rates        GET  /exchange-rates/today   PUT /exchange-rates/:date
 POST   /exchange-rates/sync                 # §18.4 — CBU'dan hozir olish
 POST   /exchange-rates/:date/reset-to-cbu   # §16.8 — MANUAL dan qaytish
@@ -451,9 +460,13 @@ GET    /health/live           GET  /health/ready
 `POST /sales/:id/reverse` **yo'q** — qaytarish va bekor qilish biznes
 ma'nosi jihatidan boshqa amallar (§8), API ham shuni aks ettiradi (§17.18).
 
+`/settings` `/shops/me` ga ko'chdi (§21.4). `shopId` so'rovda uzatilmaydi
+— backend uni sessiyadan oladi (§25.13, §14.4).
+
 Next.js sahifalari domain bo'yicha ajratiladi: `/login`, `/dashboard`,
 `/sales`, `/inventory`, `/customers`, `/installments`, `/payments`,
-`/cashbook`, `/reports`, `/insights`, `/settings`.
+`/cashbook`, `/reports`, `/insights`, `/settings`, `/setup-shop` —
+hamda ulardan butunlay ajratilgan `/superadmin/*` guruhi (§14.7).
 
 Form validatsiyasi clientda tezkor UX uchun, **serverda esa majburiy qayta
 validatsiya** uchun. API xatolari foydalanuvchiga o'zbekcha va tushunarli
@@ -474,7 +487,7 @@ muhitida Docker yo'q — MinIO binary sifatida o'rnatiladi.
 
 | Jarayon          | Vaqti                                                              | Vazifa                                                                                     |
 | ---------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| CBU kurs sync    | har kuni 09:00 (Toshkent)                                          | CBU kursini olish, do'kon kursini ustama bilan hisoblash, `exchange_rates`ga yozish (§3.3) |
+| CBU kurs sync    | har kuni 09:00 (Toshkent)                                          | CBU kursini olib `cbu_rates`ga yozish, so'ng **har Shop uchun** do'kon kursini o'z ustamasi bilan hisoblab `shop_exchange_rates`ga yozish (§3.3, §14.6). `MANUAL` qatorlar chetlab o'tiladi (§16.8) |
 | To'lov eslatmasi | har kuni `reminder_hour` (default 09:00) va server ishga tushganda | ertaga muddati keladigan to'lanmagan qatorlar                                              |
 
 Eslatma oqimi:
@@ -521,6 +534,11 @@ xarajat baholashidan keyin qilinadi.
 - **Idempotency** barcha moliyaviy `POST` uchun majburiy (§17.6).
 - Ruxsat: global **default DENY** guard, `@Roles()` dekoratori,
   rolga bog'liq javob serializatsiyasi — `PERMISSIONS.md`.
+- **Tenant izolyatsiyasi** — Prisma extension'da majburiy shop konteksti
+  (§14.4); kontekstsiz so'rov xato beradi, bo'sh filtr bilan ketmaydi.
+  Raw SQL alohida ko'rib chiqiladi (§21.8). `shopId` **hech qachon**
+  clientdan qabul qilinmaydi (§25.12) — `exchange_rate` va `cost_snapshot`
+  bilan bir xil qoida.
 - Rate limiting endpoint sinflari bo'yicha — `API.md` §6.
 - Object storage fayllari public emas — faqat vaqtinchalik havola (§15.5);
   yuklashda MIME oq ro'yxati, fayl imzosi va EXIF tozalash (`API.md` §7).
@@ -545,11 +563,18 @@ xarajat baholashidan keyin qilinadi.
 | ----------- | ------------------------------------------------------------------------------------------------------ |
 | Unit        | pul va valyuta hisoblari, yaxlitlash, to'lov taqsimoti, jadval tuzish, foyda hisobi                    |
 | Integration | savdo tasdiqlash tranzaksiyasi, qaytarish/bekor qilish, to'lov tasdiqlash va qaytarish, ombor tuzatish |
+| **Tenant**  | **cross-Shop IDOR** — har bir shop-scoped resurs uchun parametrlangan (§25.11); kontekstsiz so'rov xato berishi; SUPERADMIN biznes endpointda 403 |
 | E2E         | login → savdo → nasiya → to'lov asosiy yo'li                                                           |
 
 Savdo tasdiqlash va to'lov taqsimlash — eng xavfli ikki joy: noto'g'ri
 ishlasa pul hisobi buziladi va buni hech kim sezmaydi. Ular testsiz
 `main`ga kirmaydi.
+
+Tenant testi ham shu ro'yxatga qo'shiladi va u **namuna emas,
+parametrlangan** bo'lishi shart: har bir shop-scoped resurs uchun
+avtomatik ishlasin, aks holda keyin qo'shilgan resurs testsiz qoladi.
+Qo'shimcha to'siq — CI'da ishlaydigan skript: §14.5 ro'yxatidagi har bir
+modelda `shop_id` borligini tekshiradi.
 
 ## 13. Kodlash tartibi
 
@@ -579,19 +604,25 @@ ishlasa pul hisobi buziladi va buni hech kim sezmaydi. Ular testsiz
 5. **Sales (naqd) + Cashbook** — tasdiqlash tranzaksiyasi, `payments`,
    kassa hisoblari va yozuvlari, dashboard.
 
+**Platforma (§21.1)**
+
+6. **Platform va tenant izolyatsiyasi** — `platform_admins`, `shops`,
+   barcha biznes jadvallariga `shop_id`, avtomatik shop konteksti
+   (§14.4), kurs modelining bo'linishi (§14.6), cross-Shop testlari.
+
 **MVP-2**
 
-6. Sales reversal — qaytarish va bekor qilish.
-7. Installments va Payments — jadval, taqsimot, tasdiqlash, erta yopish.
-8. Reports va audit ko'rinishi.
-9. Documents (shartnoma PDF) va Storage.
+7. Sales reversal — qaytarish va bekor qilish.
+8. Installments va Payments — jadval, taqsimot, tasdiqlash, erta yopish.
+9. Reports va audit ko'rinishi.
+10. Documents (shartnoma PDF) va Storage.
 
 **Kengaytirish**
 
-10. Inventarizatsiya, shaxsiy foydalanish, valyuta ayirboshlash.
-11. PWA, web push, SMS test adapteri.
-12. AI Insights read-only moduli.
-13. Production hardening, backup/restore sinovi, CI/CD, haqiqiy SMS va SMTP.
+11. Inventarizatsiya, shaxsiy foydalanish, valyuta ayirboshlash.
+12. PWA, web push, SMS test adapteri.
+13. AI Insights read-only moduli.
+14. Production hardening, backup/restore sinovi, CI/CD, haqiqiy SMS va SMTP.
 
 **Nega 0 va 1 bosqichlar birinchi:** hujjat ziddiyatini kod yozilmaganda
 tuzatish arzon; kesuvchi konventsiyalarni keyin qo'shish esa har bir
@@ -601,3 +632,274 @@ modulni qayta ko'rib chiqishni talab qiladi.
 to'lov — to'rtta murakkab tranzaksion mantiq. Ularni bir vaqtda yozish
 va bir vaqtda debug qilish loyihaning eng katta xavfi. MVP-1 tugaganda
 do'kon allaqachon ishlaydi va tizim real ma'lumot bilan sinaladi.
+
+**Nega tenant qatlami MVP-2 dan oldin (§21.1):** aynan o'sha to'rtta
+modul hali yozilmagan. Ular avval single-tenant yozilsa, keyin har bir
+tranzaksiya, hisobot so'rovi va `CHECK` cheklovi qayta ko'rib chiqiladi.
+Hozir real ma'lumot yo'q va backfill migratsiyasi arzon; 6-bosqichdan
+keyin yozilgan har bir yangi so'rov esa avtomatik shop-scoped bo'ladi
+(§14.4) va dasturchi buni unutib qo'yolmaydi.
+
+## 14. Multi-tenant (SaaS) arxitektura
+
+### 14.1. Maqsad
+
+HisobAI bir nechta mustaqil Shop'larni bitta platformada ishlatadigan SaaS architecture asosida quriladi.
+
+Har bir Shop alohida tenant hisoblanadi.
+
+Tenant boundary backend va database access layer orqali majburiy enforce qilinadi.
+
+Architecture quyidagi asosiy talabni kafolatlashi kerak:
+
+> Shop A business data'si Shop B business data'siga hech qachon aralashmasligi kerak.
+
+---
+
+### 14.2. Platform hierarchy
+
+```text
+HisobAI Platform
+│
+├── SUPERADMIN
+│     │
+│     └── Platform account administration
+│
+├── SHOP_ADMIN A
+│     │
+│     └── SHOP A
+│           ├── Settings
+│           ├── Catalog
+│           ├── Inventory
+│           ├── Customers
+│           ├── Sales
+│           ├── Installments
+│           ├── Payments
+│           ├── Cashbook
+│           ├── Reports
+│           └── AI
+│
+└── SHOP_ADMIN B
+      │
+      └── SHOP B
+            ├── Settings
+            ├── Catalog
+            ├── Inventory
+            ├── Customers
+            ├── Sales
+            ├── Installments
+            ├── Payments
+            ├── Cashbook
+            ├── Reports
+            └── AI
+```
+
+---
+
+### 14.3. Platforma va biznes hisoblari ajratilgan (§21.3)
+
+`SUPERADMIN` **`users` jadvalida emas** — u `platform_admins` da,
+o'z sessiya jadvali va o'z cookie'si bilan.
+
+| Qatlam            | Biznes (`SHOP_ADMIN`)         | Platforma (`SUPERADMIN`)        |
+| ----------------- | ----------------------------- | ------------------------------- |
+| Jadval            | `users`                       | `platform_admins`               |
+| Sessiya           | `sessions`                    | `platform_sessions`             |
+| Cookie            | `SESSION_COOKIE_NAME`         | `PLATFORM_SESSION_COOKIE_NAME`  |
+| Guard             | `SessionGuard` + `RolesGuard` | `PlatformSessionGuard`          |
+| Dekorator         | `@Roles(...)`                 | `@PlatformOnly()`               |
+| Shop konteksti    | `user.shopId` dan             | **yo'q**                        |
+
+Sabab: §25.20 SUPERADMIN'ning tenant data'ga kira olmasligini
+**invariant** deb e'lon qiladi. Bitta jadval va `role` bilan bu invariant
+har so'rovdagi `if` ga tayanardi. Alohida jadvalda SUPERADMIN'da `shopId`
+umuman yo'q — shop-scoped so'rov u uchun texnik jihatdan bajarilmaydi
+(§14.4). Kod tekshiruviga emas, **strukturaga** tayangan kafolat.
+
+`@Roles()` va `@PlatformOnly()` bitta endpointda ishlatilmaydi; ikkalasi
+ham qo'yilmagan endpoint — default DENY (`PERMISSIONS.md` §1).
+
+---
+
+### 14.4. Shop konteksti majburiy va avtomatik (§21.7)
+
+Servis kodida qo'lda `where: { shopId }` **yozilmaydi**. Sabab: 93 ta
+API faylida har bir so'rovga filtr qo'shish — kafolat emas, intizom, va
+bitta unutilgan joy §25.11 dagi cross-Shop IDOR'ni beradi.
+
+```text
+request → ShopContextMiddleware      (user.shopId dan, hech qachon
+   │                                  query/header'dan — §25.12)
+   ↓
+AsyncLocalStorage<{ shopId }>
+   ↓
+PrismaService.$extends({ query: { $allModels } })
+   ↓
+where.shopId va create.data.shopId avtomatik qo'shiladi
+```
+
+Ikkita qoida bu qatlamni ishonchli qiladi:
+
+1. **Kontekstsiz so'rov xato beradi**, bo'sh filtr bilan ketmaydi.
+   "Filtr yo'q = hamma qator" — tenant tizimlarida ma'lumot sizishining
+   eng ko'p uchraydigan sababi.
+2. Chiqish yo'li **aniq nomlangan** — `runWithoutShopScope()`, va uni
+   faqat `Platform` moduli ishlatadi. Grep bilan topiladigan yagona joy.
+
+`$transaction` ichida kontekst saqlanadi — `AsyncLocalStorage` buni
+tabiiy qiladi, ya'ni §6 dagi savdo tasdiqlash tranzaksiyasi o'zgarmaydi.
+
+**Raw SQL extension'dan o'tmaydi (§21.8).** Kod bazasida `$queryRaw` /
+`$executeRaw` **uchta** joyda ishlatiladi va ro'yxat testda qotiriladi:
+
+| Joy                                              | §     | Chora                                  |
+| ------------------------------------------------ | ----- | -------------------------------------- |
+| `sale_counters` raqam ajratish                   | 17.1  | `WHERE shop_id = … AND year = …`       |
+| Mahsulot nomi advisory lock (`product.service`)  | 18.5  | Qulf kalitiga `shop_id` qo'shiladi     |
+| `SELECT 1` (`health.controller`)                 | —     | Tenant jadvaliga tegmaydi, o'zgarmaydi |
+
+Ombor shartli `UPDATE` (§17.5) bu ro'yxatda **yo'q**: u
+`tx.inventoryItem.updateMany(...)` va `tx.inventoryBatch.updateMany(...)`
+bilan yozilgan, ya'ni oddiy model metodi va extension uni qamraydi.
+
+Alohida qatlam — **DB triggerlari**. Ular so'rov emas, shuning uchun
+extension ham, qo'lda filtr ham ularga tegishli emas; ular migratsiyada
+SQL darajasida qayta yoziladi:
+
+| Trigger                              | §     | O'zgarish                              |
+| ------------------------------------ | ----- | -------------------------------------- |
+| IMEI ustunlararo unique tekshiruvi   | 18.3  | Solishtirish `shop_id` ichida bo'ladi  |
+| `CHECK` cheklovlari                  | 17.8  | Yangi ustunlarni qamrashi tekshiriladi |
+
+Advisory lock kalitiga `shop_id` qo'shilishi ikkala joyda ham majburiy:
+usiz bitta Shop'da mahsulot qo'shish boshqa Shop'dagi qabulni kutib
+turardi — mantiqiy xato emas, lekin tenant'lar bir-birini sekinlashtiradi.
+
+---
+
+### 14.5. Ma'lumotlar modeliga o'zgarishlar
+
+**Yangi jadvallar**
+
+| Jadval              | Muhim maydonlar                                                                                        |
+| ------------------- | ------------------------------------------------------------------------------------------------------ |
+| `platform_admins`   | `id`, `email` (unique), `password_hash`, `display_name`, `is_active`                                   |
+| `platform_sessions` | `sessions` bilan bir xil shakl, `platform_admin_id` bilan                                              |
+| `shops`             | `id`, `name`, `phone`, `address`, `logo_file_id` + **eski `settings` ning barcha maydonlari** (§21.4)  |
+| `shop_admins` holati | `users.status` — `ACTIVE`/`SUSPENDED`/`DISABLED` (§21.6)                                              |
+
+`settings` jadvali o'chiriladi — u `shops` ga aylanadi. `users` ga
+`shop_id` (**nullable**, §21.10) va `@@unique([shop_id])` qo'shiladi:
+1 SHOP_ADMIN = 1 SHOP (§25.7).
+
+**`shop_id` qo'shiladigan jadvallar** (§25.10): `categories`, `brands`,
+`products`, `inventory_items`, `inventory_batches`, `stock_movements`,
+`stocktakes`, `stocktake_lines`, `customers`, `sales`, `sale_items`,
+`sale_counters`, `installment_contracts`, `payment_schedules`,
+`payments`, `payment_allocations`, `cash_accounts`, `cash_categories`,
+`cash_entries`, `cash_exchanges`, `files`, `documents`,
+`notification_logs`, `push_subscriptions`, `audit_logs`.
+
+`push_subscriptions` §25.10 da sanalgan va ro'yxatga qo'shilgan: eslatma
+jarayoni (§10) uni **schedule bo'yicha** topadi, ya'ni foydalanuvchi
+orqali emas — Shop kontekstisiz bir tenant'ning to'lov eslatmasi
+boshqasining qurilmasiga ketishi mumkin edi.
+
+**`idempotency_keys` — alohida holat (§21.11).** U biznes jadvali emas,
+lekin `response_body` ustunida **boshqa Shop'ning javobi** turadi.
+Kalit `key` ustidagi global PK, va takrorlashda faqat `request_hash`
+solishtiriladi — `user_id` tekshirilmaydi. Bu bir tenantli tizimda
+xavfsiz edi. Yechim: unique `(shop_id, key)` ga o'tadi va takrorlash
+yo'lida `user_id` mosligi ham tekshiriladi.
+
+Bola jadvallarda (`sale_items`, `payment_allocations`, `stocktake_lines`)
+`shop_id` denormalizatsiya qilinadi — u shop-scoped `@@unique` va
+to'g'ridan-to'g'ri so'rov uchun kerak. Ota bilan mosligi kompozit FK
+(`@@unique([id, shop_id])` ustiga) bilan kafolatlanadi, ya'ni bola
+qatorining `shop_id` si otasinikidan farq qila olmaydi.
+
+**Global unique → shop-scoped.** Bu ro'yxat to'liq bajarilishi shart:
+aks holda ikkinchi Shop birinchisining ma'lumotini yozolmaydi.
+
+| Hozir                                                | Bo'ladi                              |
+| ---------------------------------------------------- | ------------------------------------ |
+| `customers.phone_primary`                            | `(shop_id, phone_primary)` (§25.15)  |
+| `categories.slug`, `brands.slug`, `cash_categories.slug` | `(shop_id, slug)`                |
+| `inventory_items.imei_1` / `imei_2` / `serial_number` | shop-scoped partial unique + §18.3 triggeri `shop_id` bilan qayta yoziladi |
+| `sales.number`                                       | `(shop_id, number)`                  |
+| `sale_counters.year` (PK)                            | `(shop_id, year)` (§21.9)            |
+| `cash_accounts (name, currency)`                     | `(shop_id, name, currency)`          |
+
+`§21.9` muhim: umumiy hisoblagichda ikkinchi do'kon `2026-00001` dan
+emas, birinchisi qayerda to'xtagan bo'lsa o'shandan boshlardi — ya'ni
+mijozga ko'rinadigan raqam boshqa tenant'ning savdo hajmini oshkor
+qilardi.
+
+`docs/proposals/v0.2.1-migration.sql` dagi `CHECK` cheklovlari
+migratsiyada takrorlanadi — aks holda "kod xatosidan himoyaning oxirgi
+qatlami" (§17.8) yangi ustunlarni qamramaydi.
+
+---
+
+### 14.6. Kurs modeli ikkiga bo'linadi (§21.5)
+
+| Jadval                 | Daraja    | Maydonlar                                                     |
+| ---------------------- | --------- | ------------------------------------------------------------- |
+| `cbu_rates`            | platforma | `date` (unique), `rate`, `fetched_at`                         |
+| `shop_exchange_rates`  | Shop      | `(shop_id, date)` unique, `store_rate`, `source`, `updated_by_id` |
+
+CBU kursi butun O'zbekiston uchun bitta — uni har Shop qatorida
+takrorlash sync'ni N marta yozishga majbur qilardi. Do'kon kursi esa
+aynan Shop'ga tegishli: §16.2 uni `store_rate_markup_percent` dan
+hisoblaydi, u endi `shops` da.
+
+`ExchangeRatesService` shunga mos ikkiga bo'linadi:
+
+- **CBU sync** — fon jarayoni (§10), platforma darajasida bir marta;
+- **Shop kursi** — §16.2 hisobi, §16.8 (`MANUAL` daxlsizligi),
+  §16.6 (eskirganlik) va §17.11 (orqadagi sana) shop qatorida.
+
+`POST /exchange-rates/sync` (§18.4) `cbu_rates` ni yangilaydi va
+so'rovchi Shop'ning kursini qayta hisoblaydi.
+
+---
+
+### 14.7. API va sahifalar
+
+Biznes marshrutlari **o'zgarmaydi** — `shopId` so'rovda uzatilmaydi
+(§25.13), backend uni sessiyadan oladi. Qo'shiladiganlar:
+
+```text
+POST   /platform/auth/login    POST /platform/auth/logout
+GET    /platform/auth/me
+GET    /platform/shop-admins   POST /platform/shop-admins
+GET    /platform/shop-admins/:id
+PATCH  /platform/shop-admins/:id/status      # §21.6
+
+POST   /shops                  # SHOP_ADMIN o'ziga Shop yaratadi (§25.6)
+GET    /shops/me               PATCH /shops/me    # eski /settings
+```
+
+`GET /settings` va `PATCH /settings` `/shops/me` ga ko'chadi (§21.4).
+
+Next.js: `/superadmin/*` — `(app)` va `(auth)` dan **butunlay ajratilgan**
+route guruhi, o'z layout'i va o'z API klienti bilan (§25.4).
+`/app/setup-shop` — §25.6 oqimi; `shopId` null bo'lsa `(app)` layout'i
+shunga yo'naltiradi.
+
+---
+
+### 14.8. Xatolar
+
+| Kod                   | Holat | Ma'nosi                                                        |
+| --------------------- | ----- | -------------------------------------------------------------- |
+| `SHOP_SETUP_REQUIRED` | 409   | Account bor, Shop yo'q — `/app/setup-shop` ga yo'naltiriladi (§21.10) |
+| `SHOP_CONTEXT_MISSING`| 500   | Ichki xato: shop-scoped so'rov kontekstsiz bajarildi (§14.4)   |
+
+Birinchisi ataylab 403 emas: Shop'siz account — **normal** holat (§25.5),
+va 403 frontendga "ruxsat yo'q" deb tushuntirardi, u esa setup oqimiga
+yo'naltira olmasdi.
+
+Cross-Shop urinish (§25.11) alohida kod olmaydi — resurs **topilmaydi**
+va 404 qaytadi. Sabab: 403 "bunday ID bor, lekin sizniki emas" degan
+ma'lumotni oshkor qiladi.
