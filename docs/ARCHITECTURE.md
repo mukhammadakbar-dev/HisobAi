@@ -800,6 +800,15 @@ turardi — mantiqiy xato emas, lekin tenant'lar bir-birini sekinlashtiradi.
 `cash_entries`, `cash_exchanges`, `files`, `documents`,
 `notification_logs`, `push_subscriptions`, `audit_logs`.
 
+**`audit_logs.shop_id` — yagona NULLABLE istisno.** Qolgan hamma joyda
+ustun `NOT NULL`. Sabab: §25.17 SUPERADMIN'ning account-level amallarini
+(`SHOP_ADMIN_CREATED` va h.k.) audit qilishni talab qiladi, ular esa
+hech qanday Shop'ga tegishli emas. Amaliy natijasi §14.4 uchun muhim:
+shop-scoped so'rov platforma yozuvlarini **ko'rmaydi** (bu to'g'ri), lekin
+`shop_id` siz yozilgan biznes audit yozuvi ham ko'rinmay qoladi — shuning
+uchun `AuditService.record(tx, …)` da `shopId` majburiy argument bo'ladi
+va faqat platforma yo'li uni `null` qoldiradi.
+
 `push_subscriptions` §25.10 da sanalgan va ro'yxatga qo'shilgan: eslatma
 jarayoni (§10) uni **schedule bo'yicha** topadi, ya'ni foydalanuvchi
 orqali emas — Shop kontekstisiz bir tenant'ning to'lov eslatmasi
