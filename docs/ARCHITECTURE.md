@@ -727,30 +727,72 @@ Servis kodida qo'lda `where: { shopId }` **yozilmaydi**. Sabab: 93 ta
 API faylida har bir so'rovga filtr qo'shish — kafolat emas, intizom, va
 bitta unutilgan joy §25.11 dagi cross-Shop IDOR'ni beradi.
 
+Chegara **ikki qatlamda** majburlanadi (§21.13): Prisma extension
+ergonomikani beradi, PostgreSQL RLS esa kafolatni.
+
 ```text
 request → ShopContextMiddleware      (user.shopId dan, hech qachon
    │                                  query/header'dan — §25.12)
    ↓
 AsyncLocalStorage<{ shopId }>
    ↓
-PrismaService.$extends({ query: { $allModels } })
+PrismaService.$extends({ query: { $allOperations } })
+   │   kontekst yo'q            → SHOP_CONTEXT_MISSING (bazaga bormaydi)
+   │   tranzaksiya yo'q         → shaffof tranzaksiyaga o'raydi (§21.15)
    ↓
-where.shopId va create.data.shopId avtomatik qo'shiladi
+SELECT set_config('app.current_shop_id', $1, true)     (§21.14)
+   ↓
+PostgreSQL RLS (ENABLE + FORCE, USING va WITH CHECK bilan):
+  shop_id = NULLIF(current_setting('app.current_shop_id', true), '')::uuid
 ```
 
-Ikkita qoida bu qatlamni ishonchli qiladi:
+`NULLIF` majburiy (§21.17): `set_config(…, true)` bir marta ishlagach,
+tranzaksiya tugaganda maxsus parametr `NULL` ga emas, **bo'sh satrga**
+qaytadi. Usiz bir xil xato yangi ulanishda jim bo'sh natija, ilgari
+ishlatilgan ulanishda esa cast xatosi bo'lardi.
+
+`WITH CHECK` ham `USING` bilan birga yoziladi: `USING` faqat qaysi
+qatorlar **ko'rinishini** boshqaradi, yangi qatorga qanday `shop_id`
+yozilishini emas. Faqat `USING` bo'lsa, boshqa tenant'ga qator
+**yozib** yuborish mumkin bo'lardi.
+
+**Nega ikkita qatlam.** Extension'ning o'zi yetarli emas edi: Prisma tip
+tizimi `shopId` ni create inputida majburiy qilib qoldiradi va servis uni
+qo'lda yozishga majbur bo'lardi — ya'ni "dasturchi unutib qo'yolmaydi"
+degan maqsad bajarilmasdi. Maydonni ixtiyoriy qilishning yagona yo'li —
+`@default(...)`. Default `current_setting(...)` bo'lgach, RLS qo'shish
+deyarli tekinga tushdi va u §21.8 dagi raw SQL teshigini ham yopdi.
+
+Uchta qoida bu qatlamni ishonchli qiladi:
 
 1. **Kontekstsiz so'rov xato beradi**, bo'sh filtr bilan ketmaydi.
    "Filtr yo'q = hamma qator" — tenant tizimlarida ma'lumot sizishining
    eng ko'p uchraydigan sababi.
-2. Chiqish yo'li **aniq nomlangan** — `runWithoutShopScope()`, va uni
+2. **Jim bo'sh natija ham xato hisoblanadi.** RLS yoqilgan holda
+   o'zgaruvchi qo'yilmasa, siyosat hech bir qatorga mos kelmaydi va
+   so'rov `[]` qaytaradi — xato emas. Bu xatodan battar, shuning uchun
+   extension kontekst yo'qligini **o'zi** aniqlaydi va bazaga umuman
+   bormaydi (§21.15).
+3. Chiqish yo'li **aniq nomlangan** — `runWithoutShopScope()`, va uni
    faqat `Platform` moduli ishlatadi. Grep bilan topiladigan yagona joy.
 
 `$transaction` ichida kontekst saqlanadi — `AsyncLocalStorage` buni
-tabiiy qiladi, ya'ni §6 dagi savdo tasdiqlash tranzaksiyasi o'zgarmaydi.
+tabiiy qiladi, ya'ni §6 dagi savdo tasdiqlash tranzaksiyasi o'zgarmaydi;
+unga faqat boshida bitta `set_config` qo'shiladi.
 
-**Raw SQL extension'dan o'tmaydi (§21.8).** Kod bazasida `$queryRaw` /
-`$executeRaw` **uchta** joyda ishlatiladi va ro'yxat testda qotiriladi:
+**Ilova cheklangan DB roli ostida ulanadi (§21.16).** RLS jadval egasi
+va superuser uchun chetlab o'tiladi; `FORCE ROW LEVEL SECURITY` egani
+qamraydi, lekin superuser baribir o'tadi. Shuning uchun `hisobai_app`
+roli — ixtiyoriy yaxshilanish emas, RLS ishlashining sharti
+(`PERMISSIONS.md` §4).
+
+**Raw SQL extension'dan o'tmaydi (§21.8) — lekin RLS'dan o'tadi.**
+§21.13 dan keyin bu joylar allaqachon himoyalangan: siyosat qatlami
+so'rov qayerdan kelganini bilmaydi. Shunga qaramay `shop_id` sharti
+**baribir aniq yoziladi** — himoya uchun emas, o'qilishi uchun: `WHERE
+year = $1` ni o'qigan dasturchi u global hisoblagichni yangilayapti deb
+o'ylaydi. Kod bazasida `$queryRaw` / `$executeRaw` **uchta** joyda
+ishlatiladi va ro'yxat testda qotiriladi:
 
 | Joy                                              | §     | Chora                                  |
 | ------------------------------------------------ | ----- | -------------------------------------- |

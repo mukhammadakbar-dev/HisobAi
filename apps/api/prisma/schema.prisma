@@ -451,7 +451,7 @@ model PasswordResetToken {
 /// birga `user_id` mosligi ham tekshiriladi (servis qatlamida, §21.11).
 model IdempotencyKey {
   id           String   @id @default(uuid()) @db.Uuid
-  shopId       String   @map("shop_id") @db.Uuid
+  shopId       String   @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   key          String
   userId       String   @map("user_id") @db.Uuid
   endpoint     String
@@ -495,7 +495,7 @@ model CbuRate {
 /// `storeRate`ni ustidan yozmaydi.
 model ShopExchangeRate {
   id     String   @id @default(uuid()) @db.Uuid
-  shopId String   @map("shop_id") @db.Uuid
+  shopId String   @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   date   DateTime @db.Date
 
   storeRate Decimal            @map("store_rate") @db.Decimal(12, 4)
@@ -519,7 +519,7 @@ model ShopExchangeRate {
 /// slug'ini ishlatolmasligi kerak emas edi).
 model Category {
   id        String   @id @default(uuid()) @db.Uuid
-  shopId    String   @map("shop_id") @db.Uuid
+  shopId    String   @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   name      String
   slug      String
   isActive  Boolean  @default(true) @map("is_active")
@@ -536,7 +536,7 @@ model Category {
 
 model Brand {
   id        String   @id @default(uuid()) @db.Uuid
-  shopId    String   @map("shop_id") @db.Uuid
+  shopId    String   @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   name      String
   slug      String
   isActive  Boolean  @default(true) @map("is_active")
@@ -554,7 +554,7 @@ model Brand {
 /// Shablon. Tannarx BU YERDA saqlanmaydi (§4.1) — u ombor birligida/partiyada.
 model Product {
   id         String @id @default(uuid()) @db.Uuid
-  shopId     String @map("shop_id") @db.Uuid
+  shopId     String @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   categoryId String @map("category_id") @db.Uuid
   brandId    String @map("brand_id") @db.Uuid
 
@@ -604,7 +604,7 @@ model Product {
 /// §5.1 — har fizik birlik alohida yozuv, O'Z tannarxi bilan.
 model InventoryItem {
   id        String @id @default(uuid()) @db.Uuid
-  shopId    String @map("shop_id") @db.Uuid
+  shopId    String @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   productId String @map("product_id") @db.Uuid
 
   /// §5.3 — ikkalasi ham Shop ichida unique; qidiruv ikkala ustunni qamraydi.
@@ -650,7 +650,7 @@ model InventoryItem {
 /// §5.2 — miqdorli mahsulot partiya bo'yicha: har partiya boshqa narxda keladi.
 model InventoryBatch {
   id        String @id @default(uuid()) @db.Uuid
-  shopId    String @map("shop_id") @db.Uuid
+  shopId    String @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   productId String @map("product_id") @db.Uuid
 
   quantityReceived  Int      @map("quantity_received")
@@ -681,7 +681,7 @@ model InventoryBatch {
 /// xarajat sifatida shu jadvaldan hisoblanadi; kassaga tegmaydi.
 model StockMovement {
   id              String  @id @default(uuid()) @db.Uuid
-  shopId          String  @map("shop_id") @db.Uuid
+  shopId          String  @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   productId       String  @map("product_id") @db.Uuid
   inventoryItemId String? @map("inventory_item_id") @db.Uuid
   batchId         String? @map("batch_id") @db.Uuid
@@ -716,7 +716,7 @@ model StockMovement {
 /// §5.6 — jismonan sanab, tizimdagi qoldiq bilan solishtirish.
 model Stocktake {
   id          String          @id @default(uuid()) @db.Uuid
-  shopId      String          @map("shop_id") @db.Uuid
+  shopId      String          @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   status      StocktakeStatus @default(IN_PROGRESS)
   startedAt   DateTime        @default(now()) @map("started_at") @db.Timestamptz(3)
   completedAt DateTime?       @map("completed_at") @db.Timestamptz(3)
@@ -734,7 +734,7 @@ model Stocktake {
 
 model StocktakeLine {
   id              String  @id @default(uuid()) @db.Uuid
-  shopId          String  @map("shop_id") @db.Uuid
+  shopId          String  @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   stocktakeId     String  @map("stocktake_id") @db.Uuid
   productId       String  @map("product_id") @db.Uuid
   /// Seriyali mahsulotda aniq birlik ko'rsatiladi.
@@ -763,7 +763,7 @@ model StocktakeLine {
 /// telefon raqami ikkita mustaqil mijoz.
 model Customer {
   id       String @id @default(uuid()) @db.Uuid
-  shopId   String @map("shop_id") @db.Uuid
+  shopId   String @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   fullName String @map("full_name")
 
   /// §6.2, §6.4 — E.164, Shop ichida unique; SMS shunga ketadi
@@ -808,7 +808,7 @@ model Customer {
 /// teshigi qoldirmaydi.
 model Sale {
   id     String  @id @default(uuid()) @db.Uuid
-  shopId String  @map("shop_id") @db.Uuid
+  shopId String  @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   /// §7.6 — yil + ketma-ket raqam, masalan `2026-00147`.
   /// Teskari yozuvda: `2026-00147-R1` (§17.4).
   /// §21.9 — endi Shop ichida unique (umumiy bo'lsa ikkinchi Shop raqami
@@ -870,7 +870,7 @@ model Sale {
 ///   UPDATE sale_counters SET last_seq = last_seq + 1 WHERE shop_id = $1 AND year = $2
 ///     RETURNING last_seq;   -- qator qulfi poygani hal qiladi
 model SaleCounter {
-  shopId  String @map("shop_id") @db.Uuid
+  shopId  String @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   year    Int
   lastSeq Int    @default(0) @map("last_seq")
 
@@ -883,7 +883,7 @@ model SaleCounter {
 /// §7.11 — snapshotlar: keyingi narx o'zgarishi eski foydani o'zgartirmaydi.
 model SaleItem {
   id     String @id @default(uuid()) @db.Uuid
-  shopId String @map("shop_id") @db.Uuid
+  shopId String @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   saleId String @map("sale_id") @db.Uuid
 
   productId       String  @map("product_id") @db.Uuid
@@ -927,7 +927,7 @@ model SaleItem {
 /// `outstanding` ustuni YO'Q — jadval va taqsimotlardan hisoblanadi.
 model InstallmentContract {
   id     String @id @default(uuid()) @db.Uuid
-  shopId String @map("shop_id") @db.Uuid
+  shopId String @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   saleId String @unique @map("sale_id") @db.Uuid
 
   /// §9.2 — savdo valyutasi, o'zgarmaydi
@@ -973,7 +973,7 @@ model InstallmentContract {
 /// hisoblanadi.
 model PaymentSchedule {
   id         String @id @default(uuid()) @db.Uuid
-  shopId     String @map("shop_id") @db.Uuid
+  shopId     String @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   contractId String @map("contract_id") @db.Uuid
 
   sequence   Int
@@ -1006,7 +1006,7 @@ model PaymentSchedule {
 /// `cash_entries` yaratmaydi.
 model Payment {
   id         String  @id @default(uuid()) @db.Uuid
-  shopId     String  @map("shop_id") @db.Uuid
+  shopId     String  @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   saleId     String? @map("sale_id") @db.Uuid
   contractId String? @map("contract_id") @db.Uuid
 
@@ -1064,7 +1064,7 @@ model Payment {
 /// Alohida jadval: qaytarishni aniq teskari bajarish uchun kerak.
 model PaymentAllocation {
   id         String  @id @default(uuid()) @db.Uuid
-  shopId     String  @map("shop_id") @db.Uuid
+  shopId     String  @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   paymentId  String  @map("payment_id") @db.Uuid
   scheduleId String  @map("schedule_id") @db.Uuid
   amount     Decimal @db.Decimal(18, 2)
@@ -1086,7 +1086,7 @@ model PaymentAllocation {
 /// §11.1, §11.3 — karta puli kassa yashigida yo'q, shuning uchun hisoblar ajratiladi.
 model CashAccount {
   id        String          @id @default(uuid()) @db.Uuid
-  shopId    String          @map("shop_id") @db.Uuid
+  shopId    String          @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   name      String
   currency  Currency
   kind      CashAccountKind
@@ -1110,7 +1110,7 @@ model CashAccount {
 /// §11.10 — tizim kategoriyalari o'chirilmaydi; yangisini qo'shish mumkin.
 model CashCategory {
   id        String         @id @default(uuid()) @db.Uuid
-  shopId    String         @map("shop_id") @db.Uuid
+  shopId    String         @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   name      String
   slug      String
   direction CashDirection?
@@ -1132,7 +1132,7 @@ model CashCategory {
 /// Bog'lanish `cash_entry → payment → sale` orqali.
 model CashEntry {
   id        String        @id @default(uuid()) @db.Uuid
-  shopId    String        @map("shop_id") @db.Uuid
+  shopId    String        @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   accountId String        @map("account_id") @db.Uuid
   direction CashDirection
   amount    Decimal       @db.Decimal(18, 2)
@@ -1177,7 +1177,7 @@ model CashEntry {
 /// Ikkita `cash_entries` yozuvi bilan birga yaratiladi.
 model CashExchange {
   id            String @id @default(uuid()) @db.Uuid
-  shopId        String @map("shop_id") @db.Uuid
+  shopId        String @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   fromAccountId String @map("from_account_id") @db.Uuid
   toAccountId   String @map("to_account_id") @db.Uuid
 
@@ -1205,7 +1205,7 @@ model CashExchange {
 /// yaratilgan uuid, tenant bilan bog'liq emas.
 model FileAsset {
   id           String   @id @default(uuid()) @db.Uuid
-  shopId       String   @map("shop_id") @db.Uuid
+  shopId       String   @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   storageKey   String   @unique @map("storage_key")
   originalName String   @map("original_name")
   mimeType     String   @map("mime_type")
@@ -1231,7 +1231,7 @@ model FileAsset {
 /// §16.10 — nasiya bosqichi uchun majburiy.
 model Document {
   id         String       @id @default(uuid()) @db.Uuid
-  shopId     String       @map("shop_id") @db.Uuid
+  shopId     String       @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   type       DocumentType @default(INSTALLMENT_CONTRACT)
   contractId String       @map("contract_id") @db.Uuid
   version    Int          @default(1)
@@ -1251,7 +1251,7 @@ model Document {
 
 model NotificationLog {
   id      String              @id @default(uuid()) @db.Uuid
-  shopId  String              @map("shop_id") @db.Uuid
+  shopId  String              @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   channel NotificationChannel
   type    NotificationType
 
@@ -1289,7 +1289,7 @@ model NotificationLog {
 /// yuborilishi mumkin edi — xabarda mijoz ismi va summa bor (§18).
 model PushSubscription {
   id       String @id @default(uuid()) @db.Uuid
-  shopId   String @map("shop_id") @db.Uuid
+  shopId   String @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   userId   String @map("user_id") @db.Uuid
   endpoint String @unique
   p256dh   String
@@ -1317,7 +1317,7 @@ model PushSubscription {
 /// hali mavjud emas. Business yozuvlarda har doim to'ldiriladi.
 model AuditLog {
   id         String  @id @default(uuid()) @db.Uuid
-  shopId     String? @map("shop_id") @db.Uuid
+  shopId     String? @default(dbgenerated("(NULLIF(current_setting('app.current_shop_id'::text, true), ''::text))::uuid")) @map("shop_id") @db.Uuid
   actorId    String? @map("actor_id") @db.Uuid
   action     String
   entityType String  @map("entity_type")
