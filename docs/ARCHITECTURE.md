@@ -788,6 +788,26 @@ qamraydi, lekin superuser baribir o'tadi. Shuning uchun `hisobai_app`
 roli — ixtiyoriy yaxshilanish emas, RLS ishlashining sharti
 (`PERMISSIONS.md` §4).
 
+**Kompozit unique bilan ishlash naqshi.** `(shop_id, …)` ga aylangan
+cheklovlarda (`customers.(shop_id, phone_primary)`,
+`idempotency_keys.(shop_id, key)`, `shop_exchange_rates.(shop_id, date)`)
+`findUnique` / `update` / `delete` ni **kompozit kalit bo'yicha ishlatib
+bo'lmaydi** — Prisma kalitni tuzish uchun `shopId` ni talab qiladi, ya'ni
+uni qo'lda yozishga majbur qiladi va §21.7 buziladi. Kanonik yechim:
+
+```ts
+// ✗ shopId ni qo'lda yozishga majbur qiladi
+await tx.customer.findUnique({ where: { shopId_phonePrimary: { shopId, phonePrimary } } });
+
+// ✓ RLS allaqachon Shop bilan cheklagan — qolgan shart yetarli
+const existing = await tx.customer.findFirst({ where: { phonePrimary } });
+await tx.customer.update({ where: { id: existing.id }, data });
+```
+
+Ya'ni: qidirishda `findFirst`, o'zgartirishda **birlamchi kalit**
+(`id`) bo'yicha, ommaviy amalda `updateMany` / `deleteMany`. Filtrning
+Shop qismini extension va RLS qo'shadi.
+
 **Raw SQL extension'dan o'tmaydi (§21.8) — lekin RLS'dan o'tadi.**
 §21.13 dan keyin bu joylar allaqachon himoyalangan: siyosat qatlami
 so'rov qayerdan kelganini bilmaydi. Shunga qaramay `shop_id` sharti

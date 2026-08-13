@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { CashModule } from '../cash/cash.module';
 import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
+import { ShopsModule } from '../shops/shops.module';
 import { DashboardService } from './dashboard.service';
 import { ReportsController } from './reports.controller';
 
@@ -13,7 +14,7 @@ import { ReportsController } from './reports.controller';
  * ketardi va qaysi biri to'g'ri ekanini aniqlash mumkin bo'lmasdi.
  */
 @Module({
-  imports: [CashModule, ExchangeRatesModule],
+  imports: [CashModule, ExchangeRatesModule, ShopsModule],
   controllers: [ReportsController],
   providers: [DashboardService],
 })

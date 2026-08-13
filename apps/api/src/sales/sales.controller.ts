@@ -58,7 +58,7 @@ export class SalesController {
   ) {}
 
   @Get()
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Savdolar ro‘yxati' })
   list(
     @Query(new ZodValidationPipe(saleQuerySchema)) query: SaleQuery,
@@ -67,7 +67,7 @@ export class SalesController {
   }
 
   @Post()
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Qoralama yaratish (§7.7)' })
   createDraft(
@@ -79,7 +79,7 @@ export class SalesController {
   }
 
   @Get(':id')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Savdo kartasi' })
   getSale(
     @Param('id', ParseUUIDPipe) id: string,
@@ -89,7 +89,7 @@ export class SalesController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Qoralamani yangilash — savat almashtiriladi' })
   updateDraft(
     @Param('id', ParseUUIDPipe) id: string,
@@ -102,7 +102,7 @@ export class SalesController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Qoralamani o‘chirish (§7.7)' })
   async removeDraft(
@@ -115,7 +115,7 @@ export class SalesController {
 
   /** §7 — bitta tranzaksiya: ombor, raqam, to'lov, kassa, audit. */
   @Post(':id/confirm')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @Idempotent()
   @ApiOperation({ summary: 'Savdoni tasdiqlash (ARCHITECTURE §6)' })
   confirm(

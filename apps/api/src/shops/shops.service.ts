@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import type { SettingsDto, UpdateSettingsInput } from '@hisobai/contracts';
-import { Prisma, type Settings } from '@prisma/client';
+import type { ShopDto, UpdateShopInput } from '@hisobai/contracts';
+import { Prisma, type Shop } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 import { auditDiff, hasChanges, type AuditDiff } from '../common/audit-diff';
@@ -8,31 +8,37 @@ import { staleResource, type Precondition } from '../common/optimistic-lock';
 import { isRecordNotFound } from '../common/prisma-errors';
 import type { RequestUser } from '../common/request-user';
 import { PrismaService } from '../database/prisma.service';
+import { requireShopId } from '../database/shop-context';
 
-/** Sozlamalar bitta qator — `settings.id` doim 1 (`API.md` §2.3). */
-const SETTINGS_ID = 1;
-
+/**
+ * Do'kon ma'lumoti va biznes sozlamalari (§3.6–§3.10, §21.4).
+ *
+ * Eski `settings` (bitta qator, `id` doim 1) `shops` ga aylandi — har
+ * Shop o'z qatoriga ega. `Shop` `prisma.service.ts`dagi
+ * `SHOP_SCOPE_EXEMPT_MODELS` ro'yxatida: u tenant chegarasining O'ZI,
+ * shuning uchun RLS/extension uni avtomatik filtrlamaydi (`User` bilan
+ * bir xil holat). `requireShopId()` shu sabab qo'lda ishlatiladi — bu
+ * `where: { shopId }` YOZISH emas (§21.7 aynan shundan qaytaradi), balki
+ * "qaysi Shop qatorini o'qiyapmiz" degan `id` filtri, xuddi
+ * `user.findUnique({ where: { id } })` kabi.
+ *
+ * Bu servis `@ShopExempt()` qo'yilmagan endpoint'lardan chaqiriladi,
+ * ya'ni `RolesGuard` allaqachon `shopId !== null`ligini tekshirgan
+ * bo'ladi (`SHOP_SETUP_REQUIRED`, §21.10) — `requireShopId()` shu yerda
+ * hech qachon xato tashlamaydi, lekin baribir "kim buni kafolatlaydi"
+ * degan savolga aniq javob beradi (o'zining xato matni orqali).
+ */
 @Injectable()
-export class SettingsService {
+export class ShopsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
   ) {}
 
-  /**
-   * Qator yo'q bo'lsa yaratiladi.
-   *
-   * Seed uni allaqachon qo'yadi, lekin seed ishlatilmagan bazada
-   * `GET /settings` 404 qaytarishi — foydalanuvchiga hech narsa
-   * tushuntirmaydigan xato. Standart qiymatlar schema'da bor.
-   */
-  async get(): Promise<SettingsDto> {
-    const settings = await this.prisma.settings.upsert({
-      where: { id: SETTINGS_ID },
-      update: {},
-      create: { id: SETTINGS_ID },
-    });
-    return toDto(settings);
+  /** `Shop` seed/`POST /shops` (kelajakdagi Platform oqimi) bilan yaratiladi — bu yerda upsert yo'q. */
+  async get(): Promise<ShopDto> {
+    const shop = await this.prisma.shop.findUniqueOrThrow({ where: { id: requireShopId() } });
+    return toDto(shop);
   }
 
   /**
@@ -45,16 +51,14 @@ export class SettingsService {
    */
   async update(
     actor: RequestUser,
-    input: UpdateSettingsInput,
+    input: UpdateShopInput,
     precondition: Precondition,
     ip: string | null,
-  ): Promise<SettingsDto> {
+  ): Promise<ShopDto> {
+    const shopId = requireShopId();
+
     return this.prisma.$transaction(async (tx) => {
-      const before = await tx.settings.upsert({
-        where: { id: SETTINGS_ID },
-        update: {},
-        create: { id: SETTINGS_ID },
-      });
+      const before = await tx.shop.findUniqueOrThrow({ where: { id: shopId } });
 
       const data = toPrismaData(input);
 
@@ -64,17 +68,17 @@ export class SettingsService {
        * solishtirilsa, ikki parallel `PATCH` orasida poyga qolardi:
        * `READ COMMITTED` da ikkalasi ham bir xil `before` ni ko'radi.
        */
-      const after = await tx.settings
+      const after = await tx.shop
         .update({
-          where: { id: SETTINGS_ID, updatedAt: precondition.updatedAt },
+          where: { id: shopId, updatedAt: precondition.updatedAt },
           data: { ...data, updatedById: actor.id },
         })
         .catch(async (error: unknown) => {
           if (!isRecordNotFound(error)) throw error;
-          // Qator hech qachon o'chirilmaydi (yuqoridagi `upsert`) — demak
-          // faqat `updatedAt` mos kelmagan. Haqiqiy qiymatni qayta o'qiymiz:
-          // `before` poyga holatida allaqachon eskirgan bo'lishi mumkin.
-          const current = await tx.settings.findUniqueOrThrow({ where: { id: SETTINGS_ID } });
+          // Qator hech qachon o'chirilmaydi — demak faqat `updatedAt` mos
+          // kelmagan. Haqiqiy qiymatni qayta o'qiymiz: `before` poyga
+          // holatida allaqachon eskirgan bo'lishi mumkin.
+          const current = await tx.shop.findUniqueOrThrow({ where: { id: shopId } });
           throw staleResource(current.updatedAt, precondition.expected);
         });
 
@@ -82,9 +86,9 @@ export class SettingsService {
       if (hasChanges(changes)) {
         await this.audit.record(tx, {
           actorId: actor.id,
-          action: 'SETTINGS_UPDATED',
-          entityType: 'Settings',
-          entityId: String(SETTINGS_ID),
+          action: 'SHOP_UPDATED',
+          entityType: 'Shop',
+          entityId: shopId,
           before: changes.before,
           after: changes.after,
           ip,
@@ -98,10 +102,10 @@ export class SettingsService {
 
 // `Unchecked` — `updatedById` skalyar FK sifatida yoziladi; `Checked`
 // varianti relation obyektini talab qilardi va u bu yerda ortiqcha.
-function toPrismaData(input: UpdateSettingsInput): Prisma.SettingsUncheckedUpdateInput {
-  const data: Prisma.SettingsUncheckedUpdateInput = {};
+function toPrismaData(input: UpdateShopInput): Prisma.ShopUncheckedUpdateInput {
+  const data: Prisma.ShopUncheckedUpdateInput = {};
 
-  if (input.shopName !== undefined) data.shopName = input.shopName;
+  if (input.name !== undefined) data.name = input.name;
   if (input.address !== undefined) data.address = input.address;
   if (input.phone !== undefined) data.phone = input.phone;
   if (input.workStart !== undefined) data.workStart = input.workStart;
@@ -129,29 +133,30 @@ function toPrismaData(input: UpdateSettingsInput): Prisma.SettingsUncheckedUpdat
  * Hisob `common/audit-diff.ts` da: katalog moduli ham xuddi shu
  * xulqni talab qiladi, ikki nusxa esa bir kun chetga chiqardi.
  */
-function diff(before: Settings, after: Settings): AuditDiff {
+function diff(before: Shop, after: Shop): AuditDiff {
   return auditDiff(
     toDto(before) as unknown as Record<string, unknown>,
     toDto(after) as unknown as Record<string, unknown>,
   );
 }
 
-function toDto(settings: Settings): SettingsDto {
+function toDto(shop: Shop): ShopDto {
   return {
-    shopName: settings.shopName,
-    logoFileId: settings.logoFileId,
-    address: settings.address,
-    phone: settings.phone,
-    workStart: settings.workStart,
-    workEnd: settings.workEnd,
-    weekendDays: settings.weekendDays,
-    lowStockThreshold: settings.lowStockThreshold,
-    defaultInstallmentMonths: settings.defaultInstallmentMonths,
+    id: shop.id,
+    name: shop.name,
+    logoFileId: shop.logoFileId,
+    address: shop.address,
+    phone: shop.phone,
+    workStart: shop.workStart,
+    workEnd: shop.workEnd,
+    weekendDays: shop.weekendDays,
+    lowStockThreshold: shop.lowStockThreshold,
+    defaultInstallmentMonths: shop.defaultInstallmentMonths,
     // Decimal → satr (`API.md` §2.1)
-    defaultDownPaymentPercent: settings.defaultDownPaymentPercent.toString(),
-    storeRateMarkupPercent: settings.storeRateMarkupPercent.toString(),
-    reminderHour: settings.reminderHour,
-    updatedAt: settings.updatedAt.toISOString(),
-    updatedById: settings.updatedById,
+    defaultDownPaymentPercent: shop.defaultDownPaymentPercent.toString(),
+    storeRateMarkupPercent: shop.storeRateMarkupPercent.toString(),
+    reminderHour: shop.reminderHour,
+    updatedAt: shop.updatedAt.toISOString(),
+    updatedById: shop.updatedById,
   };
 }

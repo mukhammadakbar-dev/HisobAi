@@ -46,7 +46,7 @@ export class CustomersController {
   constructor(private readonly customers: CustomersService) {}
 
   @Get()
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Mijozlar ro‘yxati — ism va telefon bo‘yicha qidiruv (§6.4)' })
   list(
     @Query(new ZodValidationPipe(customerQuerySchema)) query: CustomerQuery,
@@ -59,7 +59,7 @@ export class CustomersController {
    * u yerda ham rolga qarab kesiladi (`PERMISSIONS.md` §1).
    */
   @Get(':id')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Mijoz kartasi' })
   get(
     @Param('id', ParseUUIDPipe) id: string,
@@ -69,7 +69,7 @@ export class CustomersController {
   }
 
   @Post()
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Mijoz qo‘shish — telefon E.164 ga keltiriladi (§6.2)' })
   create(
     @Body(new ZodValidationPipe(createCustomerSchema)) body: CreateCustomerInput,
@@ -80,7 +80,7 @@ export class CustomersController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Tahrirlash, belgilash (§6.9) yoki arxivlash (§6.13)' })
   update(
     @Param('id', ParseUUIDPipe) id: string,

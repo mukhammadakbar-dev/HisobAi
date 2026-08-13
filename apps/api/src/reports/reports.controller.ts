@@ -22,7 +22,7 @@ export class ReportsController {
 
   /** §14.1 — bitta so'rov hamma blokni qaytaradi. */
   @Get('dashboard')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Dashboard — bugungi holat (§14)' })
   get(@CurrentUser() user: RequestUser): Promise<DashboardDto> {
     return this.dashboard.get(user);

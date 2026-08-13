@@ -48,14 +48,14 @@ export class ExchangeRatesController {
    * aks holda u sana deb talqin qilinadi.
    */
   @Get('today')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Bugungi kurs va eskirganlik holati (§16.6)' })
   getToday(): Promise<TodayExchangeRateDto> {
     return this.rates.getToday();
   }
 
   @Get()
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Kurs tarixi (§3.5)' })
   list(
     @Query(new ZodValidationPipe(exchangeRateQuerySchema)) query: ExchangeRateQuery,
@@ -64,7 +64,7 @@ export class ExchangeRatesController {
   }
 
   @Put(':date')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: "Kursni qo'lda qo'yish — source MANUAL bo'ladi (§16.8)" })
   upsert(
     @Param('date', new ZodValidationPipe(calendarDate)) date: string,
@@ -89,7 +89,7 @@ export class ExchangeRatesController {
    * ketma-ket bosish cbu.uz ga yuk bo'lmasin.
    */
   @Post('sync')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @Throttle({ mutation: { limit: 10, ttl: seconds(5 * 60) } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "CBU'dan kursni hozir olish (§18.4)" })
@@ -105,7 +105,7 @@ export class ExchangeRatesController {
    * chiqishning yo'li yo'q edi.
    */
   @Post(':date/reset-to-cbu')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   // Yangi resurs yaratmaydi — mavjud qatorni o'zgartiradi, shuning uchun 200
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "CBU kursiga qaytarish — ustama bo'yicha qayta hisoblanadi (§16.8)" })

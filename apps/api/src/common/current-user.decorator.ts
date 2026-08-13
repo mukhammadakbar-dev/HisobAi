@@ -7,7 +7,7 @@ import type { AuthedRequest, RequestUser } from './request-user';
  *
  * ```ts
  * @Get('me')
- * @Roles(UserRole.OWNER)
+ * @Roles(UserRole.SHOP_ADMIN)
  * me(@CurrentUser() user: RequestUser) { … }
  * ```
  *

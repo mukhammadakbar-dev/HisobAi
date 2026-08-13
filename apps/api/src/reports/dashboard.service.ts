@@ -23,6 +23,7 @@ import type { Env } from '../config/env';
 import { PrismaService } from '../database/prisma.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { convert } from '../sales/sales.service';
+import { ShopsService } from '../shops/shops.service';
 
 /** §14.4 — grafik shuncha kunni ko'rsatadi. */
 const CHART_DAYS = 14;
@@ -54,6 +55,7 @@ export class DashboardService {
     private readonly prisma: PrismaService,
     private readonly accounts: CashAccountsService,
     private readonly rates: ExchangeRatesService,
+    private readonly shops: ShopsService,
     private readonly config: ConfigService<Env, true>,
   ) {}
 
@@ -65,7 +67,7 @@ export class DashboardService {
     const day = today(this.timeZone);
     const dayStart = dayStartInstant(day, this.timeZone);
     const dayEnd = new Date(dayStart.getTime() + 86_400_000);
-    const showCost = actor.role === UserRole.OWNER;
+    const showCost = actor.role === UserRole.SHOP_ADMIN;
 
     // §1.5 — kurs bo'lmasa ham dashboard ochilishi kerak; USD qiymatlar
     // oxirgi ma'lum kurs bilan aylantiriladi
@@ -231,8 +233,11 @@ export class DashboardService {
       );
     }
 
-    const settings = await this.prisma.settings.findUnique({ where: { id: 1 } });
-    const fallback = settings?.lowStockThreshold ?? 3;
+    // `Shop` — SHOP_SCOPE_EXEMPT model (u tenant chegarasining o'zi), shuning
+    // uchun `ShopsService.get()` orqali (u `requireShopId()` bilan aniq
+    // `id`ni tanlaydi) — `where: { shopId }` YOZILMAYDI (§21.7).
+    const shop = await this.shops.get();
+    const fallback = shop.lowStockThreshold;
 
     const products = await this.prisma.product.findMany({
       where: { isActive: true },

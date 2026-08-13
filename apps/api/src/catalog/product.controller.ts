@@ -44,7 +44,7 @@ export class ProductsController {
   constructor(private readonly products: ProductService) {}
 
   @Get()
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Mahsulotlar ro‘yxati (qoldiq bilan)' })
   list(
     @Query(new ZodValidationPipe(productQuerySchema)) query: ProductQuery,
@@ -53,14 +53,14 @@ export class ProductsController {
   }
 
   @Get(':id')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Bitta mahsulot' })
   get(@Param('id', ParseUUIDPipe) id: string): Promise<ProductDto> {
     return this.products.requireById(id);
   }
 
   @Post()
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Mahsulot qo‘shish — nomi §4.6 bo‘yicha yig‘iladi' })
   create(
     @Body(new ZodValidationPipe(createProductSchema)) body: CreateProductInput,
@@ -71,7 +71,7 @@ export class ProductsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Tahrirlash yoki arxivlash (§4.8)' })
   update(
     @Param('id', ParseUUIDPipe) id: string,

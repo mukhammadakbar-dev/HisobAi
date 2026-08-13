@@ -165,7 +165,12 @@ export class CustomersService {
    * taklif qila oladi.
    */
   private async phoneTaken(phone: string): Promise<AppException> {
-    const existing = await this.prisma.customer.findUnique({
+    // `findFirst` — `findUnique` EMAS: unique cheklov endi `(shopId,
+    // phonePrimary)` (§14.5), va `shopId`ni bu yerda qo'lda qo'shish
+    // §21.7 ni buzardi. Buning hojati ham yo'q: `Customer` shop-scoped
+    // model, RLS/extension so'rovni allaqachon joriy Shop bilan
+    // cheklaydi — `phonePrimary` yolg'iz o'zi qidiruv uchun yetarli.
+    const existing = await this.prisma.customer.findFirst({
       where: { phonePrimary: phone },
       select: { id: true, fullName: true, isActive: true },
     });
@@ -237,7 +242,7 @@ function toCreateData(input: CreateCustomerInput): Prisma.CustomerUncheckedCreat
  * va buni hech kim sezmasdi.
  */
 function canSeePassport(actor: RequestUser): boolean {
-  return actor.role === UserRole.OWNER;
+  return actor.role === UserRole.SHOP_ADMIN;
 }
 
 function toUpdateData(

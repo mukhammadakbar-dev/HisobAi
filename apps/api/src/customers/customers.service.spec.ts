@@ -22,7 +22,7 @@ import { CustomersService } from './customers.service';
  *    ma'lumotning ikkinchi nusxasiga aylanadi.
  */
 
-const ACTOR = { id: 'user-1', role: UserRole.OWNER } as RequestUser;
+const ACTOR = { id: 'user-1', role: UserRole.SHOP_ADMIN } as RequestUser;
 /** Kelajakdagi rol: `UserRole` da hali yo'q, lekin qulf hozirdan ishlashi kerak. */
 const SELLER = { id: 'user-2', role: 'SELLER' } as unknown as RequestUser;
 const UPDATED_AT = new Date('2026-08-11T09:30:00.123Z');
@@ -82,6 +82,13 @@ function makeService(rows: Row[] = []) {
       const found = where.id
         ? store.get(where.id)
         : [...store.values()].find((row) => row.phonePrimary === where.phonePrimary);
+      return Promise.resolve(found ?? null);
+    },
+    // `phoneTaken()` endi `findFirst` ishlatadi (§14.5 — unique
+    // `(shopId, phonePrimary)`ga o'tgach, `findUnique` shopId'ni ham
+    // talab qiladi — buni qo'lda yozish §21.7 ni buzardi).
+    findFirst: ({ where }: { where: { phonePrimary?: string } }) => {
+      const found = [...store.values()].find((row) => row.phonePrimary === where.phonePrimary);
       return Promise.resolve(found ?? null);
     },
     create: ({ data }: { data: Partial<Row> }) => {

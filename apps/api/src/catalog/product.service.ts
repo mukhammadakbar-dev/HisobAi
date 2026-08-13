@@ -21,7 +21,7 @@ import { isForeignKeyViolation, isRecordNotFound } from '../common/prisma-errors
 import { containsInsensitive } from '../common/search';
 import type { RequestUser } from '../common/request-user';
 import { PrismaService } from '../database/prisma.service';
-import { SettingsService } from '../settings/settings.service';
+import { ShopsService } from '../shops/shops.service';
 
 /**
  * Mahsulot shabloni (§4.1–§4.8).
@@ -45,7 +45,7 @@ export class ProductService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly settings: SettingsService,
+    private readonly shops: ShopsService,
   ) {}
 
   // ──────────────────────────── O'qish ────────────────────────────
@@ -253,7 +253,7 @@ export class ProductService {
             _sum: { quantityRemaining: true },
           })
         : Promise.resolve([]),
-      this.settings.get(),
+      this.shops.get(),
     ]);
 
     for (const group of items) {

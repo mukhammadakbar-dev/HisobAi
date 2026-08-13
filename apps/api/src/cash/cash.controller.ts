@@ -74,14 +74,14 @@ export class CashController {
   // ──────────────────────────── Hisoblar ────────────────────────────
 
   @Get('cash-accounts')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Kassa hisoblari (§11.1)' })
   listAccounts(@Query('includeInactive') includeInactive?: string): Promise<CashAccountDto[]> {
     return this.accounts.listAccounts(includeInactive === 'true');
   }
 
   @Post('cash-accounts')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Yangi kassa hisobi (§11.2)' })
   createAccount(
@@ -93,7 +93,7 @@ export class CashController {
   }
 
   @Patch('cash-accounts/:id')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Hisob nomi, tartibi yoki yopilishi' })
   updateAccount(
     @Param('id', ParseUUIDPipe) id: string,
@@ -108,14 +108,14 @@ export class CashController {
   // ──────────────────────────── Kategoriyalar ────────────────────────────
 
   @Get('cash-categories')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Kirim-chiqim kategoriyalari (§11.10)' })
   listCategories(): Promise<CashCategoryDto[]> {
     return this.accounts.listCategories();
   }
 
   @Post('cash-categories')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Yangi kategoriya' })
   createCategory(
@@ -129,7 +129,7 @@ export class CashController {
   // ──────────────────────────── Yozuvlar ────────────────────────────
 
   @Get('cash-entries')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Kassa yozuvlari (§11.9)' })
   listEntries(
     @Query(new ZodValidationPipe(cashEntryQuerySchema)) query: CashEntryQuery,
@@ -138,7 +138,7 @@ export class CashController {
   }
 
   @Post('cash-entries')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @Idempotent()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: "Qo'lda kirim yoki chiqim (§11.9)" })
@@ -151,7 +151,7 @@ export class CashController {
   }
 
   @Patch('cash-entries/:id')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: "Qo'lda yozuvni tuzatish — faqat o'sha kuni (§11.8)" })
   updateEntry(
     @Param('id', ParseUUIDPipe) id: string,
@@ -164,7 +164,7 @@ export class CashController {
   }
 
   @Delete('cash-entries/:id')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Qo'lda yozuvni o'chirish — faqat o'sha kuni (§11.8)" })
   async removeEntry(
@@ -178,7 +178,7 @@ export class CashController {
   // ──────────────────────────── Kassa kitobi ────────────────────────────
 
   @Get('cashbook/balances')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Hisoblar bo‘yicha qoldiq (§11.3)' })
   balances(@Query('includeInactive') includeInactive?: string): Promise<CashBalanceDto[]> {
     return this.accounts.listBalances(includeInactive === 'true');
@@ -193,7 +193,7 @@ export class CashController {
    * qilinardi — hisobot to'g'riligi esa serverning javobgarligi.
    */
   @Post('cashbook/opening-balance')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @Idempotent()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: "Boshlang'ich qoldiq — har hisob uchun bir marta (§11.4)" })
@@ -206,7 +206,7 @@ export class CashController {
   }
 
   @Post('cashbook/exchange')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @Idempotent()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Valyuta ayirboshlash (§11.6)' })

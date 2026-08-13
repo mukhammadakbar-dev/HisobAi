@@ -10,7 +10,7 @@ import type {
   LoginInput,
   SessionDto,
 } from '@hisobai/contracts';
-import type { User } from '@prisma/client';
+import { AccountStatus, type User } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 import { AppException } from '../common/app.exception';
@@ -75,7 +75,12 @@ export class AuthService {
       );
     }
 
-    if (!user.isActive) {
+    if (user.status !== AccountStatus.ACTIVE) {
+      // §21.6 — `isActive Boolean` `status: AccountStatus`ga almashtirildi.
+      // Login'dagi tekshiruv bu yerda ham qoladi (erta rad — aniqroq xato),
+      // lekin yagona qo'riqchi EMAS: allaqachon ochiq sessiya bo'lsa,
+      // `SessionGuard` uni har so'rovda qayta tekshiradi — aks holda
+      // to'xtatish faqat KEYINGI kirishda kuchga kirardi (§21.6, §25.19).
       await this.throttle.record(input.email, context.ip, context.userAgent, false);
       throw AppException.forbidden(
         ErrorCode.AUTH_USER_INACTIVE,
@@ -251,7 +256,7 @@ export class AuthService {
    */
   async forgotPassword(email: string): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user || !user.isActive) {
+    if (!user || user.status !== AccountStatus.ACTIVE) {
       this.logger.debug(`Parol tiklash: ${email} uchun hisob yo'q — xat yuborilmadi`);
       return;
     }

@@ -23,7 +23,7 @@ const activeUser = {
   id: 'user-1',
   email: 'ega@hisobai.uz',
   displayName: "Do'kon egasi",
-  role: UserRole.OWNER,
+  role: UserRole.SHOP_ADMIN,
   theme: Theme.SYSTEM,
   status: AccountStatus.ACTIVE,
   shopId: 'shop-1',
@@ -80,7 +80,7 @@ describe('SessionGuard', () => {
     await expect(guard.canActivate(context)).resolves.toBe(true);
     expect(request.user).toMatchObject({
       id: 'user-1',
-      role: UserRole.OWNER,
+      role: UserRole.SHOP_ADMIN,
       sessionId: 'session-1',
       shopId: 'shop-1',
     });

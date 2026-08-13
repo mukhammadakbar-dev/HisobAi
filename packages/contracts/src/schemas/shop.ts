@@ -3,12 +3,17 @@ import { z } from 'zod';
 import { decimalInRange, expectedUpdatedAt, timeOfDay } from './common';
 
 /**
- * Do'kon sozlamalari (§3.6–§3.9).
+ * Do'kon (§3.6–§3.9, §21.4).
+ *
+ * Eski `settings` jadvali `shops` ga aylandi: do'kon ma'lumoti (nom,
+ * manzil, telefon) va biznes sozlamalari (ish vaqti, kam qoldiq chegarasi,
+ * nasiya standartlari, kurs ustamasi) bitta qatorda — Shop tenant chegarasi
+ * bo'lgani uchun ular ajratilmaydi.
  *
  * Chegaralar bazadagi `CHECK` cheklovlari bilan **bir xil** (§17.8):
- * `settings_ranges_valid` va `settings_weekend_days_valid`. Ikkalasi
- * ataylab takrorlanadi — sxema foydalanuvchiga tushunarli xato beradi,
- * `CHECK` esa kod xatosidan himoyaning oxirgi qatlami bo'lib qoladi.
+ * `shops_ranges_valid` va `shops_weekend_days_valid`. Ikkalasi ataylab
+ * takrorlanadi — sxema foydalanuvchiga tushunarli xato beradi, `CHECK`
+ * esa kod xatosidan himoyaning oxirgi qatlami bo'lib qoladi.
  */
 
 const weekdayNumber = z
@@ -18,10 +23,10 @@ const weekdayNumber = z
   .max(6, 'Hafta kuni 0 (yakshanba) dan 6 (shanba) gacha');
 
 /** O'zgartirish mumkin bo'lgan maydonlar — qulf tokeni bundan tashqarida. */
-const settingsFields = z
+const shopFields = z
   .object({
     // §3.6 — PDF, login sahifasi va eksportlarda ishlatiladi
-    shopName: z.string().trim().min(1, "Do'kon nomini kiriting").max(120),
+    name: z.string().trim().min(1, "Do'kon nomini kiriting").max(120),
     address: z.string().trim().max(300).nullable(),
     phone: z.string().trim().max(30).nullable(),
 
@@ -45,7 +50,14 @@ const settingsFields = z
   })
   .partial();
 
-export const updateSettingsSchema = settingsFields
+/**
+ * `PATCH /shops/me` — `PERMISSIONS.md` P2 (mass assignment) himoyasi
+ * `.strict()` bilan: `id`, `logoFileId`, `updatedById`, va endi (§21.4,
+ * §21.6, §21.10) tenant-modelga xos `shopId`/`status` kabi maydonlar ham
+ * `shopFields`da YO'Q — noma'lum kalit `.strict()` tomonidan rad etiladi,
+ * jimgina e'tiborsiz qoldirilmaydi.
+ */
+export const updateShopSchema = shopFields
   .extend({
     /**
      * Optimistik qulf (`API.md` §8) — client o'qigan `updatedAt`.
@@ -68,17 +80,18 @@ export const updateSettingsSchema = settingsFields
   .refine((value) => Object.keys(value).some((key) => key !== 'expectedUpdatedAt'), {
     message: "O'zgartirish uchun kamida bitta maydon yuboring",
   });
-export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
+export type UpdateShopInput = z.infer<typeof updateShopSchema>;
 
 /**
- * `GET /settings` javobi.
+ * `GET /shops/me` javobi.
  *
  * `id` va `logoFileId` mavjud, lekin `PATCH` ularni **qabul qilmaydi**
  * (`PERMISSIONS.md` P2 — mass assignment). Logo alohida fayl yuklash
  * oqimi bilan o'rnatiladi.
  */
-export interface SettingsDto {
-  shopName: string;
+export interface ShopDto {
+  id: string;
+  name: string;
   logoFileId: string | null;
   address: string | null;
   phone: string | null;

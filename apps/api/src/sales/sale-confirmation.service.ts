@@ -164,7 +164,7 @@ export class SaleConfirmationService {
           where: { id },
           include: SALE_INCLUDE,
         });
-        const showCost = actor.role === UserRole.OWNER;
+        const showCost = actor.role === UserRole.SHOP_ADMIN;
         return toSaleDto(withPayments, {
           showCost,
           profit: showCost ? profitOf(withPayments) : null,

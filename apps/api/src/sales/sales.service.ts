@@ -372,7 +372,7 @@ export class SalesService {
    * bo'lardi.
    */
   private present(row: Parameters<typeof toSaleDto>[0], actor: RequestUser): SaleDto {
-    const showCost = actor.role === UserRole.OWNER;
+    const showCost = actor.role === UserRole.SHOP_ADMIN;
     return toSaleDto(row, { showCost, profit: showCost ? profitOf(row) : null });
   }
 }

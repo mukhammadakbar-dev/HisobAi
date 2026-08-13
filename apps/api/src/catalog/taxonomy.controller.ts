@@ -122,7 +122,7 @@ export class CategoriesController extends TaxonomyControllerBase {
   }
 
   @Get()
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Kategoriyalar ro‘yxati' })
   list(
     @Query(new ZodValidationPipe(taxonomyQuerySchema)) query: TaxonomyQuery,
@@ -131,7 +131,7 @@ export class CategoriesController extends TaxonomyControllerBase {
   }
 
   @Post()
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Kategoriya qo‘shish (§4.4 — mahsulot formasidan ham)' })
   create(
     @Body(new ZodValidationPipe(createCategorySchema)) body: CreateCategoryInput,
@@ -142,7 +142,7 @@ export class CategoriesController extends TaxonomyControllerBase {
   }
 
   @Patch(':id')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Nomni o‘zgartirish yoki arxivlash (§4.8)' })
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -154,7 +154,7 @@ export class CategoriesController extends TaxonomyControllerBase {
   }
 
   @Post(':id/merge')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Boshqa kategoriyaga birlashtirish (§4.4)' })
   merge(
@@ -178,7 +178,7 @@ export class BrandsController extends TaxonomyControllerBase {
   }
 
   @Get()
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Brendlar ro‘yxati' })
   list(
     @Query(new ZodValidationPipe(taxonomyQuerySchema)) query: TaxonomyQuery,
@@ -187,7 +187,7 @@ export class BrandsController extends TaxonomyControllerBase {
   }
 
   @Post()
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Brend qo‘shish (§4.4)' })
   create(
     @Body(new ZodValidationPipe(createBrandSchema)) body: CreateBrandInput,
@@ -199,7 +199,7 @@ export class BrandsController extends TaxonomyControllerBase {
 
   /** Nom o‘zgarsa mahsulot nomlari ham qayta yig‘iladi (§4.6). */
   @Patch(':id')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Nomni o‘zgartirish yoki arxivlash' })
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -211,7 +211,7 @@ export class BrandsController extends TaxonomyControllerBase {
   }
 
   @Post(':id/merge')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Boshqa brendga birlashtirish (§4.4)' })
   merge(

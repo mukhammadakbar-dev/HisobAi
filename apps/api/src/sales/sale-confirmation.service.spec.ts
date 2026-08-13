@@ -29,7 +29,7 @@ import { SaleConfirmationService } from './sale-confirmation.service';
  *  - §7.6 raqam formati `2026-00001` va u faqat tasdiqlashda ajratiladi.
  */
 
-const ACTOR = { id: 'user-1', role: UserRole.OWNER } as RequestUser;
+const ACTOR = { id: 'user-1', role: UserRole.SHOP_ADMIN } as RequestUser;
 const ACCOUNT_ID = '11111111-1111-4111-8111-111111111111';
 const RATE = new Prisma.Decimal('12500');
 

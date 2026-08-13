@@ -18,11 +18,18 @@ import type { PrismaService } from '../database/prisma.service';
 
 interface StoredKey {
   key: string;
+  userId: string;
   requestHash: string;
   statusCode: number | null;
   responseBody: unknown;
 }
 
+/**
+ * `key` bo'yicha qidirish real kodda (`findFirst`/`updateMany`/`deleteMany`)
+ * shop-scope extension orqali avtomatik bitta Shop bilan cheklanadi
+ * (§21.7) — bu mock bitta "do'kon"ni simulyatsiya qiladi, shuning uchun
+ * `key` yolg'iz o'zi ham xaritada yetarli.
+ */
 function makeInterceptor(store: Map<string, StoredKey>): IdempotencyInterceptor {
   const reflector = new Reflector();
   vi.spyOn(reflector, 'getAllAndOverride').mockImplementation((key: unknown) =>
@@ -43,17 +50,16 @@ function makeInterceptor(store: Map<string, StoredKey>): IdempotencyInterceptor 
         store.set(data.key, { ...data, statusCode: null, responseBody: null });
         return Promise.resolve(data);
       },
-      findUnique: ({ where }: { where: { key: string } }) =>
+      findFirst: ({ where }: { where: { key: string } }) =>
         Promise.resolve(store.get(where.key) ?? null),
-      update: ({ where, data }: { where: { key: string }; data: Partial<StoredKey> }) => {
+      updateMany: ({ where, data }: { where: { key: string }; data: Partial<StoredKey> }) => {
         const existing = store.get(where.key);
         if (existing) store.set(where.key, { ...existing, ...data });
-        return Promise.resolve(existing);
+        return Promise.resolve({ count: existing ? 1 : 0 });
       },
-      delete: ({ where }: { where: { key: string } }) => {
-        const existing = store.get(where.key);
-        store.delete(where.key);
-        return Promise.resolve(existing);
+      deleteMany: ({ where }: { where: { key: string } }) => {
+        const existed = store.delete(where.key);
+        return Promise.resolve({ count: existed ? 1 : 0 });
       },
     },
   } as unknown as PrismaService;
@@ -61,14 +67,14 @@ function makeInterceptor(store: Map<string, StoredKey>): IdempotencyInterceptor 
   return new IdempotencyInterceptor(reflector, prisma);
 }
 
-function makeContext(key: string | undefined, body: unknown): ExecutionContext {
+function makeContext(key: string | undefined, body: unknown, userId = 'user-1'): ExecutionContext {
   const request = {
     headers: key === undefined ? {} : { 'idempotency-key': key },
     method: 'POST',
     path: '/api/v1/payments',
     route: { path: '/api/v1/payments' },
     body,
-    user: { id: 'user-1', role: UserRole.OWNER },
+    user: { id: userId, role: UserRole.SHOP_ADMIN },
   };
   const response = {
     statusCode: 201,
@@ -168,6 +174,30 @@ describe('IdempotencyInterceptor', () => {
     ).rejects.toMatchObject({ code: ErrorCode.IDEMPOTENCY_KEY_REUSED });
   });
 
+  it(
+    '§21.11 — bir xil Shop ichida BOSHQA foydalanuvchi bir xil kalit va ' +
+      "mos requestHash bilan boshqasining javobini o'qiy olmaydi",
+    async () => {
+      const interceptor = makeInterceptor(store);
+      const handler = { handle: () => of({ id: 'payment-1' }) } as CallHandler;
+
+      // "user-1" birinchi so'rovni yakunlaydi — javob keshda
+      await firstValueFrom(
+        interceptor.intercept(makeContext('key-1', { amount: '100' }, 'user-1'), handler),
+      );
+
+      // "user-2" aynan shu kalit va aynan shu bodyni yuboradi (masalan
+      // kalitni ko'rgan/taxmin qilgan) — `requestHash` mos keladi, lekin
+      // `userId` mos kelmaydi. Eski kodda (faqat `requestHash` tekshiruvi)
+      // bu yerda user-1ning javobi qaytarilib ketardi.
+      await expect(
+        firstValueFrom(
+          interceptor.intercept(makeContext('key-1', { amount: '100' }, 'user-2'), handler),
+        ),
+      ).rejects.toMatchObject({ code: ErrorCode.IDEMPOTENCY_KEY_REUSED });
+    },
+  );
+
   it("avvalgi so'rov hali bajarilmoqda → 409", async () => {
     const interceptor = makeInterceptor(store);
     const handler = { handle: () => of({ id: 'x' }) } as CallHandler;
@@ -175,6 +205,7 @@ describe('IdempotencyInterceptor', () => {
     // Birinchi so'rov kalitni band qildi, lekin javob hali yozilmagan
     store.set('key-1', {
       key: 'key-1',
+      userId: 'user-1',
       requestHash: '',
       statusCode: null,
       responseBody: null,

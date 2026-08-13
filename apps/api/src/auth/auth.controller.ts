@@ -88,7 +88,7 @@ export class AuthController {
   }
 
   @Post('logout')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ShopExempt()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Joriy sessiyani yopish' })
@@ -105,7 +105,7 @@ export class AuthController {
   }
 
   @Get('me')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ShopExempt()
   @ApiOperation({ summary: 'Joriy foydalanuvchi' })
   me(@CurrentUser() user: RequestUser): CurrentUserDto {
@@ -122,7 +122,7 @@ export class AuthController {
   // ─────────────────────────── Sessiyalar ───────────────────────────
 
   @Get('sessions')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ShopExempt()
   @ApiOperation({ summary: 'Faol sessiyalar (§2.7)' })
   listSessions(@CurrentUser() user: RequestUser): Promise<SessionDto[]> {
@@ -130,7 +130,7 @@ export class AuthController {
   }
 
   @Delete('sessions/:id')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ShopExempt()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Bitta sessiyani bekor qilish' })
@@ -143,7 +143,7 @@ export class AuthController {
   }
 
   @Delete('sessions')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ShopExempt()
   @ApiOperation({ summary: 'Joriy qurilmadan tashqari hammasini chiqarish' })
   revokeOtherSessions(
@@ -154,7 +154,7 @@ export class AuthController {
   }
 
   @Get('login-attempts')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ShopExempt()
   @ApiOperation({ summary: 'Kirish jurnali (§2.10)' })
   listLoginAttempts(@Query('limit') limit?: string): Promise<LoginAttemptDto[]> {
@@ -167,7 +167,7 @@ export class AuthController {
   // ──────────────────────────── Parollar ────────────────────────────
 
   @Post('change-password')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ShopExempt()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: "Parolni o'zgartirish" })

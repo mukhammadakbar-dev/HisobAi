@@ -19,14 +19,18 @@ const positiveRate = decimalString.refine((value) => Number(value) > 0, {
  * `PUT /exchange-rates/:date` — kursni qo'lda qo'yish.
  *
  * §16.8 — bu amal `source` ni `MANUAL` ga o'tkazadi va shundan keyin CBU
- * sync `storeRate` ni **hech qachon** ustidan yozmaydi. `cbuRate` esa
- * ma'lumot uchun yangilanib turaveradi.
+ * sync `storeRate` ni **hech qachon** ustidan yozmaydi.
+ *
+ * `cbuRate` maydoni §21.5/§14.6 dan keyin bu yerda YO'Q: CBU kursi endi
+ * `cbu_rates` — platforma darajasidagi, Shop'lar orasida umumiy jadval.
+ * Eski sxema uni shu yerda qo'lda tuzatishga ruxsat berardi — bo'linishdan
+ * keyin bu bitta Shop'ning administratori BOSHQA hamma Shop uchun umumiy
+ * qatorni yozib qo'yishi degani bo'lardi. `cbuRate` — faqat CBU sync
+ * yozadigan ma'lumot, ega uni bu yo'l bilan endi o'zgartira olmaydi.
  */
 export const upsertExchangeRateSchema = z
   .object({
     storeRate: positiveRate,
-    /** Odatda avtomatik keladi; qo'lda tuzatish ham mumkin. */
-    cbuRate: positiveRate.nullable().optional(),
   })
   .strict();
 export type UpsertExchangeRateInput = z.infer<typeof upsertExchangeRateSchema>;

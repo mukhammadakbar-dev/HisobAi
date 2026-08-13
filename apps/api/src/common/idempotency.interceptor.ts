@@ -124,7 +124,13 @@ export class IdempotencyInterceptor implements NestInterceptor {
       }
     }
 
-    const existing = await this.prisma.idempotencyKey.findUnique({ where: { key } });
+    // `findFirst` — `findUnique` EMAS, ataylab: unique kalit endi
+    // `(shopId, key)` juftligi (§21.11), va `shopId`ni bu yerda qo'lda
+    // yozib qo'yish §21.7 buzardi. `key` yagona shart bilan qidirish
+    // xavfsiz: `IdempotencyKey` shop-scoped model, extension buni
+    // avtomatik joriy Shop bilan cheklaydi (`prisma.service.ts`)  —
+    // boshqa Shop'ning bir xil `key`li qatori bu yerga umuman kelmaydi.
+    const existing = await this.prisma.idempotencyKey.findFirst({ where: { key } });
     if (!existing) {
       // Kalit yaratilib, keyin tozalanib ketgan — qayta urinish xavfsiz emas
       throw AppException.conflict(
@@ -136,7 +142,14 @@ export class IdempotencyInterceptor implements NestInterceptor {
     // Bir xil kalit, boshqa mazmun — bu client xatosi, jimgina o'tkazib
     // bo'lmaydi: eski javobni qaytarsak foydalanuvchi boshqa amal
     // bajarildi deb o'ylaydi.
-    if (existing.requestHash !== requestHash) {
+    //
+    // `userId` mosligi §21.11 talabi: ikkalasi bir Shop ichida bo'lsa ham
+    // (shop-scoped unique kalit shopId bo'yicha to'qnashuvni allaqachon
+    // yo'qotgan), boshqa FOYDALANUVCHI mos `requestHash` bilan (masalan
+    // bo'sh bodyli so'rovda hash doim bir xil) kalitni "taxmin qilib"
+    // birinchi foydalanuvchining `response_body`sini — savdo tasdiqlash
+    // yoki to'lov javobini — o'qib olishi mumkin edi.
+    if (existing.requestHash !== requestHash || existing.userId !== userId) {
       throw AppException.conflict(
         ErrorCode.IDEMPOTENCY_KEY_REUSED,
         "Bu kalit boshqa so'rov uchun ishlatilgan. Sahifani yangilang.",
@@ -162,7 +175,10 @@ export class IdempotencyInterceptor implements NestInterceptor {
    */
   private async store(key: string, statusCode: number, body: unknown): Promise<void> {
     try {
-      await this.prisma.idempotencyKey.update({
+      // `updateMany` — `key` yolg'iz o'ziga unique EMAS (§21.11), va
+      // `update({ where: { shopId_key: … } })` shopId'ni qo'lda talab
+      // qilardi. Shop-scoped filtr allaqachon extension orqali qo'yiladi.
+      await this.prisma.idempotencyKey.updateMany({
         where: { key },
         data: {
           statusCode,
@@ -184,7 +200,8 @@ export class IdempotencyInterceptor implements NestInterceptor {
    */
   private async release(key: string): Promise<void> {
     try {
-      await this.prisma.idempotencyKey.delete({ where: { key } });
+      // `deleteMany` — xuddi `store()` dagi kabi, `key` yolg'iz unique emas.
+      await this.prisma.idempotencyKey.deleteMany({ where: { key } });
     } catch (error) {
       this.logger.warn(`Idempotency kaliti bo'shatilmadi (${key}): ${describe(error)}`);
     }

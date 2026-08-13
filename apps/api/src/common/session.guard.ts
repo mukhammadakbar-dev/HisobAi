@@ -56,11 +56,14 @@ export class SessionGuard implements CanActivate {
     // Buni belgilab qo'yamiz: RolesGuard "Sessiya tugadi" deb aniqroq
     // aytadi, "Tizimga kiring" degan umumiy matn o'rniga.
     //
-    // `isActive Boolean` §21.6 bilan `status: AccountStatus`ga almashtirildi
-    // (6-bosqich, 3-qadam sxema yarmi) — bu yerdagi almashtirish shuning
-    // ustidan kompilyatsiya qilish uchun MINIMAL tuzatish, `UserRole.OWNER`
-    // bilan bog'liq boshqa nomuvofiqliklar 4-bosqich ishi (`@hisobai/contracts`
-    // hali `SHOP_ADMIN`ga o'tkazilmagan).
+    // `isActive Boolean` §21.6 bilan `status: AccountStatus`ga almashtirildi.
+    //
+    // Bu — hisob to'xtatilishini (SUSPENDED/DISABLED) tekshiradigan YAGONA
+    // qo'riqchi emas (`AuthService.login` ham tekshiradi, erta rad uchun),
+    // lekin BU YERDAGI tekshiruv muhim: u allaqachon ochiq, hali muddati
+    // o'tmagan sessiyani ham qamraydi. Faqat login'da tekshirilsa,
+    // to'xtatish faqat foydalanuvchi KEYINGI marta kirganda kuchga
+    // kirardi — ochiq sessiya bilan u yana bir necha kun ishlatilaverardi.
     const now = new Date();
     if (
       !session ||

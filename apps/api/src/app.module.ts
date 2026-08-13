@@ -27,7 +27,7 @@ import { InventoryModule } from './inventory/inventory.module';
 import { MailModule } from './mail/mail.module';
 import { ReportsModule } from './reports/reports.module';
 import { SalesModule } from './sales/sales.module';
-import { SettingsModule } from './settings/settings.module';
+import { ShopsModule } from './shops/shops.module';
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -78,7 +78,7 @@ function isMutation(context: ExecutionContext): boolean {
     MailModule,
     HealthModule,
     AuthModule,
-    SettingsModule,
+    ShopsModule,
     ExchangeRatesModule,
     CatalogModule,
     InventoryModule,

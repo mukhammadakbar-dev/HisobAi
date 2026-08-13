@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { ErrorCode, UserRole } from '@hisobai/contracts';
-import type { PasswordResetToken, Session, User } from '@prisma/client';
+import { AccountStatus, type PasswordResetToken, type Session, type User } from '@prisma/client';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppException } from '../common/app.exception';
@@ -30,7 +30,7 @@ const ACTOR: RequestUser = {
   id: 'user-1',
   email: EMAIL,
   displayName: "Do'kon egasi",
-  role: UserRole.OWNER,
+  role: UserRole.SHOP_ADMIN,
   theme: 'SYSTEM',
   sessionId: 'session-current',
 } as RequestUser;
@@ -54,10 +54,10 @@ function makeService(overrides: Partial<World> = {}) {
       id: ACTOR.id,
       email: EMAIL,
       displayName: "Do'kon egasi",
-      role: UserRole.OWNER,
+      role: UserRole.SHOP_ADMIN,
       theme: 'SYSTEM',
       passwordHash,
-      isActive: true,
+      status: AccountStatus.ACTIVE,
     } as User,
     sessions: [
       { id: 'session-current', userId: ACTOR.id, revokedAt: null } as Session,
@@ -198,7 +198,7 @@ describe('AuthService', () => {
 
     it("o'chirilgan hisob — parol to'g'ri bo'lsa ham kiritilmaydi", async () => {
       const { service, world } = makeService();
-      world.user = { ...world.user, isActive: false } as User;
+      world.user = { ...world.user, status: AccountStatus.SUSPENDED } as User;
 
       try {
         await service.login({ email: EMAIL, password: PASSWORD }, CONTEXT);

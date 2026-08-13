@@ -54,7 +54,7 @@ export class InventoryController {
   ) {}
 
   @Get()
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Ombor birliklari — IMEI, seriya yoki nom bo‘yicha (§5.3)' })
   listItems(
     @Query(new ZodValidationPipe(inventoryQuerySchema)) query: InventoryQuery,
@@ -63,7 +63,7 @@ export class InventoryController {
   }
 
   @Get('batches')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Miqdorli mahsulot partiyalari (§5.2)' })
   listBatches(
     @Query(new ZodValidationPipe(batchQuerySchema)) query: BatchQuery,
@@ -72,7 +72,7 @@ export class InventoryController {
   }
 
   @Get('movements')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Ombor harakatlari — o‘chirilmaydigan tarix (§5.10)' })
   listMovements(
     @Query(new ZodValidationPipe(movementQuerySchema)) query: MovementQuery,
@@ -86,7 +86,7 @@ export class InventoryController {
    * marta kiritilishi mumkin bo'lardi.
    */
   @Post('receive')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @Idempotent()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Qabul qilish — seriyali birliklar yoki partiya' })
@@ -99,7 +99,7 @@ export class InventoryController {
   }
 
   @Get(':id')
-  @Roles(UserRole.OWNER)
+  @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Birlik va uning tarixi (§5.10)' })
   getItem(@Param('id', ParseUUIDPipe) id: string): Promise<InventoryItemDetailDto> {
     return this.inventory.requireItem(id);

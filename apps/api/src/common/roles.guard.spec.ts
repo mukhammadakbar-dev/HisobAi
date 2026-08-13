@@ -39,7 +39,7 @@ const owner: RequestUser = {
   id: 'user-1',
   email: 'ega@hisobai.uz',
   displayName: "Do'kon egasi",
-  role: UserRole.OWNER,
+  role: UserRole.SHOP_ADMIN,
   theme: Theme.SYSTEM,
   sessionId: 'session-1',
   shopId: 'shop-1',
@@ -72,7 +72,7 @@ describe('RolesGuard — default DENY', () => {
   it("foydalanuvchi yo'q → 401, 403 emas", () => {
     // Autentifikatsiya avtorizatsiyadan oldin: foydalanuvchiga "kiring"
     // deyish kerak, "ruxsat yo'q" emas.
-    const guard = makeGuard({ roles: [UserRole.OWNER] });
+    const guard = makeGuard({ roles: [UserRole.SHOP_ADMIN] });
     try {
       guard.canActivate(makeContext());
       expect.unreachable('401 kutilgan edi');
@@ -83,7 +83,7 @@ describe('RolesGuard — default DENY', () => {
   });
 
   it("mos rol bilan o'tadi", () => {
-    const guard = makeGuard({ roles: [UserRole.OWNER] });
+    const guard = makeGuard({ roles: [UserRole.SHOP_ADMIN] });
     expect(guard.canActivate(makeContext(owner))).toBe(true);
   });
 
@@ -101,7 +101,7 @@ describe('RolesGuard — default DENY', () => {
  */
 describe("RolesGuard — Shop'siz account (§21.10)", () => {
   it('shop-scoped endpoint (default) Shop’siz accountga SHOP_SETUP_REQUIRED, 409 qaytaradi', () => {
-    const guard = makeGuard({ roles: [UserRole.OWNER] });
+    const guard = makeGuard({ roles: [UserRole.SHOP_ADMIN] });
     try {
       guard.canActivate(makeContext(shopLessOwner));
       expect.unreachable('409 kutilgan edi');
@@ -112,12 +112,12 @@ describe("RolesGuard — Shop'siz account (§21.10)", () => {
   });
 
   it('@ShopExempt() endpoint Shop’siz accountga ham ochiq', () => {
-    const guard = makeGuard({ roles: [UserRole.OWNER], shopExempt: true });
+    const guard = makeGuard({ roles: [UserRole.SHOP_ADMIN], shopExempt: true });
     expect(guard.canActivate(makeContext(shopLessOwner))).toBe(true);
   });
 
   it('Shop biriktirilgan accountda shop-scoped endpoint erkin o‘tadi', () => {
-    const guard = makeGuard({ roles: [UserRole.OWNER] });
+    const guard = makeGuard({ roles: [UserRole.SHOP_ADMIN] });
     expect(guard.canActivate(makeContext(owner))).toBe(true);
   });
 

@@ -26,15 +26,19 @@ export const CURRENCY_SCALE: Record<Currency, number> = {
 };
 
 /**
- * §2.1, §16.14 — MVP'da faqat OWNER.
+ * §2.1, §16.14 — MVP'da faqat SHOP_ADMIN (§21.2 — eski `OWNER` qayta nomlandi).
  *
  * `MANAGER` va `SELLER` ataylab YO'Q: amalga oshirilmagan rol — sinovdan
  * o'tmagan xavfsizlik kodi, ya'ni xavfsizlik illyuziyasi. Ikkinchi xodim
  * paydo bo'lganda `docs/PERMISSIONS.md` dagi matritsa bo'yicha qo'shiladi
  * (PostgreSQL'da `ALTER TYPE ... ADD VALUE` — arzon amal).
+ *
+ * `SUPERADMIN` (platforma darajasi, §21.2, §21.3) bu yerda YO'Q — u
+ * `users.role` emas, alohida `platform_admins` jadvalida yashaydi va
+ * bu enum faqat Shop-darajasidagi rollarni ifodalaydi.
  */
 export const UserRole = {
-  OWNER: 'OWNER',
+  SHOP_ADMIN: 'SHOP_ADMIN',
 } as const;
 export type UserRole = (typeof UserRole)[keyof typeof UserRole];
 
