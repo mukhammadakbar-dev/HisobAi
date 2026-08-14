@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { AppException } from '../common/app.exception';
 import type { RequestUser } from '../common/request-user';
+import { runWithShopScope } from '../database/shop-context';
 import { SaleConfirmationService } from './sale-confirmation.service';
 
 /**
@@ -31,7 +32,23 @@ import { SaleConfirmationService } from './sale-confirmation.service';
 
 const ACTOR = { id: 'user-1', role: UserRole.SHOP_ADMIN } as RequestUser;
 const ACCOUNT_ID = '11111111-1111-4111-8111-111111111111';
+const SHOP_ID = '22222222-2222-4222-8222-222222222222';
 const RATE = new Prisma.Decimal('12500');
+
+/**
+ * Tasdiqlash **har doim** Shop konteksti ichida chaqiriladi: `allocateNumber`
+ * hisoblagichni `shop_id` bo'yicha filtrlaydi (§21.9) va kontekstsiz
+ * `requireShopId()` xato beradi.
+ *
+ * Testlar ham aynan shu shartda ishlashi kerak — aks holda ular ishlab
+ * chiqarish yo'lidan farq qiladigan sharoitni tekshirgan bo'lardi.
+ */
+function confirmScoped(
+  service: SaleConfirmationService,
+  ...args: Parameters<SaleConfirmationService['confirm']>
+): Promise<unknown> {
+  return runWithShopScope(SHOP_ID, () => service.confirm(...args));
+}
 
 interface Options {
   /** `updateMany` nechta qatorni o'zgartirgani — 0 bo'lsa birlik band. */
@@ -139,8 +156,13 @@ function makeService(options: Options = {}) {
         return Promise.resolve(created);
       }),
     },
-    $executeRaw: vi.fn(() => Promise.resolve(1)),
-    $queryRaw: vi.fn(() => Promise.resolve([{ last_seq: 1 }])),
+    // Parametrlar ataylab e'lon qilingan: `$queryRaw` tagged template bo'lib
+    // chaqiriladi va §21.9 testi aynan yuborilgan SQL matni bilan qiymatlarni
+    // o'qiydi — imzosiz mock'da ular `never[]` bo'lib qolardi.
+    $executeRaw: vi.fn((_sql: TemplateStringsArray, ..._values: unknown[]) => Promise.resolve(1)),
+    $queryRaw: vi.fn((_sql: TemplateStringsArray, ..._values: unknown[]) =>
+      Promise.resolve([{ last_seq: 1 }]),
+    ),
   };
 
   const prisma = {
@@ -185,7 +207,7 @@ describe('SaleConfirmationService', () => {
   it('§7.6 — raqam ajratadi, holatni CONFIRMED qiladi va jamini qatorlardan hisoblaydi', async () => {
     const { service, saleUpdates } = makeService();
 
-    await service.confirm('sale-1', confirmInput(), ACTOR, null);
+    await confirmScoped(service, 'sale-1', confirmInput(), ACTOR, null);
 
     expect(saleUpdates[0]).toMatchObject({
       number: '2026-00001',
@@ -194,10 +216,60 @@ describe('SaleConfirmationService', () => {
     expect(String(saleUpdates[0]?.total)).toBe('12000000');
   });
 
+  /**
+   * §21.9 — hisoblagich `(shop_id, year)` bo'yicha, ya'ni har Shop uchun
+   * mustaqil. Prisma extension'ining shop filtri **raw SQL'ga
+   * qo'llanmaydi** (§21.8), shuning uchun bu yerdagi izolyatsiya faqat
+   * qo'lda yozilgan `WHERE` shartiga bog'liq.
+   *
+   * `shop_id` tushib qolsa `UPDATE` barcha tenant'larning o'sha yilgi
+   * qatorini oshiradi va `RETURNING` boshqa Shop'ning raqamini qaytarishi
+   * mumkin — mijozga ko'rinadigan raqam boshqa do'konning savdo hajmini
+   * oshkor qilardi.
+   *
+   * Shu sababli bu yerda **SQL matnining o'zi** tekshiriladi, natija emas:
+   * mock'langan `$queryRaw` har qanday `WHERE` bilan ham "ishlab" ketadi,
+   * ya'ni xatoni faqat so'rovni o'qib ushlash mumkin.
+   */
+  it('§21.9 — hisoblagich SQL ikkala bayonotda ham shop_id bilan chegaralanadi', async () => {
+    const { service, tx } = makeService();
+
+    await confirmScoped(service, 'sale-1', confirmInput(), ACTOR, null);
+
+    const insertCall = tx.$executeRaw.mock.calls[0];
+    const updateCall = tx.$queryRaw.mock.calls[0];
+    expect(insertCall).toBeDefined();
+    expect(updateCall).toBeDefined();
+
+    const [insertSql, ...insertValues] = insertCall!;
+    const [updateSql, ...updateValues] = updateCall!;
+
+    expect(insertSql.join('?')).toContain('shop_id');
+    expect(insertValues).toContain(SHOP_ID);
+
+    expect(updateSql.join('?')).toMatch(/WHERE\s+shop_id\s*=/i);
+    expect(updateValues).toContain(SHOP_ID);
+  });
+
+  it("§21.9 — Shop konteksti yo'q bo'lsa raqam umuman ajratilmaydi", async () => {
+    const { service } = makeService();
+
+    // Ishlab chiqarishda bu nuqtaga yetib borilmaydi: `PrismaService`
+    // birinchi so'rovdayoq `SHOP_CONTEXT_MISSING` beradi. Bu yerda `prisma`
+    // mock'langani uchun o'sha to'siq yo'q — ya'ni test aynan
+    // `allocateNumber` ning O'Z himoyasini tekshiradi: u kontekstga tayanadi
+    // va uni jimgina "yo'q" deb qabul qilmaydi.
+    await expect(service.confirm('sale-1', confirmInput(), ACTOR, null)).rejects.toThrow(
+      /Shop konteksti/,
+    );
+  });
+
   it("§17.5 — birlik band bo'lsa (count = 0) savdo tasdiqlanmaydi", async () => {
     const { service, saleUpdates } = makeService({ reservedCount: 0 });
 
-    await expect(service.confirm('sale-1', confirmInput(), ACTOR, null)).rejects.toMatchObject({
+    await expect(
+      confirmScoped(service, 'sale-1', confirmInput(), ACTOR, null),
+    ).rejects.toMatchObject({
       code: ErrorCode.SALE_ITEM_NOT_AVAILABLE,
     });
     // Hech narsa yozilmagan bo'lishi kerak — tranzaksiya yarim qolmaydi
@@ -218,7 +290,7 @@ describe('SaleConfirmationService', () => {
       ],
     });
 
-    await expect(service.confirm('sale-1', input, ACTOR, null)).rejects.toMatchObject({
+    await expect(confirmScoped(service, 'sale-1', input, ACTOR, null)).rejects.toMatchObject({
       code: ErrorCode.SALE_PAYMENT_MISMATCH,
     });
   });
@@ -226,7 +298,7 @@ describe('SaleConfirmationService', () => {
   it("§17.2 — naqd to'lov darhol CONFIRMED va kassaga tushadi", async () => {
     const { service, payments, cashEntries } = makeService();
 
-    await service.confirm('sale-1', confirmInput(), ACTOR, null);
+    await confirmScoped(service, 'sale-1', confirmInput(), ACTOR, null);
 
     expect(payments[0]).toMatchObject({ status: PaymentStatus.CONFIRMED });
     expect(cashEntries).toHaveLength(1);
@@ -246,7 +318,7 @@ describe('SaleConfirmationService', () => {
         },
       ],
     });
-    await service.confirm('sale-1', input, ACTOR, null);
+    await confirmScoped(service, 'sale-1', input, ACTOR, null);
 
     expect(payments[0]).toMatchObject({ status: PaymentStatus.PENDING_VERIFICATION });
     expect(cashEntries).toHaveLength(0);
@@ -255,7 +327,9 @@ describe('SaleConfirmationService', () => {
   it('§11.1 — hisob valyutasi to‘lov valyutasiga mos kelmasa rad etiladi', async () => {
     const { service } = makeService({ accountCurrency: Currency.USD });
 
-    await expect(service.confirm('sale-1', confirmInput(), ACTOR, null)).rejects.toMatchObject({
+    await expect(
+      confirmScoped(service, 'sale-1', confirmInput(), ACTOR, null),
+    ).rejects.toMatchObject({
       code: ErrorCode.PAYMENT_ACCOUNT_CURRENCY_MISMATCH,
     });
   });
@@ -263,7 +337,9 @@ describe('SaleConfirmationService', () => {
   it('§7.7 — bo‘sh savat tasdiqlanmaydi', async () => {
     const { service } = makeService({ items: [] });
 
-    await expect(service.confirm('sale-1', confirmInput(), ACTOR, null)).rejects.toMatchObject({
+    await expect(
+      confirmScoped(service, 'sale-1', confirmInput(), ACTOR, null),
+    ).rejects.toMatchObject({
       code: ErrorCode.SALE_EMPTY,
     });
   });
@@ -271,15 +347,15 @@ describe('SaleConfirmationService', () => {
   it('tasdiqlangan savdo qayta tasdiqlanmaydi', async () => {
     const { service } = makeService({ status: SaleStatus.CONFIRMED });
 
-    await expect(service.confirm('sale-1', confirmInput(), ACTOR, null)).rejects.toBeInstanceOf(
-      AppException,
-    );
+    await expect(
+      confirmScoped(service, 'sale-1', confirmInput(), ACTOR, null),
+    ).rejects.toBeInstanceOf(AppException);
   });
 
   it('§5.10 — har qator uchun SALE harakati yoziladi', async () => {
     const { service, movements } = makeService();
 
-    await service.confirm('sale-1', confirmInput(), ACTOR, null);
+    await confirmScoped(service, 'sale-1', confirmInput(), ACTOR, null);
 
     expect(movements).toHaveLength(1);
     expect(movements[0]).toMatchObject({ type: 'SALE', quantity: 1, referenceType: 'SALE' });

@@ -26,6 +26,7 @@ import { businessDay } from '../common/dates';
 import type { RequestUser } from '../common/request-user';
 import type { Env } from '../config/env';
 import { PrismaService } from '../database/prisma.service';
+import { requireShopId } from '../database/shop-context';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { SALE_INCLUDE, toSaleDto, type SaleRow } from './sales.mappers';
 import { MAX_BACKDATE_DAYS, assertDraft, convert, profitOf, saleNotFound } from './sales.service';
@@ -272,15 +273,30 @@ export class SaleConfirmationService {
    * Yil **savdo sanasi** bo'yicha (§7.6 — har yil boshida qaytadan):
    * 1-yanvarda orqaga qo'yilgan dekabr savdosi o'tgan yilning
    * ketma-ketligini davom ettirishi kerak.
+   *
+   * Hisoblagich **har Shop uchun mustaqil** — PK `(shop_id, year)`
+   * (§21.9). Shuning uchun ikkala bayonotda ham `shop_id` **aniq**
+   * yoziladi: `INSERT` uni DB ustun default'iga (`current_setting`)
+   * qoldirishi mumkin edi, lekin bir joyda default'ga tayanib ikkinchi
+   * joyda aniq yozish — aynan shu funksiyada `WHERE` dan `shop_id`
+   * tushib qolishiga sabab bo'lgan nomuvofiqlik.
+   *
+   * `$queryRaw` — Prisma extension'ining shop filtri raw SQL'ga
+   * qo'llanmaydi (§21.8), ya'ni bu yerda izolyatsiya faqat shu qo'lda
+   * yozilgan shartga bog'liq.
    */
   private async allocateNumber(tx: Prisma.TransactionClient, soldAt: Date): Promise<string> {
     const year = Number.parseInt(businessDay(soldAt, this.timeZone).slice(0, 4), 10);
+    const shopId = requireShopId();
 
     await tx.$executeRaw`
-      INSERT INTO sale_counters (year) VALUES (${year}) ON CONFLICT DO NOTHING
+      INSERT INTO sale_counters (shop_id, year) VALUES (${shopId}::uuid, ${year})
+      ON CONFLICT DO NOTHING
     `;
     const rows = await tx.$queryRaw<{ last_seq: number }[]>`
-      UPDATE sale_counters SET last_seq = last_seq + 1 WHERE year = ${year} RETURNING last_seq
+      UPDATE sale_counters SET last_seq = last_seq + 1
+      WHERE shop_id = ${shopId}::uuid AND year = ${year}
+      RETURNING last_seq
     `;
     const sequence = rows[0]?.last_seq ?? 1;
 
