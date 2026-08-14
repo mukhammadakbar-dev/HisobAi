@@ -40,6 +40,12 @@ import {
 } from '../queries';
 import { CartRowFields, emptyCartRow, lineTotal, safeQuantity } from './cart-row';
 import type { CartRow } from './cart-row';
+import {
+  InstallmentPlanPanel,
+  emptyPlan,
+  principalFor,
+  type PlanState,
+} from '../../installments/components/installment-plan-panel';
 import { PaymentsPanel, emptyPaymentRow, remainingAmount } from './payments-panel';
 import type { PaymentRow } from './payments-panel';
 
@@ -60,13 +66,17 @@ import type { PaymentRow } from './payments-panel';
  * qoralamani saqlaydi, keyin tasdiqlaydi. Ega uchun bu bitta amal
  * bo'lib ko'rinadi.
  *
- * **Nasiya bu yerda yo'q** (§22 — 7-bosqich): `kind` har doim `CASH`.
+ * **Nasiya** (§9) — `kind = INSTALLMENT` tanlanganda shartnoma paneli
+ * ochiladi va tasdiqlashda `installment` sharti yuboriladi (§9.1).
+ * O'shanda to'lovlar savdo summasiga emas, **boshlang'ich to'lovga**
+ * tenglashtiriladi (§17.10): qolgani jadval bo'yicha keyin keladi.
  * Nasiya shartnoma va to'lov jadvalini talab qiladi; usiz "nasiya"
  * savdo qarzni hech qayerda qoldirmasdan yo'qotardi.
  */
 
 interface FormState {
   currency: Currency;
+  kind: SaleKind;
   customerId: string;
   soldAt: string;
   note: string;
@@ -77,6 +87,7 @@ function initialState(sale: SaleDto | undefined): FormState {
   if (!sale) {
     return {
       currency: Currency.UZS,
+      kind: SaleKind.CASH,
       customerId: '',
       soldAt: todayInShopZone(),
       note: '',
@@ -86,6 +97,7 @@ function initialState(sale: SaleDto | undefined): FormState {
 
   return {
     currency: sale.currency,
+    kind: sale.kind,
     customerId: sale.customerId ?? '',
     soldAt: sale.soldAt.slice(0, 10),
     note: sale.note ?? '',
@@ -118,6 +130,7 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
 
   const [form, setForm] = useState<FormState>(() => initialState(sale));
   const [payments, setPayments] = useState<PaymentRow[]>([emptyPaymentRow()]);
+  const [plan, setPlan] = useState<PlanState>(() => emptyPlan());
   const [issues, setIssues] = useState<Record<string, string>>({});
   const [dirty, setDirty] = useState(false);
   // `API.md` §4.2 — kalit forma ochilganda yaratiladi, qayta bosishda o'zgarmaydi
@@ -129,8 +142,33 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
     form.rows.map((row) => lineTotal(row, form.currency)),
     form.currency,
   );
-  const remaining = remainingAmount(payments, activeAccounts, form.currency, storeRate, total);
+  const isInstallment = form.kind === SaleKind.INSTALLMENT;
+  /**
+   * §17.10 — naqd savdoda to'lovlar savdo summasiga teng bo'ladi,
+   * nasiyada esa BOSHLANG'ICH TO'LOVGA: qolgani jadval bo'yicha keyin
+   * keladi. Server ham aynan shu chegarani qo'llaydi.
+   */
+  const expectedPaid = isInstallment
+    ? roundMoney(plan.downPayment.trim() === '' ? '0' : plan.downPayment, form.currency)
+    : total;
+  const remaining = remainingAmount(
+    payments,
+    activeAccounts,
+    form.currency,
+    storeRate,
+    expectedPaid,
+  );
   const isSettled = remaining === roundMoney('0', form.currency);
+
+  const principal = principalFor(plan, total, form.currency);
+  const scheduleTotal = sumMoney(
+    plan.rows.map((row) => row.amount),
+    form.currency,
+  );
+  // §9.6 — jadval summasi qarzga teng bo'lmasa savdo tasdiqlanmaydi
+  const planReady =
+    !isInstallment ||
+    (form.customerId !== '' && plan.rows.length > 0 && scheduleTotal === principal);
   const hasIncompleteRow = form.rows.some(
     (row) => row.productId === '' || (row.inventoryItemId === '' && row.batchId === ''),
   );
@@ -169,7 +207,7 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
 
   const buildDraft = (): CreateSaleDraftInput | null => {
     const payload = {
-      kind: SaleKind.CASH,
+      kind: form.kind,
       currency: form.currency,
       customerId: form.customerId === '' ? null : form.customerId,
       soldAt: toIsoDateTime(form.soldAt),
@@ -231,6 +269,17 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
   const handleConfirm = (): void => {
     const parsed = confirmSaleSchema.safeParse({
       soldAt: toIsoDateTime(form.soldAt),
+      // §9.1 — nasiya sharti savdo bilan bitta so'rovda ketadi:
+      // shartnoma o'sha tranzaksiya ichida tug'iladi
+      installment: isInstallment
+        ? {
+            downPayment: plan.downPayment.trim() === '' ? '0' : plan.downPayment,
+            ...(plan.markupMode === 'amount'
+              ? { markupAmount: plan.markupValue.trim() === '' ? '0' : plan.markupValue }
+              : { markupPercent: plan.markupValue.trim() === '' ? '0' : plan.markupValue }),
+            schedule: plan.rows,
+          }
+        : undefined,
       payments: payments.map((row) => ({
         method: row.method,
         amount: row.amount,
@@ -298,6 +347,22 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
       <Card className="flex flex-col gap-4">
         <div className="flex flex-wrap gap-3">
           <div className="min-w-36 flex-1">
+            <Field label="Savdo turi" htmlFor="kind" error={issues.kind}>
+              {/* §9 — nasiya tanlansa shartnoma paneli ochiladi */}
+              <Select
+                id="kind"
+                value={form.kind}
+                onChange={(event) => {
+                  patch({ kind: event.target.value as SaleKind });
+                }}
+              >
+                <option value={SaleKind.CASH}>Naqd</option>
+                <option value={SaleKind.INSTALLMENT}>Nasiya</option>
+              </Select>
+            </Field>
+          </div>
+
+          <div className="min-w-36 flex-1">
             <Field label="Valyuta" htmlFor="currency" error={issues.currency}>
               {/* §1.9 — bitta savdo, bitta valyuta; ega aniq tanlaydi */}
               <Select
@@ -314,8 +379,18 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
           </div>
 
           <div className="min-w-48 flex-2">
-            <Field label="Mijoz (ixtiyoriy)" htmlFor="customerId" error={issues.customerId}>
-              {/* §6.1 — naqd savdoda mijoz ixtiyoriy */}
+            <Field
+              label={isInstallment ? 'Mijoz (majburiy)' : 'Mijoz (ixtiyoriy)'}
+              htmlFor="customerId"
+              error={
+                issues.customerId ??
+                (isInstallment && form.customerId === ''
+                  ? 'Nasiyada mijoz majburiy — qarz kimning zimmasida ekani yozilishi kerak'
+                  : undefined)
+              }
+            >
+              {/* §6.1 — naqd savdoda mijoz ixtiyoriy; nasiyada esa
+                  qarzdorsiz qarz bo'lmaydi */}
               <Select
                 id="customerId"
                 value={form.customerId}
@@ -407,8 +482,33 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
         </div>
       </Card>
 
+      {isInstallment && (
+        <Card className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <h2 className="m-0 text-lg font-semibold">Nasiya sharti (§9)</h2>
+            <p className="m-0 text-sm text-text-secondary">
+              Shartnoma savdo tasdiqlanganda yaratiladi — jadval summasi qarzga teng bo‘lishi shart
+              (§9.6).
+            </p>
+          </div>
+
+          <InstallmentPlanPanel
+            plan={plan}
+            cashPrice={total}
+            currency={form.currency}
+            error={issues['installment.schedule'] ?? issues.installment}
+            onChange={(next) => {
+              setPlan(next);
+              setDirty(true);
+            }}
+          />
+        </Card>
+      )}
+
       <Card className="flex flex-col gap-4">
-        <h2 className="m-0 text-lg font-semibold">To‘lov</h2>
+        <h2 className="m-0 text-lg font-semibold">
+          {isInstallment ? 'Boshlang‘ich to‘lov' : 'To‘lov'}
+        </h2>
 
         {activeAccounts.length === 0 ? (
           <p className="m-0 text-sm text-warning" role="status">
@@ -423,7 +523,7 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
             accounts={activeAccounts}
             currency={form.currency}
             storeRate={storeRate}
-            total={total}
+            total={expectedPaid}
             issues={issues}
             onChange={(rows) => {
               setPayments(rows);
@@ -473,6 +573,7 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
             disabled={
               pending ||
               !isSettled ||
+              !planReady ||
               hasIncompleteRow ||
               total === roundMoney('0', form.currency) ||
               activeAccounts.length === 0

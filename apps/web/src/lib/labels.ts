@@ -6,6 +6,7 @@ import {
   InventoryStatus,
   PaymentMethod,
   PaymentStatus,
+  ContractStatus,
   ProductType,
   ReversalReason,
   SaleKind,
@@ -102,6 +103,19 @@ export const REVERSAL_REASON_LABEL: Record<string, string> = {
   [ReversalReason.CUSTOMER_CHANGED_MIND]: 'Mijoz fikri o‘zgardi',
   [ReversalReason.ENTRY_ERROR]: 'Xato kiritildi',
   [ReversalReason.OTHER]: 'Boshqa',
+};
+
+/** §9.7 — shartnoma holatlari. "Muddati o'tgan" bu yerda YO'Q (§9.8). */
+export const CONTRACT_STATUS_LABEL: Record<string, string> = {
+  [ContractStatus.ACTIVE]: 'Faol',
+  [ContractStatus.CLOSED]: 'Yopilgan',
+  [ContractStatus.CANCELLED]: 'Bekor qilingan',
+};
+
+export const CONTRACT_STATUS_TONE: Record<string, 'success' | 'muted' | 'warning'> = {
+  [ContractStatus.ACTIVE]: 'success',
+  [ContractStatus.CLOSED]: 'muted',
+  [ContractStatus.CANCELLED]: 'warning',
 };
 
 // ──────────────────────────────── To'lovlar (§10) ────────────────────────────────

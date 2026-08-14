@@ -2,6 +2,7 @@
 
 import {
   Boxes,
+  CalendarClock,
   LayoutDashboard,
   LogOut,
   MoreHorizontal,
@@ -54,6 +55,13 @@ const PRIMARY_NAV: NavItem[] = [
 
 /** "Yana" varag'idagilar; noutbukda ular ham yon menyuda turadi. */
 const SECONDARY_NAV: NavItem[] = [
+  /**
+   * Nasiya "Yana" varag'ida: §4 pastki qatorda beshta element chegara
+   * (`design.md` §6 — 375px da bosish maydoni 44px dan tor bo'lmasin).
+   * Qarzdorlar ro'yxati kunlik emas, haftalik ish — kunlik savdo va
+   * ombordan ustun qo'yish tartibni buzardi.
+   */
+  { href: '/installments', label: 'Nasiya', icon: CalendarClock },
   { href: '/products', label: 'Katalog', icon: Tags },
   { href: '/cashbook', label: 'Kassa', icon: Wallet },
   { href: '/settings', label: 'Sozlamalar', icon: Settings },
