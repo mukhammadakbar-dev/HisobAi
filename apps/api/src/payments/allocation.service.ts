@@ -160,12 +160,7 @@ export class AllocationService {
       select: { amountDue: true, amountPaid: true },
     });
 
-    return schedules
-      .reduce(
-        (total, row) => total.plus(row.amountDue.minus(row.amountPaid)),
-        new Prisma.Decimal(0),
-      )
-      .toString();
+    return outstandingOfRows(schedules);
   }
 
   /**
@@ -218,4 +213,22 @@ export class AllocationService {
       });
     }
   }
+}
+
+/**
+ * Qarz qoldig'ining **yagona formulasi**: `Σ(amountDue − amountPaid)`.
+ *
+ * Alohida funksiya sifatida chiqarilgan, chunki uni ikki joy o'qiydi:
+ * to'lov tranzaksiyasi (yuqorida, `tx` orqali) va shartnoma kartasi
+ * (`installments.mappers.ts`, allaqachon yuklangan qatorlar ustida).
+ * Ikki nusxa yozilganda ular chetga chiqib ketgan edi — mapper har
+ * qatorni alohida yaxlitlardi va §16.11 bo'yicha yopilgan shartnoma
+ * ekranda hali ham "1 so'm qarzi bor" bo'lib ko'rinardi.
+ */
+export function outstandingOfRows(
+  rows: readonly { amountDue: Prisma.Decimal; amountPaid: Prisma.Decimal }[],
+): string {
+  return rows
+    .reduce((total, row) => total.plus(row.amountDue.minus(row.amountPaid)), new Prisma.Decimal(0))
+    .toString();
 }

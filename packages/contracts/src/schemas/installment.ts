@@ -1,8 +1,16 @@
 import { z } from 'zod';
 
-import { PaymentMethod } from '../enums';
-import type { ContractStatus, Currency, ScheduleStatus } from '../enums';
-import { calendarDate, decimalInRange, decimalString, positiveDecimal, uuidString } from './common';
+import { ContractStatus, PaymentMethod } from '../enums';
+import type { Currency, ScheduleStatus } from '../enums';
+import {
+  calendarDate,
+  decimalInRange,
+  decimalString,
+  enumList,
+  pageQueryFields,
+  positiveDecimal,
+  uuidString,
+} from './common';
 
 /**
  * Nasiya (§9, §11).
@@ -113,7 +121,47 @@ export const closeContractSchema = z
   .strict();
 export type CloseContractInput = z.infer<typeof closeContractSchema>;
 
+export const installmentQuerySchema = z
+  .object({
+    status: enumList(ContractStatus, 'Kamida bitta holat tanlang').optional(),
+    customerId: uuidString.optional(),
+    /**
+     * §9.8 — "muddati o'tgan" SAQLANMAYDI, sanadan hisoblanadi. Filtr
+     * ham shuning uchun ustun bo'yicha emas: server bugungi kun bilan
+     * solishtiradi va "bugun" do'kon vaqt zonasida aniqlanadi (§1.3).
+     */
+    overdue: z.enum(['true', 'false']).optional(),
+    sort: z.enum(['createdAt', '-createdAt']).default('-createdAt'),
+    ...pageQueryFields,
+  })
+  .strict();
+export type InstallmentQuery = z.infer<typeof installmentQuerySchema>;
+
 // ──────────────────────────────── Javoblar ────────────────────────────────
+
+/**
+ * Ro'yxat uchun qisqartirilgan ko'rinish — qarzdorlar ekrani (§9).
+ *
+ * Jadval qatorlari **qaytarilmaydi**: qarzdorlar ro'yxatida 50 ta
+ * shartnoma bo'lsa, ularning har biridagi 12 oylik jadval 600 qator
+ * degani va ularning hech biri ekranda ko'rinmaydi.
+ */
+export interface InstallmentSummaryDto {
+  id: string;
+  saleId: string;
+  saleNumber: string | null;
+  customerId: string | null;
+  customerName: string | null;
+  currency: Currency;
+  principal: string;
+  outstanding: string;
+  status: ContractStatus;
+  /** §9.8 — hisoblanadi: muddati o'tgan va to'lanmagan qator bormi. */
+  isOverdue: boolean;
+  /** Eng yaqin to'lanmagan qator sanasi; qarz qolmagan bo'lsa `null`. */
+  nextDueDate: string | null;
+  createdAt: string;
+}
 
 export interface PaymentScheduleDto {
   id: string;
