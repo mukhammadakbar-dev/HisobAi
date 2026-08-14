@@ -77,6 +77,17 @@ interface Fixture {
  *
  * Shablondan CHIQADIGAN yagona jadval — `audit_logs` (`shop_id` nullable,
  * `IS NOT DISTINCT FROM` siyosati) — pastda alohida tekshiriladi.
+ *
+ * Qolgan 22 jadval **qamrovsiz emas**: RLS majburlanishi (yoqilgan +
+ * `FORCE` + siyosat bor) ular uchun pastdagi katalog testida, DMMF'dan
+ * olingan ro'yxat bo'yicha avtomatik tekshiriladi (§21.28).
+ *
+ * Bu yerda sinalmagan yagona narsa — kompozit-FK bolalar jadvallarining
+ * (`SaleItem`, `PaymentAllocation`, `StocktakeLine`, `PaymentSchedule`)
+ * XULQ-ATVORI: ular `shop_id` ni denormalizatsiya qiladi va otaga
+ * kompozit FK bilan bog'lanadi, ya'ni yuqoridagi beshtadan strukturaviy
+ * farq qiladi. Ular uchun fixture 8-bosqichda (nasiya), zanjir moduli
+ * bilan birga yoziladi — §21.29.
  */
 const FIXTURES: Fixture[] = [
   {
