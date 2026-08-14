@@ -50,9 +50,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       await this.$connect();
       this.logger.log('PostgreSQL ulanishi tayyor');
     } catch (error) {
-      // Noto'g'ri DATABASE_URL bilan jimgina ishlashdan ko'ra, sababi bilan yiqilamiz.
+      // Noto'g'ri manzil bilan jimgina ishlashdan ko'ra, sababi bilan
+      // yiqilamiz. Nomi ataylab `DATABASE_URL_APP`: `DATABASE_URL`
+      // development'da BOSHQA (superuser) manzil va u ko'pincha to'g'ri
+      // bo'ladi — operatorni o'sha tomonga yuborish uni buzilmagan
+      // qatorni tekshirishga majbur qilardi.
       this.logger.error(
-        `PostgreSQL ulanmadi. DATABASE_URL ni tekshiring. ${(error as Error).message}`,
+        `PostgreSQL ulanmadi. DATABASE_URL_APP ni tekshiring. ${(error as Error).message}`,
       );
       throw error;
     }

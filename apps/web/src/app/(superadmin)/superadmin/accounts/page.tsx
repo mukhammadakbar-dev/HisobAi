@@ -40,6 +40,14 @@ export default function AccountsPage() {
 
         {admins.isSuccess && <ShopAdminTable admins={admins.data.data} />}
       </Card>
+
+      {/* Boshqa ro'yxatlar bilan bir xil naqsh (`customers/page.tsx`):
+          sahifa kesilgani jimgina qolmaydi. */}
+      {admins.data?.hasMore === true && (
+        <p className="m-0 text-sm text-text-tertiary">
+          Birinchi {admins.data.data.length} ta hisob ko‘rsatildi.
+        </p>
+      )}
     </div>
   );
 }

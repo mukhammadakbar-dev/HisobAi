@@ -28,6 +28,17 @@ export const shopsApi = {
  * server javobidagi boshqa maydonlar (masalan `role`) bilan chalkashish
  * xavfi bo'lardi — bu yerda tezlik muhim emas, to'g'rilik muhim.
  *
+ * Bekor qilish natijasi **qaytariladi**, `void` bilan tashlab
+ * yuborilmaydi: react-query mutatsiyaning `onSuccess` idan qaytgan
+ * promise'ni `mutate(…, { onSuccess })` chaqiruvchisidan OLDIN kutadi.
+ * Usiz forma `/dashboard` ga o'sha zahoti o'tardi, `auth.me` keshida esa
+ * hali eski `shopId: null` turardi (`staleTime` 5 daqiqa) — `(app)`
+ * qobig'i buni "Shop tuzilmagan" deb o'qib, foydalanuvchini endigina
+ * to'ldirgan setup formasiga qaytarardi. Refetch muvaffaqiyatsiz bo'lsa
+ * (oflayn, 500) u o'sha yerda qolib ketardi va qayta yuborish
+ * `SHOP_ALREADY_EXISTS` berardi — ya'ni oqim o'zi to'sishi kerak bo'lgan
+ * holatga tushardi.
+ *
  * §25.7 — ikkinchi marta chaqirilsa server `SHOP_ALREADY_EXISTS`
  * qaytaradi; formada u oddiy xato sifatida ko'rsatiladi.
  */
@@ -38,7 +49,7 @@ export function useCreateShop(): UseMutationResult<ShopDto, ApiError, CreateShop
     mutationFn: shopsApi.create,
     onSuccess: (shop) => {
       queryClient.setQueryData(shopKeys.detail(), shop);
-      void queryClient.invalidateQueries({ queryKey: authKeys.me() });
+      return queryClient.invalidateQueries({ queryKey: authKeys.me() });
     },
   });
 }

@@ -38,6 +38,16 @@ interface SetupFormValues {
   phone?: string | null;
 }
 
+/**
+ * `shop-form.tsx` dagi bilan bir xil: to'ldirilmagan maydon bazaga `null`
+ * bo'lib tushadi, bo'sh satr bo'lib emas. Sxema `''` ni ham qabul
+ * qiladi, ya'ni bu jimgina o'tib ketardi — natijada bir xil "ma'lumot
+ * berilmagan" holat ikki xil ko'rinishda saqlanardi va uni o'qiydigan
+ * har bir joy (§3.6 shartnoma, eksport) ikkalasini ham tekshirishga
+ * majbur bo'lardi.
+ */
+const optionalText = (value: string): string | null => (value === '' ? null : value);
+
 export function ShopSetupForm() {
   const router = useRouter();
   const createShop = useCreateShop();
@@ -75,11 +85,21 @@ export function ShopSetupForm() {
       </Field>
 
       <Field label="Manzil" htmlFor="address" error={errors.address?.message}>
-        <Input id="address" autoComplete="street-address" {...register('address')} />
+        <Input
+          id="address"
+          autoComplete="street-address"
+          {...register('address', { setValueAs: optionalText })}
+        />
       </Field>
 
       <Field label="Telefon" htmlFor="phone" error={errors.phone?.message}>
-        <Input id="phone" type="tel" inputMode="tel" autoComplete="tel" {...register('phone')} />
+        <Input
+          id="phone"
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          {...register('phone', { setValueAs: optionalText })}
+        />
       </Field>
 
       <Button type="submit" variant="primary" disabled={createShop.isPending}>
