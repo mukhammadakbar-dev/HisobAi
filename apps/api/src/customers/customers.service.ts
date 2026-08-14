@@ -119,6 +119,39 @@ export class CustomersService {
     actor: RequestUser,
     ip: string | null,
   ): Promise<CustomerDto> {
+    /**
+     * "Bu raqam kimda bor" degan savolga javob **tranzaksiyadan
+     * TASHQARIDA** olinadi (§23.13).
+     *
+     * Ikki sabab, ikkalasi ham hal qiluvchi:
+     *
+     *  - tranzaksiya ichidan `this.prisma` ga qilingan so'rov boshqa
+     *    ulanishga tushadi, u yerda `app.current_shop_id` qo'yilmagan
+     *    va RLS hamma qatorni to'sadi — natijada mijoz topilmay,
+     *    xabar "raqam band" degan umumiy matnga tushib qolardi;
+     *  - unique buzilishidan keyin tranzaksiyaning O'ZI abort holatida,
+     *    ya'ni `tx` orqali so'rash ham ishlamasdi.
+     *
+     * Shuning uchun ichkarida xato shunchaki yuqoriga uzatiladi va
+     * bu yerda boyitiladi.
+     */
+    try {
+      return await this.updateInTransaction(id, input, precondition, actor, ip);
+    } catch (error) {
+      if (isUniqueViolation(error) && input.phonePrimary) {
+        throw await this.phoneTaken(input.phonePrimary);
+      }
+      throw error;
+    }
+  }
+
+  private async updateInTransaction(
+    id: string,
+    input: UpdateCustomerInput,
+    precondition: Precondition,
+    actor: RequestUser,
+    ip: string | null,
+  ): Promise<CustomerDto> {
     return this.prisma.$transaction(async (tx) => {
       const before = await tx.customer.findUnique({ where: { id } });
       if (!before) throw AppException.notFound(ErrorCode.NOT_FOUND, 'Mijoz topilmadi.');
@@ -130,9 +163,7 @@ export class CustomersService {
           data: toUpdateData(input, canSeePassport(actor)),
         })
         .catch(async (error: unknown) => {
-          if (isUniqueViolation(error) && input.phonePrimary) {
-            throw await this.phoneTaken(input.phonePrimary);
-          }
+          // Unique buzilishi yuqoriga uzatiladi — xabarni `update()` boyitadi
           if (!isRecordNotFound(error)) throw error;
 
           const current = await tx.customer.findUnique({ where: { id } });
