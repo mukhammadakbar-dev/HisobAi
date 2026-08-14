@@ -3,13 +3,20 @@ import { ConfigService } from '@nestjs/config';
 import {
   CashDirection,
   CashSourceType,
+  ContractStatus,
   Currency,
   InventoryStatus,
+  ScheduleStatus,
   SaleStatus,
   StockMovementType,
   multiplyMoney,
   sumMoney,
+  type AuditLogDto,
+  type AuditQuery,
+  type DebtorDto,
+  type DebtorsReportDto,
   type InventoryValueDto,
+  type Page,
   type ProfitBreakdownDto,
   type ReportGranularity,
   type ReportMetricDto,
@@ -24,13 +31,16 @@ import { Prisma } from '@prisma/client';
 
 import {
   businessDay,
+  dayRangeFilter,
   dayStartInstant,
   daysBetween,
   fromCalendarDate,
   toCalendarDate,
 } from '../common/dates';
+import { normalizeLimit, toPage, toPrismaCursor } from '../common/pagination';
 import type { Env } from '../config/env';
 import { PrismaService } from '../database/prisma.service';
+import { outstandingOfRows } from '../payments/allocation.service';
 import { convert } from '../sales/sales.service';
 
 /** §1.1 — barcha hisobot so'mda jamlanadi. */
@@ -307,6 +317,145 @@ export class ReportsService {
       // aks holda ombor qiymati sababsiz kamayib ko'rinardi
       rateMissing,
     };
+  }
+
+  /**
+   * §13.8 — qarzdorlar. **Muddati o'tganlar tepada.**
+   *
+   * Tartib ataylab shunday: ro'yxatning maqsadi "kimga qo'ng'iroq
+   * qilish kerak" degan savolga javob berish. Alifbo yoki summa
+   * bo'yicha saralash o'sha savolni yashirardi — eng ko'p kechikkan
+   * mijoz ro'yxat o'rtasida qolib ketardi.
+   *
+   * `daysOverdue` serverda hisoblanadi (§9.8): "bugun" do'kon vaqt
+   * zonasida aniqlanadi (§1.3) va brauzer zonasi undan farq qilishi
+   * mumkin — mijozga "3 kun kechikdingiz" deb aytishdan oldin bu aniq
+   * bo'lishi kerak.
+   */
+  async debtors(): Promise<DebtorsReportDto> {
+    const contracts = await this.prisma.installmentContract.findMany({
+      where: { status: ContractStatus.ACTIVE },
+      select: {
+        id: true,
+        currency: true,
+        sale: {
+          select: {
+            number: true,
+            customerId: true,
+            customer: { select: { fullName: true } },
+            exchangeRate: true,
+          },
+        },
+        schedules: {
+          select: { dueDate: true, amountDue: true, amountPaid: true, status: true },
+          orderBy: { sequence: 'asc' },
+        },
+      },
+    });
+
+    const today = businessDay(new Date(), this.timeZone);
+    const debtors: DebtorDto[] = [];
+
+    for (const contract of contracts) {
+      const outstanding = outstandingOfRows(contract.schedules);
+      // Qarzi qolmagan shartnoma qarzdorlar ro'yxatida turishi mumkin
+      // emas: §16.11 bo'yicha u yopilgan bo'lishi kerak edi, lekin
+      // ro'yxat unga tayanmaydi — hisob har doim jadvaldan
+      if (Number(outstanding) <= 0) continue;
+
+      const unpaid = contract.schedules.filter((row) => row.status !== ScheduleStatus.PAID);
+      const nextDue = unpaid[0] ? toCalendarDate(unpaid[0].dueDate) : null;
+
+      debtors.push({
+        contractId: contract.id,
+        customerId: contract.sale.customerId,
+        customerName: contract.sale.customer?.fullName ?? null,
+        saleNumber: contract.sale.number,
+        currency: contract.currency,
+        outstanding,
+        nextDueDate: nextDue,
+        daysOverdue: nextDue !== null && nextDue < today ? daysBetween(nextDue, today) : 0,
+      });
+    }
+
+    debtors.sort(
+      (left, right) =>
+        // Avval kechikish bo'yicha (ko'pi tepada), keyin summa bo'yicha:
+        // bir xil kechikkan ikki mijozdan kattaroq qarzi borini oldin
+        // ko'rish mantiqan to'g'ri
+        right.daysOverdue - left.daysOverdue ||
+        Number(right.outstanding) - Number(left.outstanding),
+    );
+
+    const rate = await this.latestStoreRate();
+
+    return {
+      currency: BASE_CURRENCY,
+      overdueCount: debtors.filter((row) => row.daysOverdue > 0).length,
+      totalOutstanding: sumMoney(
+        debtors.map((row) =>
+          row.currency === BASE_CURRENCY
+            ? row.outstanding
+            : rate
+              ? convert(new Prisma.Decimal(row.outstanding), row.currency, BASE_CURRENCY, rate)
+              : '0',
+        ),
+        BASE_CURRENCY,
+      ),
+      debtors,
+    };
+  }
+
+  /**
+   * Audit ko'rinishi (§2.2) — **faqat o'qish**.
+   *
+   * Yozuvni o'zgartirish yoki o'chirish endpointi yo'q va bo'lmaydi:
+   * `hisobai_app` roli uchun `audit_logs` da `UPDATE`/`DELETE`
+   * bazaning o'zida bekor qilingan (§12, §21.16). Ya'ni bu yerda
+   * "o'chirish" yozilsa ham u ishlamasdi — chegara ikki qatlamda.
+   */
+  async auditLogs(query: AuditQuery): Promise<Page<AuditLogDto>> {
+    const limit = normalizeLimit(query.limit);
+    const createdAt = dayRangeFilter(query.from, query.to, this.timeZone);
+
+    const rows = await this.prisma.auditLog.findMany({
+      where: {
+        action: query.action,
+        entityType: query.entityType,
+        entityId: query.entityId,
+        actorId: query.actorId,
+        ...(createdAt ? { createdAt } : {}),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      ...toPrismaCursor(query.cursor, limit),
+    });
+
+    // Aktyor nomi alohida so'rov bilan: `actor_id` da FK YO'Q (§21.3 —
+    // ustunga ikki xil aktyor yoziladi, business `User` va
+    // `PlatformAdmin`), ya'ni Prisma `include` ni tuzib bera olmaydi
+    const actorIds = [...new Set(rows.map((row) => row.actorId).filter(isPresent))];
+    const actors = await this.prisma.user.findMany({
+      where: { id: { in: actorIds } },
+      select: { id: true, displayName: true },
+    });
+    const names = new Map(actors.map((actor) => [actor.id, actor.displayName]));
+
+    return toPage(
+      rows.map((row) => ({
+        id: row.id,
+        action: row.action,
+        entityType: row.entityType,
+        entityId: row.entityId,
+        actorId: row.actorId,
+        actorName: row.actorId ? (names.get(row.actorId) ?? null) : null,
+        before: row.beforeJson,
+        after: row.afterJson,
+        ip: row.ip,
+        createdAt: row.createdAt.toISOString(),
+      })),
+      limit,
+      (dto) => dto.createdAt,
+    );
   }
 
   // ──────────────────────────── Hisob-kitob ────────────────────────────
@@ -637,4 +786,9 @@ function bucketStarts(query: ReportSeriesQuery): string[] {
     cursor = addDays(cursor, 1);
   }
   return [...seen];
+}
+
+/** `filter(Boolean)` tipni toraytirmaydi — bu esa toraytiradi. */
+function isPresent(value: string | null): value is string {
+  return value !== null;
 }

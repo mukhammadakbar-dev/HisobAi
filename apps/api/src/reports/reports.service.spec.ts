@@ -1,4 +1,10 @@
-import { CashSourceType, Currency, SaleStatus, StockMovementType } from '@hisobai/contracts';
+import {
+  CashSourceType,
+  Currency,
+  SaleStatus,
+  ScheduleStatus,
+  StockMovementType,
+} from '@hisobai/contracts';
 import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -39,6 +45,8 @@ interface Options {
   movements?: { type: StockMovementType; quantity: number; cost: string }[];
   stock?: { cost: string; currency?: Currency }[];
   rateMissing?: boolean;
+  debtors?: unknown[];
+  audit?: { action: string; actorId?: string }[];
 }
 
 /**
@@ -96,9 +104,13 @@ function makeService(options: Options = {}) {
       ),
     },
     installmentContract: {
-      findMany: vi.fn((args: { where: { sale: { soldAt: { gte: Date; lt: Date } } } }) =>
-        Promise.resolve(contracts.filter((row) => inRange(row.soldAt, args.where.sale.soldAt))),
-      ),
+      findMany: vi.fn((args: { where?: { sale?: { soldAt: { gte: Date; lt: Date } } } }) => {
+        // Qarzdorlar so'rovi `sale.soldAt` bo'yicha filtrlamaydi —
+        // uni shu bilan ajratamiz
+        if (!args.where?.sale) return Promise.resolve(options.debtors ?? []);
+        const range = args.where.sale.soldAt;
+        return Promise.resolve(contracts.filter((row) => inRange(row.soldAt, range)));
+      }),
     },
     cashEntry: {
       findMany: vi.fn(
@@ -150,6 +162,26 @@ function makeService(options: Options = {}) {
       ),
     },
     inventoryBatch: { findMany: vi.fn(() => Promise.resolve([])) },
+    auditLog: {
+      findMany: vi.fn(() =>
+        Promise.resolve(
+          (options.audit ?? []).map((row, index) => ({
+            id: `log-${String(index + 1)}`,
+            action: row.action,
+            entityType: 'Sale',
+            entityId: 'sale-1',
+            actorId: row.actorId ?? null,
+            beforeJson: null,
+            afterJson: { total: '1' },
+            ip: null,
+            createdAt: CURRENT_AT,
+          })),
+        ),
+      ),
+    },
+    user: {
+      findMany: vi.fn(() => Promise.resolve([{ id: 'user-1', displayName: "Do'kon egasi" }])),
+    },
     shopExchangeRate: {
       findFirst: vi.fn(() =>
         Promise.resolve(options.rateMissing === true ? null : { storeRate: RATE }),
@@ -159,6 +191,39 @@ function makeService(options: Options = {}) {
 
   const config = { get: vi.fn(() => 'Asia/Tashkent') };
   return { service: new ReportsService(prisma as never, config as never), prisma };
+}
+
+/**
+ * Qarzdor fiksturasi — shartnoma va uning jadvali.
+ *
+ * `dueDate` **o'tmishda** bo'lsa kechikish hisoblanadi (§9.8): u
+ * saqlanmaydi, sanadan chiqadi.
+ */
+function debtor(options: {
+  id: string;
+  name: string;
+  due: string;
+  amountDue: string;
+  amountPaid?: string;
+}) {
+  return {
+    id: options.id,
+    currency: Currency.UZS,
+    sale: {
+      number: '2026-00001',
+      customerId: 'customer-1',
+      customer: { fullName: options.name },
+      exchangeRate: RATE,
+    },
+    schedules: [
+      {
+        dueDate: new Date(`${options.due}T00:00:00.000Z`),
+        amountDue: new Prisma.Decimal(options.amountDue),
+        amountPaid: new Prisma.Decimal(options.amountPaid ?? '0'),
+        status: ScheduleStatus.UNPAID,
+      },
+    ],
+  };
 }
 
 const PERIOD = { from: '2026-08-10', to: '2026-08-19' };
@@ -483,6 +548,101 @@ describe('ReportsService', () => {
 
       expect(report.totalCost).toBe('4000000');
       expect(report.rateMissing).toBe(true);
+    });
+  });
+
+  describe('qarzdorlar (§13.8)', () => {
+    /**
+     * Tartib — ro'yxatning butun ma'nosi: u "kimga qo'ng'iroq qilish
+     * kerak" degan savolga javob beradi. Alifbo yoki summa bo'yicha
+     * saralash eng ko'p kechikkan mijozni ro'yxat o'rtasida yashirardi.
+     */
+    it('muddati o‘tganlar tepada, ko‘proq kechikkani birinchi', async () => {
+      const { service } = makeService({
+        debtors: [
+          debtor({ id: 'c-1', name: 'Kechikmagan', due: '2027-01-01', amountDue: '5000000' }),
+          debtor({ id: 'c-2', name: 'Uch kun', due: '2026-08-12', amountDue: '1000000' }),
+          debtor({ id: 'c-3', name: 'O‘n kun', due: '2026-08-05', amountDue: '1000000' }),
+        ],
+      });
+
+      const report = await runWithShopScope(SHOP_ID, async () => await service.debtors());
+
+      expect(report.debtors.map((row) => row.customerName)).toEqual([
+        'O‘n kun',
+        'Uch kun',
+        'Kechikmagan',
+      ]);
+      expect(report.overdueCount).toBe(2);
+    });
+
+    it('kechikish kunlari sanadan hisoblanadi (§9.8)', async () => {
+      const { service } = makeService({
+        debtors: [debtor({ id: 'c-1', name: 'Ali', due: '2026-08-12', amountDue: '1000000' })],
+      });
+
+      const report = await runWithShopScope(SHOP_ID, async () => await service.debtors());
+
+      // Dublyorda "bugun" — 2026-08-15 emas, haqiqiy bugungi kun emas:
+      // hisob sanalar ayirmasidan chiqadi, ya'ni nolga teng bo'lmaydi
+      expect(report.debtors[0]?.daysOverdue).toBeGreaterThan(0);
+      expect(report.debtors[0]?.nextDueDate).toBe('2026-08-12');
+    });
+
+    it('qarzi qolmagan shartnoma ro‘yxatga tushmaydi', async () => {
+      const { service } = makeService({
+        debtors: [
+          debtor({
+            id: 'c-1',
+            name: 'To‘lagan',
+            due: '2026-08-12',
+            amountDue: '1000000',
+            amountPaid: '1000000',
+          }),
+        ],
+      });
+
+      const report = await runWithShopScope(SHOP_ID, async () => await service.debtors());
+
+      expect(report.debtors).toHaveLength(0);
+      expect(report.totalOutstanding).toBe('0');
+    });
+
+    it('jami qoldiq bazaviy valyutada jamlanadi', async () => {
+      const { service } = makeService({
+        debtors: [
+          debtor({ id: 'c-1', name: 'Ali', due: '2026-08-12', amountDue: '1000000' }),
+          debtor({ id: 'c-2', name: 'Vali', due: '2027-01-01', amountDue: '2500000' }),
+        ],
+      });
+
+      const report = await runWithShopScope(SHOP_ID, async () => await service.debtors());
+
+      expect(report.totalOutstanding).toBe('3500000');
+    });
+  });
+
+  describe('audit jurnali (§2.2)', () => {
+    it('aktyor nomi alohida so‘rov bilan qo‘shiladi', async () => {
+      const { service } = makeService({
+        audit: [{ action: 'SALE_CONFIRMED', actorId: 'user-1' }],
+      });
+
+      const page = await runWithShopScope(SHOP_ID, async () => await service.auditLogs({}));
+
+      // `actor_id` da FK YO'Q (§21.3 — ustunga ikki xil aktyor
+      // yoziladi), ya'ni Prisma `include` ni tuzib bera olmaydi
+      expect(page.data[0]?.actorName).toBe("Do'kon egasi");
+      expect(page.data[0]?.action).toBe('SALE_CONFIRMED');
+    });
+
+    it('nomsiz aktyor null bo‘lib qoladi, yozuv esa yo‘qolmaydi', async () => {
+      const { service } = makeService({ audit: [{ action: 'CBU_RATE_SYNCED' }] });
+
+      const page = await runWithShopScope(SHOP_ID, async () => await service.auditLogs({}));
+
+      expect(page.data).toHaveLength(1);
+      expect(page.data[0]?.actorName).toBeNull();
     });
   });
 });

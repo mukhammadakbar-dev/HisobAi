@@ -2,13 +2,18 @@ import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   UserRole,
+  auditQuerySchema,
   reportPeriodSchema,
   reportSeriesQuerySchema,
   topProductsQuerySchema,
 } from '@hisobai/contracts';
 import type {
+  AuditLogDto,
+  AuditQuery,
   DashboardDto,
+  DebtorsReportDto,
   InventoryValueDto,
+  Page,
   ReportPeriod,
   ReportSeriesDto,
   ReportSeriesQuery,
@@ -90,5 +95,32 @@ export class ReportsController {
   @ApiOperation({ summary: 'Ombor qiymati (§5.9)' })
   inventoryValue(): Promise<InventoryValueDto> {
     return this.reports.inventoryValue();
+  }
+
+  /**
+   * §13.8 — qarzdorlar. Davr parametri yo'q: qarz **bugungi** holat,
+   * "o'tgan oydagi qarz" degan savol boshqa hisobot bo'lardi.
+   */
+  @Get('reports/debts')
+  @Roles(UserRole.SHOP_ADMIN)
+  @ApiOperation({ summary: 'Qarzdorlar — muddati o‘tganlar tepada (§13.8)' })
+  debtors(): Promise<DebtorsReportDto> {
+    return this.reports.debtors();
+  }
+
+  /**
+   * §2.2 — audit ko'rinishi. `PERMISSIONS.md` bo'yicha faqat
+   * `SHOP_ADMIN`: audit har bir amalni kim qilganini ko'rsatadi.
+   *
+   * Faqat `GET` bor va bo'ladi — yozuv o'zgartirilmaydi va
+   * o'chirilmaydi (§12: bazada `UPDATE`/`DELETE` bekor qilingan).
+   */
+  @Get('audit-logs')
+  @Roles(UserRole.SHOP_ADMIN)
+  @ApiOperation({ summary: 'Audit jurnali (§2.2)' })
+  auditLogs(
+    @Query(new ZodValidationPipe(auditQuerySchema)) query: AuditQuery,
+  ): Promise<Page<AuditLogDto>> {
+    return this.reports.auditLogs(query);
   }
 }

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import type { Currency } from '../enums';
-import { calendarDate } from './common';
+import { calendarDate, pageQueryFields, uuidString } from './common';
 
 /**
  * Hisobotlar (§13).
@@ -199,4 +199,47 @@ export interface InventoryValueDto {
   batchQuantity: number;
   /** Kurs yo'q bo'lsa valyutali qism baholanmaydi — bu ochiq aytiladi. */
   rateMissing: boolean;
+}
+
+// ──────────────────────────────── Audit (§2.2) ────────────────────────────────
+
+/**
+ * Audit ko'rinishi — **faqat o'qish uchun** (`PERMISSIONS.md`: faqat
+ * `SHOP_ADMIN`).
+ *
+ * Yozuvlar hech qachon o'zgartirilmaydi va o'chirilmaydi: `hisobai_app`
+ * roli uchun `audit_logs` da `UPDATE` va `DELETE` **bazaning o'zida**
+ * bekor qilingan (§12, §21.16). Shuning uchun bu yerda faqat so'rov
+ * sxemasi bor.
+ */
+export const auditQuerySchema = z
+  .object({
+    /** `SALE_CONFIRMED`, `PAYMENT_REVERSED` va h.k. */
+    action: z.string().trim().min(1).max(60).optional(),
+    entityType: z.string().trim().min(1).max(40).optional(),
+    entityId: uuidString.optional(),
+    actorId: uuidString.optional(),
+    from: calendarDate.optional(),
+    to: calendarDate.optional(),
+    ...pageQueryFields,
+  })
+  .strict();
+export type AuditQuery = z.infer<typeof auditQuerySchema>;
+
+export interface AuditLogDto {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  actorId: string | null;
+  actorName: string | null;
+  /**
+   * O'zgarishning oldingi va keyingi holati. Ular **ixtiyoriy**: ba'zi
+   * amallarda "oldin" degan holat umuman yo'q (yaratish), ba'zilarida
+   * esa "keyin" yo'q (o'chirish).
+   */
+  before: unknown;
+  after: unknown;
+  ip: string | null;
+  createdAt: string;
 }
