@@ -37,6 +37,8 @@ interface Options {
   markups?: { amount: string; period?: 'current' | 'previous' }[];
   cashOut?: { amount: string; sourceType: CashSourceType; period?: 'current' | 'previous' }[];
   movements?: { type: StockMovementType; quantity: number; cost: string }[];
+  stock?: { cost: string; currency?: Currency }[];
+  rateMissing?: boolean;
 }
 
 /**
@@ -117,8 +119,41 @@ function makeService(options: Options = {}) {
         Promise.resolve(movements.filter((row) => inRange(row.occurredAt, args.where.occurredAt))),
       ),
     },
+    saleItem: {
+      findMany: vi.fn((args: { where: { sale: { soldAt: { gte: Date; lt: Date } } } }) =>
+        Promise.resolve(
+          sales
+            .filter((sale) => inRange(sale.soldAt, args.where.sale.soldAt))
+            .flatMap((sale) =>
+              sale.items.map((item) => ({
+                ...item,
+                productId: 'product-1',
+                product: { displayName: 'Sinov telefon' },
+                sale: {
+                  status: sale.status,
+                  currency: sale.currency,
+                  exchangeRate: sale.exchangeRate,
+                },
+              })),
+            ),
+        ),
+      ),
+    },
+    inventoryItem: {
+      findMany: vi.fn(() =>
+        Promise.resolve(
+          (options.stock ?? []).map((row) => ({
+            costPrice: new Prisma.Decimal(row.cost),
+            costCurrency: row.currency ?? Currency.UZS,
+          })),
+        ),
+      ),
+    },
+    inventoryBatch: { findMany: vi.fn(() => Promise.resolve([])) },
     shopExchangeRate: {
-      findFirst: vi.fn(() => Promise.resolve({ storeRate: RATE })),
+      findFirst: vi.fn(() =>
+        Promise.resolve(options.rateMissing === true ? null : { storeRate: RATE }),
+      ),
     },
   };
 
@@ -324,6 +359,130 @@ describe('ReportsService', () => {
       const report = await summary(service);
 
       expect(report.revenue.value).toBe('4000000');
+    });
+  });
+
+  describe('dinamika (§13.6)', () => {
+    it('savdosiz kunlar ham nuqta sifatida qaytadi', async () => {
+      const { service } = makeService({ sales: [{ total: '4000000', items: [] }] });
+
+      const report = await runWithShopScope(
+        SHOP_ID,
+        async () => await service.series({ ...PERIOD, granularity: 'day' }),
+      );
+
+      // 10–19 avgust = 10 kun; ularsiz grafik uzuq bo'lardi va savdosiz
+      // kun umuman ko'rinmasdi
+      expect(report.points).toHaveLength(10);
+      expect(report.points[0]?.date).toBe('2026-08-10');
+      expect(report.points.at(-1)?.date).toBe('2026-08-19');
+    });
+
+    it('savdo o‘z kunidagi nuqtaga tushadi', async () => {
+      const { service } = makeService({ sales: [{ total: '4000000', items: [] }] });
+
+      const report = await runWithShopScope(
+        SHOP_ID,
+        async () => await service.series({ ...PERIOD, granularity: 'day' }),
+      );
+
+      const point = report.points.find((row) => row.date === '2026-08-15');
+      expect(point?.revenue).toBe('4000000');
+      expect(point?.saleCount).toBe(1);
+    });
+
+    // Hafta dushanbadan boshlanadi: 2026-08-15 — shanba, uning haftasi
+    // 2026-08-10 (dushanba) dan boshlanadi
+    it('haftalik qadamda dushanba olinadi', async () => {
+      const { service } = makeService({ sales: [{ total: '4000000', items: [] }] });
+
+      const report = await runWithShopScope(
+        SHOP_ID,
+        async () => await service.series({ ...PERIOD, granularity: 'week' }),
+      );
+
+      const point = report.points.find((row) => row.revenue !== '0');
+      expect(point?.date).toBe('2026-08-10');
+    });
+  });
+
+  describe('mahsulot bo‘yicha foyda (§13.7)', () => {
+    it('miqdor, aylanma va foyda mahsulot bo‘yicha jamlanadi', async () => {
+      const { service } = makeService({
+        sales: [
+          {
+            total: '12000000',
+            items: [{ quantity: 2, unitPrice: '6000000', costSnapshot: '4000000' }],
+          },
+        ],
+      });
+
+      const report = await runWithShopScope(
+        SHOP_ID,
+        async () => await service.topProducts({ ...PERIOD, limit: 10 }),
+      );
+
+      expect(report.products).toHaveLength(1);
+      expect(report.products[0]).toMatchObject({
+        quantity: 2,
+        revenue: '12000000',
+        profit: '4000000',
+      });
+    });
+
+    // Aks holda qaytarilgan telefon "eng ko'p sotilgan" ro'yxatining
+    // tepasida turib qolardi
+    it('qaytarish miqdorni ham, foydani ham kamaytiradi', async () => {
+      const { service } = makeService({
+        sales: [
+          {
+            total: '12000000',
+            items: [{ quantity: 2, unitPrice: '6000000', costSnapshot: '4000000' }],
+          },
+          {
+            status: SaleStatus.REVERSAL,
+            total: '-6000000',
+            items: [{ quantity: 1, unitPrice: '6000000', costSnapshot: '4000000' }],
+          },
+        ],
+      });
+
+      const report = await runWithShopScope(
+        SHOP_ID,
+        async () => await service.topProducts({ ...PERIOD, limit: 10 }),
+      );
+
+      expect(report.products[0]).toMatchObject({
+        quantity: 1,
+        revenue: '6000000',
+        profit: '2000000',
+      });
+    });
+  });
+
+  describe('ombor qiymati (§5.9)', () => {
+    it('mavjud birliklar tannarxi jamlanadi', async () => {
+      const { service } = makeService({ stock: [{ cost: '4000000' }, { cost: '3000000' }] });
+
+      const report = await runWithShopScope(SHOP_ID, async () => await service.inventoryValue());
+
+      expect(report.totalCost).toBe('7000000');
+      expect(report.serializedCount).toBe(2);
+      expect(report.rateMissing).toBe(false);
+    });
+
+    // Kurs yo'qligi JIMGINA nolga aylanmaydi — ombor qiymati sababsiz
+    // kamayib ko'rinardi va ega buni bilmasdi
+    it('kurs yo‘q bo‘lsa valyutali birlik baholanmaydi va bu aytiladi', async () => {
+      const { service } = makeService({
+        stock: [{ cost: '4000000' }, { cost: '500', currency: Currency.USD }],
+        rateMissing: true,
+      });
+
+      const report = await runWithShopScope(SHOP_ID, async () => await service.inventoryValue());
+
+      expect(report.totalCost).toBe('4000000');
+      expect(report.rateMissing).toBe(true);
     });
   });
 });

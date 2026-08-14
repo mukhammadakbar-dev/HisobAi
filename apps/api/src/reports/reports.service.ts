@@ -4,18 +4,31 @@ import {
   CashDirection,
   CashSourceType,
   Currency,
+  InventoryStatus,
   SaleStatus,
   StockMovementType,
   multiplyMoney,
   sumMoney,
+  type InventoryValueDto,
   type ProfitBreakdownDto,
+  type ReportGranularity,
   type ReportMetricDto,
   type ReportPeriod,
+  type ReportSeriesDto,
+  type ReportSeriesQuery,
   type ReportSummaryDto,
+  type TopProductsDto,
+  type TopProductsQuery,
 } from '@hisobai/contracts';
 import { Prisma } from '@prisma/client';
 
-import { dayStartInstant, daysBetween, fromCalendarDate, toCalendarDate } from '../common/dates';
+import {
+  businessDay,
+  dayStartInstant,
+  daysBetween,
+  fromCalendarDate,
+  toCalendarDate,
+} from '../common/dates';
 import type { Env } from '../config/env';
 import { PrismaService } from '../database/prisma.service';
 import { convert } from '../sales/sales.service';
@@ -47,6 +60,7 @@ type SaleRow = {
   currency: Currency;
   total: Prisma.Decimal;
   exchangeRate: Prisma.Decimal;
+  soldAt: Date;
   items: {
     quantity: number;
     unitPrice: Prisma.Decimal;
@@ -106,6 +120,195 @@ export class ReportsService {
     };
   }
 
+  /**
+   * §13.6 — savdo va foyda dinamikasi.
+   *
+   * Qadam foydalanuvchidan keladi (`granularity`), server "aqlli"
+   * tanlamaydi: bir oylik davrni kunlik ham, haftalik ham ko'rish
+   * to'g'ri va tanlovni yashirish grafikni kutilmaganda o'zgartirib
+   * turardi.
+   *
+   * Guruhlash **do'kon vaqt zonasida** (§1.3): UTC bo'yicha bo'linsa,
+   * kechqurungi savdo ertangi kunga tushib qolardi.
+   */
+  async series(query: ReportSeriesQuery): Promise<ReportSeriesDto> {
+    const { gte, lt } = this.rangeOf(query);
+    const sales = await this.salesIn(gte, lt);
+
+    const buckets = new Map<string, { revenue: string[]; profit: string[]; count: number }>();
+    for (const bucket of bucketStarts(query)) {
+      buckets.set(bucket, { revenue: [], profit: [], count: 0 });
+    }
+
+    for (const sale of sales) {
+      const day = businessDay(sale.soldAt, this.timeZone);
+      const key = bucketOf(day, query.granularity);
+      const bucket = buckets.get(key);
+      // Chegaraga tushmagan savdo bo'lmasligi kerak, lekin u jimgina
+      // yo'qolib ketmasin: `??` bilan yaratamiz
+      const target = bucket ?? { revenue: [], profit: [], count: 0 };
+      target.revenue.push(convert(sale.total, sale.currency, BASE_CURRENCY, sale.exchangeRate));
+      target.profit.push(profitOfSale(sale));
+      if (sale.status !== SaleStatus.REVERSAL) target.count += 1;
+      buckets.set(key, target);
+    }
+
+    return {
+      from: query.from,
+      to: query.to,
+      granularity: query.granularity,
+      currency: BASE_CURRENCY,
+      points: [...buckets.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([date, bucket]) => ({
+          date,
+          revenue: sumMoney(bucket.revenue, BASE_CURRENCY),
+          profit: sumMoney(bucket.profit, BASE_CURRENCY),
+          saleCount: bucket.count,
+        })),
+    };
+  }
+
+  /**
+   * §13.7 — qaysi model qancha sotildi va qancha foyda keltirdi.
+   *
+   * Qaytarish bu yerda ham ayriladi: teskari yozuvning qatorlari o'sha
+   * mahsulotga tegishli va ularning miqdori ham, foydasi ham manfiy
+   * ishora bilan qo'shiladi. Aks holda qaytarilgan telefon "eng ko'p
+   * sotilgan" ro'yxatining tepasida turib qolardi.
+   */
+  async topProducts(query: TopProductsQuery): Promise<TopProductsDto> {
+    const { gte, lt } = this.rangeOf(query);
+
+    const items = await this.prisma.saleItem.findMany({
+      where: { sale: { status: { in: REPORTED_STATUSES }, soldAt: { gte, lt } } },
+      select: {
+        quantity: true,
+        unitPrice: true,
+        costSnapshot: true,
+        costCurrency: true,
+        productId: true,
+        product: { select: { displayName: true } },
+        sale: { select: { status: true, currency: true, exchangeRate: true } },
+      },
+    });
+
+    const totals = new Map<
+      string,
+      { name: string; quantity: number; revenue: string[]; profit: string[] }
+    >();
+
+    for (const item of items) {
+      const sign = item.sale.status === SaleStatus.REVERSAL ? -1 : 1;
+      const currency = item.sale.currency;
+
+      const lineRevenue = multiplyMoney(item.unitPrice.toString(), item.quantity, currency);
+      const lineCost = multiplyMoney(
+        convert(item.costSnapshot, item.costCurrency, currency, item.sale.exchangeRate),
+        item.quantity,
+        currency,
+      );
+      const lineProfit = sumMoney([lineRevenue, `-${lineCost}`], currency);
+
+      const entry = totals.get(item.productId) ?? {
+        name: item.product.displayName,
+        quantity: 0,
+        revenue: [],
+        profit: [],
+      };
+      entry.quantity += sign * item.quantity;
+      entry.revenue.push(
+        signed(
+          convert(new Prisma.Decimal(lineRevenue), currency, BASE_CURRENCY, item.sale.exchangeRate),
+          sign,
+        ),
+      );
+      entry.profit.push(
+        signed(
+          convert(new Prisma.Decimal(lineProfit), currency, BASE_CURRENCY, item.sale.exchangeRate),
+          sign,
+        ),
+      );
+      totals.set(item.productId, entry);
+    }
+
+    const products = [...totals.entries()]
+      .map(([productId, entry]) => ({
+        productId,
+        productName: entry.name,
+        quantity: entry.quantity,
+        revenue: sumMoney(entry.revenue, BASE_CURRENCY),
+        profit: sumMoney(entry.profit, BASE_CURRENCY),
+      }))
+      // Tartib FOYDA bo'yicha, aylanma bo'yicha emas: §13.7 savolining
+      // o'zi "qancha foyda keltirdi" degan savol
+      .sort((left, right) => Number(right.profit) - Number(left.profit))
+      .slice(0, query.limit);
+
+    return { from: query.from, to: query.to, currency: BASE_CURRENCY, products };
+  }
+
+  /**
+   * §5.9 — ombor qiymati **bugungi do'kon kursida**.
+   *
+   * Foyda hisobidan ATAYLAB farq qiladi: u savdo paytidagi snapshot
+   * kursda qoladi (o'tgan davr hisoboti o'zgarmasin), ombor esa hali
+   * sotilmagan mol — uning BUGUNGI qiymati so'raladi.
+   *
+   * `RETURNED` birliklar ham hisobga kiradi: ular omborda turibdi va
+   * qayta sotiladi (§16.4). `SOLD` va `WRITTEN_OFF` kirmaydi.
+   */
+  async inventoryValue(): Promise<InventoryValueDto> {
+    const [items, batches, rate] = await Promise.all([
+      this.prisma.inventoryItem.findMany({
+        where: { status: { in: [InventoryStatus.AVAILABLE, InventoryStatus.RETURNED] } },
+        select: { costPrice: true, costCurrency: true },
+      }),
+      this.prisma.inventoryBatch.findMany({
+        where: { quantityRemaining: { gt: 0 } },
+        select: { quantityRemaining: true, unitCost: true, costCurrency: true },
+      }),
+      this.latestStoreRate(),
+    ]);
+
+    const parts: string[] = [];
+    let rateMissing = false;
+
+    for (const item of items) {
+      if (item.costCurrency !== BASE_CURRENCY && !rate) {
+        rateMissing = true;
+        continue;
+      }
+      parts.push(
+        item.costCurrency === BASE_CURRENCY
+          ? item.costPrice.toString()
+          : convert(item.costPrice, item.costCurrency, BASE_CURRENCY, rate as Prisma.Decimal),
+      );
+    }
+
+    for (const batch of batches) {
+      if (batch.costCurrency !== BASE_CURRENCY && !rate) {
+        rateMissing = true;
+        continue;
+      }
+      const perUnit =
+        batch.costCurrency === BASE_CURRENCY
+          ? batch.unitCost.toString()
+          : convert(batch.unitCost, batch.costCurrency, BASE_CURRENCY, rate as Prisma.Decimal);
+      parts.push(multiplyMoney(perUnit, batch.quantityRemaining, BASE_CURRENCY));
+    }
+
+    return {
+      currency: BASE_CURRENCY,
+      totalCost: sumMoney(parts, BASE_CURRENCY),
+      serializedCount: items.length,
+      batchQuantity: batches.reduce((sum, batch) => sum + batch.quantityRemaining, 0),
+      // Kurs yo'qligi JIMGINA nolga aylanmaydi: ekran buni aytadi,
+      // aks holda ombor qiymati sababsiz kamayib ko'rinardi
+      rateMissing,
+    };
+  }
+
   // ──────────────────────────── Hisob-kitob ────────────────────────────
 
   /** Bitta davrning barcha raqamlari — solishtiruv uchun ikki marta chaqiriladi. */
@@ -148,6 +351,7 @@ export class ReportsService {
         currency: true,
         total: true,
         exchangeRate: true,
+        soldAt: true,
         items: {
           select: { quantity: true, unitPrice: true, costSnapshot: true, costCurrency: true },
         },
@@ -394,4 +598,43 @@ function previousPeriod(period: ReportPeriod): ReportPeriod {
 function addDays(date: string, days: number): string {
   const shifted = new Date(fromCalendarDate(date).getTime() + days * 86_400_000);
   return toCalendarDate(shifted);
+}
+
+/** Ishorani qo'llaydi — teskari yozuv qatorlari uchun. */
+function signed(amount: string, sign: number): string {
+  return sign < 0 ? negate(amount) : amount;
+}
+
+/**
+ * Sana qaysi qadamga tushishi (§13.6).
+ *
+ * Hafta **dushanbadan** boshlanadi: O'zbekistonda ish haftasi shu
+ * kundan boshlanadi va "haftalik savdo" degani aynan shu oraliq.
+ */
+function bucketOf(day: string, granularity: ReportGranularity): string {
+  if (granularity === 'day') return day;
+  if (granularity === 'month') return `${day.slice(0, 7)}-01`;
+
+  const date = fromCalendarDate(day);
+  // `getUTCDay()`: 0 — yakshanba, 1 — dushanba
+  const weekday = (date.getUTCDay() + 6) % 7;
+  return toCalendarDate(new Date(date.getTime() - weekday * 86_400_000));
+}
+
+/**
+ * Davrdagi barcha qadamlar — **savdosiz kunlar ham**.
+ *
+ * Ularsiz grafik uzuq bo'lardi: savdo bo'lmagan kun chizmadan tushib
+ * qolib, ikki kun yonma-yon turgandek ko'rinardi va pasayish umuman
+ * ko'rinmasdi.
+ */
+function bucketStarts(query: ReportSeriesQuery): string[] {
+  const seen = new Set<string>();
+  let cursor = query.from;
+
+  while (cursor <= query.to) {
+    seen.add(bucketOf(cursor, query.granularity));
+    cursor = addDays(cursor, 1);
+  }
+  return [...seen];
 }

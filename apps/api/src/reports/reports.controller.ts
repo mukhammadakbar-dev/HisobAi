@@ -1,7 +1,21 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { UserRole, reportPeriodSchema } from '@hisobai/contracts';
-import type { DashboardDto, ReportPeriod, ReportSummaryDto } from '@hisobai/contracts';
+import {
+  UserRole,
+  reportPeriodSchema,
+  reportSeriesQuerySchema,
+  topProductsQuerySchema,
+} from '@hisobai/contracts';
+import type {
+  DashboardDto,
+  InventoryValueDto,
+  ReportPeriod,
+  ReportSeriesDto,
+  ReportSeriesQuery,
+  ReportSummaryDto,
+  TopProductsDto,
+  TopProductsQuery,
+} from '@hisobai/contracts';
 
 import { Roles } from '../common/auth.decorators';
 import { CurrentUser } from '../common/current-user.decorator';
@@ -44,5 +58,37 @@ export class ReportsController {
     @Query(new ZodValidationPipe(reportPeriodSchema)) period: ReportPeriod,
   ): Promise<ReportSummaryDto> {
     return this.reports.summary(period);
+  }
+
+  /** §13.6 — savdo va foyda dinamikasi. */
+  @Get('reports/sales')
+  @Roles(UserRole.SHOP_ADMIN)
+  @ApiOperation({ summary: 'Savdo dinamikasi (§13.6)' })
+  series(
+    @Query(new ZodValidationPipe(reportSeriesQuerySchema)) query: ReportSeriesQuery,
+  ): Promise<ReportSeriesDto> {
+    return this.reports.series(query);
+  }
+
+  /** §13.7 — mahsulot bo'yicha foyda. */
+  @Get('reports/top-products')
+  @Roles(UserRole.SHOP_ADMIN)
+  @ApiOperation({ summary: 'Mahsulot bo‘yicha foyda (§13.7)' })
+  topProducts(
+    @Query(new ZodValidationPipe(topProductsQuerySchema)) query: TopProductsQuery,
+  ): Promise<TopProductsDto> {
+    return this.reports.topProducts(query);
+  }
+
+  /**
+   * §5.9 — ombor qiymati **bugungi** kursda. Davr parametri yo'q va
+   * bo'lmaydi: bu bugungi holat, o'tmishdagi ombor qiymati esa
+   * boshqa savol (u harakatlar tarixidan tiklanadi).
+   */
+  @Get('reports/inventory')
+  @Roles(UserRole.SHOP_ADMIN)
+  @ApiOperation({ summary: 'Ombor qiymati (§5.9)' })
+  inventoryValue(): Promise<InventoryValueDto> {
+    return this.reports.inventoryValue();
   }
 }
