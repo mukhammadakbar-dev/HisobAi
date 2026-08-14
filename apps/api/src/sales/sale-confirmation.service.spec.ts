@@ -178,6 +178,12 @@ function makeService(options: Options = {}) {
   };
 
   const prisma = {
+    /**
+     * Kurs tranzaksiyadan TASHQARIDA o'qiladi (servisdagi izohga
+     * qarang), shuning uchun savdoning sanasi ham tashqarida bir marta
+     * o'qiladi — dublyorda bu chaqiruv ham bo'lishi kerak.
+     */
+    sale: { findUnique: vi.fn(() => Promise.resolve({ soldAt: sale.soldAt })) },
     $transaction: vi.fn((handler: (client: unknown) => Promise<unknown>) => handler(tx)),
   };
   const rates = { requireForDate: vi.fn(() => Promise.resolve({ storeRate: RATE })) };

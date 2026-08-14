@@ -29,7 +29,7 @@ export function ContractCard({ contract }: { contract: InstallmentContractDto })
       <Card className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-col gap-1">
-            <span className="text-sm text-text-secondary">Shartnoma</span>
+            <span className="text-sm text-text-secondary">Savdo raqami</span>
             <span className="tabular text-xl font-semibold">{contract.saleNumber ?? '—'}</span>
           </div>
           <div className="flex flex-wrap items-center gap-2">

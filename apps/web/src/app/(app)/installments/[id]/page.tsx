@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { use } from 'react';
 
 import { ErrorState, TableSkeleton } from '../../../../components/states';
@@ -33,5 +34,20 @@ export default function InstallmentPage({ params }: { params: Promise<{ id: stri
     );
   }
 
-  return <ContractCard contract={contract.data} />;
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Sahifada bitta `h1` — savdo kartasidagi bilan bir xil naqsh
+          (`sales/[id]/page.tsx`). Karta ichidagilar `h2`, ya'ni sarlavha
+          ierarxiyasi uzilmaydi va ekran o'quvchi sahifa nimadan iborat
+          ekanini birinchi sarlavhadan biladi */}
+      <header className="flex flex-col gap-1">
+        <Link href="/installments" className="text-sm text-link">
+          ← Nasiya
+        </Link>
+        <h1 className="m-0 text-2xl font-semibold">Shartnoma {contract.data.saleNumber ?? ''}</h1>
+      </header>
+
+      <ContractCard contract={contract.data} />
+    </div>
+  );
 }

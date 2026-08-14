@@ -75,6 +75,32 @@ export class SaleConfirmationService {
     actor: RequestUser,
     ip: string | null,
   ): Promise<SaleDto> {
+    /**
+     * Kurs **tranzaksiyadan TASHQARIDA** o'qiladi va ichkariga tayyor
+     * qiymat bo'lib kiradi.
+     *
+     * Sabab Prisma extension'ida: tranzaksiya ochilganda `set_config`
+     * o'sha tranzaksiyaning ULANISHIDA ishlaydi (§21.14), `decideOperation`
+     * esa tranzaksiya ichida har qanday o'qishni "o'ramasdan" bajaradi
+     * (self-deadlock bo'lmasin deb). Lekin `ExchangeRatesService` o'z
+     * `PrismaService` ini ishlatadi — ya'ni so'rov BOSHQA ulanishga
+     * tushadi, u yerda `app.current_shop_id` qo'yilmagan va RLS hamma
+     * qatorni to'sadi. Natijada kurs bor bo'lsa ham
+     * `EXCHANGE_RATE_MISSING` chiqardi.
+     *
+     * Kursni oldin o'qish to'g'ri ham: u snapshot qiymat (§1.7) va uni
+     * tranzaksiya ichida qulflashning ma'nosi yo'q.
+     */
+    const draft = await this.prisma.sale.findUnique({
+      where: { id },
+      select: { soldAt: true },
+    });
+    if (!draft) throw saleNotFound();
+
+    const plannedSoldAt = this.resolveSoldAt(input.soldAt, draft.soldAt);
+    // §17.11 — savdo SANASIDAGI do'kon kursi, bugungisi emas
+    const rate = await this.rates.requireForDate(businessDay(plannedSoldAt, this.timeZone));
+
     return this.prisma.$transaction(
       async (tx) => {
         const sale = await tx.sale.findUnique({ where: { id }, include: SALE_INCLUDE });
@@ -90,9 +116,6 @@ export class SaleConfirmationService {
         const plan = assertPlanMatchesKind(sale, input.installment);
 
         const soldAt = this.resolveSoldAt(input.soldAt, sale.soldAt);
-        // §17.11 — savdo SANASIDAGI do'kon kursi, bugungisi emas:
-        // orqaga qo'yilgan savdo o'sha kunning kursi bilan yozilishi kerak
-        const rate = await this.rates.requireForDate(businessDay(soldAt, this.timeZone));
         const confirmedAt = new Date();
 
         // 1 — ombor va snapshotlar

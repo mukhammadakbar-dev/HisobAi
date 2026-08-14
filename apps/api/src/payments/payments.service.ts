@@ -116,6 +116,15 @@ export class PaymentsService {
     actor: RequestUser,
     ip: string | null,
   ): Promise<PaymentDto> {
+    const paidAt = this.resolvePaidAt(input.paidAt);
+    /**
+     * Kurs tranzaksiyadan TASHQARIDA — `SaleConfirmationService.confirm`
+     * dagi bilan aynan bir xil sabab: tranzaksiya ichidan boshqa
+     * servisning `PrismaService` iga qilingan so'rov `app.current_shop_id`
+     * qo'yilmagan ulanishga tushadi va RLS hamma qatorni to'sadi.
+     */
+    const rate = await this.rates.requireForDate(businessDay(paidAt, this.timeZone));
+
     return this.prisma.$transaction(async (tx) => {
       const contract = await tx.installmentContract.findUnique({
         where: { id: input.contractId },
@@ -134,12 +143,7 @@ export class PaymentsService {
         );
       }
 
-      const paidAt = this.resolvePaidAt(input.paidAt);
       const account = await this.requireAccount(tx, input);
-
-      // §17.11 — to'lov SANASIDAGI kurs: orqaga qo'yilgan to'lov o'sha
-      // kunning kursi bilan yozilishi kerak, bugungisi bilan emas
-      const rate = await this.rates.requireForDate(businessDay(paidAt, this.timeZone));
 
       const paidAmount = roundMoney(input.amount, input.currency);
       const appliedAmount = convertMoney(
