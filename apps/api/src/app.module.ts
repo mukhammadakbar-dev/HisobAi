@@ -28,6 +28,7 @@ import { MailModule } from './mail/mail.module';
 import { PlatformModule } from './platform/platform.module';
 import { PlatformSessionGuard } from './platform/platform-session.guard';
 import { ReportsModule } from './reports/reports.module';
+import { PaymentsModule } from './payments/payments.module';
 import { SalesModule } from './sales/sales.module';
 import { ShopsModule } from './shops/shops.module';
 
@@ -88,6 +89,7 @@ function isMutation(context: ExecutionContext): boolean {
     CustomersModule,
     CashModule,
     SalesModule,
+    PaymentsModule,
     ReportsModule,
   ],
   providers: [

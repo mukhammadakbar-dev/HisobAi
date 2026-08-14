@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { PaymentMethod } from '../enums';
 import type { ContractStatus, Currency, ScheduleStatus } from '../enums';
 import { calendarDate, decimalInRange, decimalString, positiveDecimal, uuidString } from './common';
 
@@ -105,7 +106,7 @@ export type RebuildScheduleInput = z.infer<typeof rebuildScheduleSchema>;
 export const closeContractSchema = z
   .object({
     expectedOutstanding: decimalString,
-    method: z.enum(['CASH', 'CARD', 'TRANSFER']),
+    method: z.enum(PaymentMethod),
     cashAccountId: uuidString,
     note,
   })
@@ -145,10 +146,15 @@ export interface InstallmentContractDto {
   /** §17.3 — naqd narx + ustama − boshlang'ich to'lov. */
   principal: string;
   /**
-   * Qolgan qarz — `principal − tasdiqlangan taqsimotlar`. Ustun sifatida
-   * **saqlanmaydi**: hisoblanadigan qiymat saqlanmaydi degan qoida
-   * (`ARCHITECTURE.md`), aks holda u taqsimotlar bilan farq qilib
-   * qolardi va qaysi biri to'g'ri ekani noma'lum bo'lardi.
+   * Qolgan qarz — jadval qatorlaridan hisoblanadi:
+   * `Σ(amountDue − amountPaid)`. Ustun sifatida **saqlanmaydi**:
+   * hisoblanadigan qiymat saqlanmaydi degan qoida (`ARCHITECTURE.md`),
+   * aks holda u jadval bilan farq qilib qolardi va qaysi biri to'g'ri
+   * ekani noma'lum bo'lardi.
+   *
+   * `amountPaid` ning o'zi ham kesh, haqiqat manbai —
+   * `payment_allocations`; u faqat to'lov tranzaksiyasi ichida
+   * yangilanadi, ya'ni ikkalasi hech qachon ajralib ketmaydi.
    */
   outstanding: string;
   status: ContractStatus;
