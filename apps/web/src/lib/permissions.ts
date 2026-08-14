@@ -58,6 +58,6 @@ const RESTRICTED: readonly Action[] = [
 
 export function can(user: CurrentUserDto | undefined, action: Action): boolean {
   if (!user) return false;
-  if (user.role === UserRole.OWNER) return true;
+  if (user.role === UserRole.SHOP_ADMIN) return true;
   return !RESTRICTED.includes(action);
 }

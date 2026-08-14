@@ -21,7 +21,7 @@ import type { CurrentUserDto } from '@hisobai/contracts';
 
 import { useLogout } from '../../features/auth/queries';
 import { useTodayRate } from '../../features/exchange-rates/queries';
-import { useSettings } from '../../features/settings/queries';
+import { useShop } from '../../features/shops/queries';
 import { Logo } from './logo';
 import { RateBar } from './rate-bar';
 import { ThemeToggle } from './theme-toggle';
@@ -67,7 +67,7 @@ export function AppShell({ user, children }: { user: CurrentUserDto; children: R
   const active = activeHref(pathname);
   const router = useRouter();
   const logout = useLogout();
-  const settings = useSettings();
+  const shop = useShop();
   const todayRate = useTodayRate();
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -90,7 +90,7 @@ export function AppShell({ user, children }: { user: CurrentUserDto; children: R
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-3">
             <Logo className="h-7 w-auto" />
-            <span className="text-sm text-text-secondary">{settings.data?.shopName ?? ''}</span>
+            <span className="text-sm text-text-secondary">{shop.data?.name ?? ''}</span>
           </div>
 
           <div className="flex items-center gap-2">

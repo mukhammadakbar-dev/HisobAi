@@ -58,6 +58,20 @@ export interface CurrentUserDto {
   displayName: string;
   role: UserRole;
   theme: Theme;
+  /**
+   * §21.10, §25.6 — `null` bo'lsa foydalanuvchi hali Shop yaratmagan va
+   * `/setup-shop` oqimiga yo'naltiriladi.
+   *
+   * Bu maydon **yo'naltirishni oldindan** qilish uchun kerak. Usiz
+   * frontend Shop yo'qligini faqat birinchi biznes so'rovi
+   * `SHOP_SETUP_REQUIRED` (409) bilan qaytganda bilardi — ya'ni
+   * foydalanuvchi avval bo'sh dashboard va xato bannerini ko'rardi.
+   *
+   * §25.13 ga zid emas: qoida `shopId`ni client **yuborishini** taqiqlaydi
+   * (server uni sessiyadan oladi), qaytarishni emas. Bu foydalanuvchining
+   * O'Z Shop'i, boshqa tenant haqida hech narsa oshkor qilmaydi.
+   */
+  shopId: string | null;
 }
 
 /**

@@ -18,7 +18,7 @@ import { Badge, Button, Card, Field, Input } from '../../../components/ui';
 import { todayInShopZone } from '../../../lib/format';
 import { applyApiFieldErrors, isFieldOwnedError } from '../../../lib/form-errors';
 import { FormError } from '../../auth/components/form-error';
-import { useSettings } from '../../settings/queries';
+import { useShop } from '../../shops/queries';
 import {
   useRateHistory,
   useResetRateToCbu,
@@ -49,7 +49,7 @@ const SOURCE_LABEL: Record<ExchangeRateSource, string> = {
 export function RateCard() {
   const today = useTodayRate();
   const history = useRateHistory();
-  const settings = useSettings();
+  const settings = useShop();
   const upsert = useUpsertRate();
   const resetToCbu = useResetRateToCbu();
   const syncNow = useSyncRateFromCbu();

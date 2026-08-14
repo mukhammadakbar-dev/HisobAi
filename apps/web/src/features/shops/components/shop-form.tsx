@@ -1,8 +1,8 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { updateSettingsSchema } from '@hisobai/contracts';
-import type { SettingsDto, UpdateSettingsInput } from '@hisobai/contracts';
+import { updateShopSchema } from '@hisobai/contracts';
+import type { ShopDto, UpdateShopInput } from '@hisobai/contracts';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 
@@ -10,19 +10,19 @@ import { ErrorState, TableSkeleton } from '../../../components/states';
 import { Button, Card, Field, Input } from '../../../components/ui';
 import { applyApiFieldErrors, isFieldOwnedError } from '../../../lib/form-errors';
 import { FormError } from '../../auth/components/form-error';
-import { useSettings, useUpdateSettings } from '../queries';
+import { useShop, useUpdateShop } from '../queries';
 
 /**
  * Do'kon sozlamalari (§3.6–§3.9).
  *
  * Forma qiymatlari — sxemaning **kirish** tipi: `<input>` doim satr
  * beradi, `decimalString` esa satrni ham, sonni ham qabul qiladi va
- * ichkarida satrga aylantiradi. Chiqish tipi (`UpdateSettingsInput`)
+ * ichkarida satrga aylantiradi. Chiqish tipi (`UpdateShopInput`)
  * `handleSubmit` dan keladi, ya'ni mutatsiyaga allaqachon tekshirilgan
  * qiymat tushadi (`FRONTEND.md` §6.1).
  */
 interface ShopFormValues {
-  shopName?: string;
+  name?: string;
   address?: string | null;
   phone?: string | null;
   workStart?: string;
@@ -44,7 +44,7 @@ interface ShopFormValues {
  * (`STALE_RESOURCE`) baribir banner sifatida ko'rsatiladi.
  */
 const FIELDS = [
-  'shopName',
+  'name',
   'address',
   'phone',
   'workStart',
@@ -74,7 +74,7 @@ const optionalNumber = (value: string): number | undefined =>
 const optionalText = (value: string): string | null => (value === '' ? null : value);
 const optionalDecimal = (value: string): string | undefined => (value === '' ? undefined : value);
 
-function toFormValues(settings: SettingsDto): ShopFormValues {
+function toFormValues(settings: ShopDto): ShopFormValues {
   return {
     /**
      * Qulf tokeni forma qiymatlari ichida yuriydi (`API.md` §8) — keshdan
@@ -85,7 +85,7 @@ function toFormValues(settings: SettingsDto): ShopFormValues {
      * Bu yerda token forma **yuklangan** versiyaga bog'lanadi.
      */
     expectedUpdatedAt: settings.updatedAt,
-    shopName: settings.shopName,
+    name: settings.name,
     address: settings.address,
     phone: settings.phone,
     workStart: settings.workStart,
@@ -99,9 +99,9 @@ function toFormValues(settings: SettingsDto): ShopFormValues {
   };
 }
 
-export function ShopSettingsForm() {
-  const settings = useSettings();
-  const update = useUpdateSettings();
+export function ShopForm() {
+  const settings = useShop();
+  const update = useUpdateShop();
 
   const {
     register,
@@ -111,8 +111,8 @@ export function ShopSettingsForm() {
     setError,
     watch,
     formState: { errors, isDirty },
-  } = useForm<ShopFormValues, unknown, UpdateSettingsInput>({
-    resolver: zodResolver(updateSettingsSchema),
+  } = useForm<ShopFormValues, unknown, UpdateShopInput>({
+    resolver: zodResolver(updateShopSchema),
     defaultValues: {},
   });
 
@@ -190,8 +190,8 @@ export function ShopSettingsForm() {
           Bu ma’lumotlar shartnoma PDF’ida va eksportlarda chiqadi (§3.6).
         </p>
 
-        <Field label="Do‘kon nomi" htmlFor="shopName" error={errors.shopName?.message}>
-          <Input id="shopName" {...register('shopName')} />
+        <Field label="Do‘kon nomi" htmlFor="name" error={errors.name?.message}>
+          <Input id="name" {...register('name')} />
         </Field>
 
         <Field label="Manzil" htmlFor="address" error={errors.address?.message}>

@@ -6,7 +6,7 @@ import { ThemeSystemReset, ThemeToggle } from '../../../components/layout/theme-
 import { Card } from '../../../components/ui';
 import { useCurrentUser } from '../../../features/auth/queries';
 import { RateCard } from '../../../features/exchange-rates/components/rate-card';
-import { ShopSettingsForm } from '../../../features/settings/components/shop-settings-form';
+import { ShopForm } from '../../../features/shops/components/shop-form';
 import { can } from '../../../lib/permissions';
 
 /**
@@ -75,7 +75,7 @@ export default function SettingsPage() {
         )}
       </Card>
 
-      {can(user.data, 'settings.editShop') && <ShopSettingsForm />}
+      {can(user.data, 'settings.editShop') && <ShopForm />}
 
       {can(user.data, 'exchangeRate.edit') && (
         <section className="flex flex-col gap-4">

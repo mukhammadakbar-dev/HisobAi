@@ -75,11 +75,14 @@ export function Field({
   label,
   htmlFor,
   error,
+  hint,
   children,
 }: {
   label: string;
   htmlFor: string;
   error?: string;
+  /** Maydon ostidagi tushuntirish. Xato chiqqanda o'rnini xatoga beradi. */
+  hint?: string;
   children: ReactNode;
 }) {
   return (
@@ -89,6 +92,9 @@ export function Field({
         {label}
       </label>
       {children}
+      {/* Xato bor bo'lsa izoh ko'rsatilmaydi: ikkalasi birga turganda
+          foydalanuvchi qaysi biri harakat talab qilishini ajratolmaydi */}
+      {hint && !error && <p className="m-0 text-sm text-text-secondary">{hint}</p>}
       {error && (
         <p className="m-0 text-sm text-danger" role="alert">
           {error}

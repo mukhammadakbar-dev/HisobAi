@@ -35,10 +35,18 @@ export function LoginForm() {
 
   const onSubmit = handleSubmit((values) => {
     login.mutate(values, {
-      onSuccess: () => {
-        // `replace` — "orqaga" tugmasi kirgan foydalanuvchini login
-        // sahifasiga qaytarmasin
-        router.replace('/dashboard');
+      onSuccess: (user) => {
+        /**
+         * §25.6 — Shop'i yo'q account to'g'ridan-to'g'ri setup oqimiga.
+         * `(app)` qobig'i buni baribir ushlab qolardi, lekin o'shanda
+         * foydalanuvchi bir lahzaga dashboard skeletini ko'rib, keyin
+         * boshqa sahifaga otilardi. Login javobi `shopId` ni allaqachon
+         * qaytaradi, ya'ni to'g'ri manzilni shu yerda bilib bo'ladi.
+         *
+         * `replace` — "orqaga" tugmasi kirgan foydalanuvchini login
+         * sahifasiga qaytarmasin.
+         */
+        router.replace(user.shopId === null ? '/setup-shop' : '/dashboard');
       },
     });
   });

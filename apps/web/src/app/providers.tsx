@@ -20,7 +20,21 @@ export function Providers({ children }: { children: ReactNode }) {
      */
     setUnauthorizedHandler(() => {
       queryClient.clear();
-      router.push('/login');
+
+      /**
+       * Ikki mustaqil sessiya tizimi bor (§21.3, `ARCHITECTURE.md`
+       * §14.3), ya'ni "kirish sahifasi" ham ikkita. Platforma
+       * panelidagi `401` ni `/login` ga otish SUPERADMIN'ni business
+       * kirish formasiga olib borardi — u yerda uning hisobi umuman
+       * yo'q (`platform_admins` alohida jadval), ya'ni foydalanuvchi
+       * to'g'ri parol bilan ham kira olmasdi va sababi ko'rinmasdi.
+       *
+       * Manzil bo'yicha ajratish — `api-client` ga sessiya turini
+       * bildirishdan ko'ra sodda: klient transporti ikkala yo'l uchun
+       * bir xil, faqat qaytish nuqtasi boshqa.
+       */
+      const isPlatform = window.location.pathname.startsWith('/superadmin');
+      router.push(isPlatform ? '/superadmin/login' : '/login');
     });
   }, [queryClient, router]);
 

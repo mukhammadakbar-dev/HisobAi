@@ -21,13 +21,27 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const user = useCurrentUser();
 
   const isUnauthenticated = user.error?.status === 401;
+  /**
+   * §25.6, §21.10 — sessiya bor, lekin Shop hali yaratilmagan. Bu
+   * **normal holat**, xato emas: SUPERADMIN account yaratadi, Shop'ni
+   * esa egasi o'zi tuzadi (§25.5).
+   *
+   * Yo'naltirish aynan shu yerda, birinchi biznes so'rovidan OLDIN.
+   * Aks holda `AppShell` `GET /shops/me` ni chaqirib
+   * `SHOP_SETUP_REQUIRED` (409) olardi va foydalanuvchi bo'sh ekran
+   * ustidagi xato bannerini ko'rardi — server baribir to'sardi
+   * (`RolesGuard`), lekin bu qatlam himoya emas, qulaylik: `(app)`
+   * qobig'idagi sessiya darvozasi bilan bir xil mulohaza.
+   */
+  const needsShopSetup = user.data != null && user.data.shopId === null;
 
   useEffect(() => {
     // `replace` — "orqaga" tugmasi himoyalangan sahifaga qaytarmasin
     if (isUnauthenticated) router.replace('/login');
-  }, [isUnauthenticated, router]);
+    else if (needsShopSetup) router.replace('/setup-shop');
+  }, [isUnauthenticated, needsShopSetup, router]);
 
-  if (user.isPending || isUnauthenticated) {
+  if (user.isPending || isUnauthenticated || needsShopSetup) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-10">
         <TableSkeleton rows={4} />

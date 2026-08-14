@@ -1,4 +1,5 @@
 import {
+  AccountStatus,
   CashAccountKind,
   CashDirection,
   CashSourceType,
@@ -19,6 +20,19 @@ import type { StockAdjustReason } from '@hisobai/contracts';
  * (masalan "Mavjud" va "Sotuvga tayyor"), foydalanuvchi ularni ikki
  * xil holat deb o'ylaydi.
  */
+
+/** §21.6, §25.19 — SHOP_ADMIN account holati (platforma paneli). */
+export const ACCOUNT_STATUS_LABEL: Record<string, string> = {
+  [AccountStatus.ACTIVE]: 'Faol',
+  [AccountStatus.SUSPENDED]: 'Vaqtincha to‘xtatilgan',
+  [AccountStatus.DISABLED]: 'O‘chirilgan',
+};
+
+export const ACCOUNT_STATUS_TONE: Record<string, 'success' | 'warning' | 'muted'> = {
+  [AccountStatus.ACTIVE]: 'success',
+  [AccountStatus.SUSPENDED]: 'warning',
+  [AccountStatus.DISABLED]: 'muted',
+};
 
 export const PRODUCT_TYPE_LABEL: Record<string, string> = {
   [ProductType.SERIALIZED]: 'Seriyali',
