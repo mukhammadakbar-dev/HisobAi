@@ -358,5 +358,9 @@ function toCurrentUser(user: User): CurrentUserDto {
     displayName: user.displayName,
     role: user.role,
     theme: user.theme,
+    // §25.6 — login javobi ham `shopId` ni qaytaradi: kirgandan keyingi
+    // yo'naltirish `/dashboard` ga emas, `/setup-shop` ga bo'lishi mumkin
+    // va buni ikkinchi so'rovsiz hal qilish kerak.
+    shopId: user.shopId,
   };
 }

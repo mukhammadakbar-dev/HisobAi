@@ -23,10 +23,24 @@ import { getShopId, isNoShopScope } from './shop-context';
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
 
+  /**
+   * §21.16 — ishlash vaqtida **faqat** `DATABASE_URL_APP` (`hisobai_app`).
+   *
+   * `DATABASE_URL` ATAYLAB o'qilmaydi, hatto zaxira sifatida ham: u
+   * development'da superuser'ga ishora qiladi (`prisma migrate dev`
+   * shadow-baza uchun), superuser esa `FORCE ROW LEVEL SECURITY` ni ham
+   * chetlab o'tadi. Zaxiraga tushish RLS qatlamini jimgina o'chirib
+   * qo'yardi — §14.4 dagi "chegara ikki qatlamda majburlanadi" kafolati
+   * shundan keyin qog'ozda qolardi.
+   */
   constructor() {
-    const connectionString = process.env.DATABASE_URL;
+    const connectionString = process.env.DATABASE_URL_APP;
     if (!connectionString) {
-      throw new Error('DATABASE_URL majburiy — apps/api/.env faylini tekshiring');
+      throw new Error(
+        'DATABASE_URL_APP majburiy — ilova `hisobai_app` roli ostida ulanadi (§21.16). ' +
+          "apps/api/.env va .env.example fayllariga qarang (rolga parol qo'yish: " +
+          "ALTER ROLE hisobai_app WITH PASSWORD '...').",
+      );
     }
     super({ adapter: new PrismaPg({ connectionString }) });
   }

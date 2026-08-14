@@ -1,3 +1,10 @@
+// `.env` shu yerda o'qiladi (Vite o'zi faqat `VITE_` prefiksli
+// o'zgaruvchilarni oladi). Vitest ishchi oqimlari asosiy jarayonning
+// `process.env` ini meros qilib oladi, ya'ni bitta import yetarli.
+// Kerak bo'lish sababi: izolyatsiya integratsiya testlari
+// (`*.integration.spec.ts`) `DATABASE_URL_TEST` ni o'qiydi; u berilmasa
+// o'zlarini o'tkazib yuboradi.
+import 'dotenv/config';
 import { fileURLToPath } from 'node:url';
 
 import swc from 'unplugin-swc';

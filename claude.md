@@ -51,6 +51,25 @@ Use `testing-agent` when:
 
 Use `code-reviewer` after significant implementation work.
 
+## Tenant Boundary Changes — Required Deliverable
+
+Any change that touches the tenant boundary — raw SQL (`$queryRaw` /
+`$executeRaw`), Prisma extension behaviour, RLS policies, DB roles, the
+Platform/SUPERADMIN path, or `shop_id` handling — must ship with a passing
+run of the isolation integration suite under the `hisobai_app` role:
+
+```bash
+pnpm --filter @hisobai/api exec vitest run src/database/tenant-isolation.integration.spec.ts
+```
+
+A review that only reads the diff is not sufficient here, and neither are the
+mocked unit tests: row filtering is enforced by PostgreSQL RLS, not by
+application code, so a mocked test cannot observe the boundary at all. This
+rule exists because a cross-tenant defect in `sale_counters` passed both code
+review and the mocked test suite.
+
+See `apps/api/prisma/README-test-db.md` for test database setup.
+
 ## Required Workflow
 
 For significant features:

@@ -1,11 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { validateEnv } from './env';
 
-const minimal = { DATABASE_URL: 'postgresql://u:p@localhost:5432/hisob_ai' };
+const minimal = {
+  DATABASE_URL: 'postgresql://u:p@localhost:5432/hisob_ai',
+  DATABASE_URL_APP: 'postgresql://hisobai_app:p@localhost:5432/hisob_ai',
+};
 
 describe('validateEnv', () => {
   it("DATABASE_URL bo'lmasa yiqiladi", () => {
     expect(() => validateEnv({})).toThrow(/DATABASE_URL/);
+  });
+
+  // §21.16 — ilova `hisobai_app` ostida ulanishi MAJBURIY. Fallback
+  // `DATABASE_URL` ga tushsa, ilova jimgina superuser ostida ishlab
+  // ketardi va RLS chetlab o'tilardi — nosozlik shovqinli bo'lishi shart.
+  it("DATABASE_URL_APP bo'lmasa yiqiladi — DATABASE_URL ga fallback yo'q", () => {
+    expect(() => validateEnv({ DATABASE_URL: minimal.DATABASE_URL })).toThrow(/DATABASE_URL_APP/);
   });
 
   it("standart qiymatlarni to'ldiradi", () => {

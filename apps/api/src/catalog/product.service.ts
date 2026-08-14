@@ -21,6 +21,7 @@ import { isForeignKeyViolation, isRecordNotFound } from '../common/prisma-errors
 import { containsInsensitive } from '../common/search';
 import type { RequestUser } from '../common/request-user';
 import { PrismaService } from '../database/prisma.service';
+import { requireShopId } from '../database/shop-context';
 import { ShopsService } from '../shops/shops.service';
 
 /**
@@ -290,13 +291,24 @@ export class ProductService {
    * `$executeRaw`, `$queryRaw` emas: `pg_advisory_xact_lock` `void`
    * qaytaradi va Prisma uni ustun sifatida o'qiy olmaydi
    * ("Failed to deserialize column of type 'void'").
+   *
+   * **Kalit `shop_id` bilan** (§21.8): advisory lock butun BAZA bo'ylab
+   * global, RLS unga qo'llanmaydi. Faqat nom bo'yicha qulflansa, ikki
+   * boshqa do'kon bir vaqtda "iPhone 15 Pro" qo'shganda biri ikkinchisini
+   * kutib turardi — ma'lumot sizishi emas, lekin tenant'lar bir-birini
+   * sekinlashtirardi. Ikki argumentli shakl ishlatiladi: `hashtext`
+   * natijalarini birlashtirish (masalan satrlarni qo'shib hash qilish)
+   * kerak emas, Postgres ikkita `int4` kalitni o'zi qo'llab-quvvatlaydi.
    */
   private async reserveName(
     tx: Prisma.TransactionClient,
     displayName: string,
     excludeId: string | null,
   ): Promise<void> {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${displayName.toLowerCase()}))`;
+    const shopId = requireShopId();
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(hashtext(${shopId}), hashtext(${displayName.toLowerCase()}))
+    `;
 
     const existing = await tx.product.findFirst({
       where: {

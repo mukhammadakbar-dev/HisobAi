@@ -116,6 +116,7 @@ export class AuthController {
       displayName: user.displayName,
       role: user.role,
       theme: user.theme,
+      shopId: user.shopId,
     };
   }
 

@@ -593,6 +593,11 @@ model Product {
 
   @@index([shopId, brandId, model])
   @@index([shopId, displayName])
+  /// PostgreSQL FK ustiga avtomatik indeks QO'YMAYDI (MySQL'dan farqli).
+  /// `Category` `onDelete: Restrict` — indekssiz har o'chirish urinishi
+  /// `products` bo'ylab to'liq skan qilardi; kategoriya bo'yicha filtr ham
+  /// shu indeksdan foydalanadi.
+  @@index([shopId, categoryId])
   /// Matn qidiruvi: btree `%...%` da ishlatilmaydi, GIN + pg_trgm kerak.
   @@index([displayName(ops: raw("gin_trgm_ops"))], map: "products_display_name_trgm_idx", type: Gin)
   @@map("products")
@@ -1169,6 +1174,9 @@ model CashEntry {
   @@index([shopId, sourceType, sourceId])
   @@index([shopId, occurredAt])
   @@index([shopId, paymentId])
+  /// FK ustida indeks yo'q edi — `Product.categoryId` bilan bir xil sabab
+  /// (`CashCategory` `onDelete: Restrict` + kategoriya bo'yicha hisobot).
+  @@index([shopId, categoryId])
   @@map("cash_entries")
 }
 

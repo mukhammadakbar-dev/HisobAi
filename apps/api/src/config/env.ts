@@ -9,7 +9,31 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(4000),
 
+  /**
+   * CLI va vositalar uchun (`prisma migrate dev`, `studio`, `seed`) —
+   * `prisma.config.ts` shu manzilni o'qiydi. Development'da bu superuser
+   * bo'lib qoladi: `migrate dev` shadow-baza yaratadi, `hisobai_migrate`
+   * esa ataylab `NOCREATEDB` (§21.16). Ishlab chiqarishda deploy qadami
+   * uni `hisobai_migrate` ga yo'naltiradi.
+   *
+   * **Ilova ishlash vaqtida bu manzildan FOYDALANMAYDI** — quyidagi
+   * `DATABASE_URL_APP` ga qarang.
+   */
   DATABASE_URL: z.string().min(1, 'DATABASE_URL majburiy'),
+
+  /**
+   * §21.16 — ilova ishlash vaqtida **faqat** shu manzil orqali ulanadi
+   * (`hisobai_app`: `NOSUPERUSER`, `NOBYPASSRLS`).
+   *
+   * Majburiy va fallback YO'Q. Fallback `DATABASE_URL` ga tushganda ilova
+   * jimgina superuser ostida ishlab ketardi — superuser esa `FORCE ROW
+   * LEVEL SECURITY` ni ham chetlab o'tadi, ya'ni §14.4 va'da qilgan
+   * ikkinchi himoya qatlami mavjud bo'lmasdan turib, hamma narsa
+   * ishlayotgandek ko'rinardi. Bunday nosozlik shovqinli bo'lishi shart.
+   */
+  DATABASE_URL_APP: z
+    .string()
+    .min(1, 'DATABASE_URL_APP majburiy — ilova `hisobai_app` roli ostida ulanadi (§21.16)'),
 
   /** Brauzerdan keladigan origin — CORS va cookie uchun. */
   WEB_ORIGIN: z.string().url().default('http://localhost:3000'),

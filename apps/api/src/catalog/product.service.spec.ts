@@ -7,6 +7,7 @@ import type { AuditEntry } from '../audit/audit.service';
 import { AppException } from '../common/app.exception';
 import { readPrecondition } from '../common/optimistic-lock';
 import type { RequestUser } from '../common/request-user';
+import { runWithShopScope } from '../database/shop-context';
 import { ProductService } from './product.service';
 
 /**
@@ -103,7 +104,8 @@ function makeService(
     ]),
   );
   const stock = options.stock ?? {};
-  const locks: string[] = [];
+  /** Har bir advisory lock chaqiruvining parametrlari: `[shopId, nom]` (§21.8). */
+  const locks: string[][] = [];
 
   const audit = {
     record: vi.fn((_tx: unknown, _shopId: string | null, _entry: AuditEntry) => Promise.resolve()),
@@ -221,7 +223,7 @@ function makeService(
     // `$executeRaw`: `pg_advisory_xact_lock` `void` qaytaradi va uni
     // `$queryRaw` bilan o'qib bo'lmaydi (jonli tekshiruvda aniqlangan).
     $executeRaw: (_strings: TemplateStringsArray, ...values: unknown[]) => {
-      locks.push(String(values[0]));
+      locks.push(values.map(String));
       return Promise.resolve(0);
     },
   };
@@ -251,6 +253,29 @@ async function expectAppException(promise: Promise<unknown>, code: string): Prom
   return app;
 }
 
+const SHOP_ID = 'shop-1';
+
+/**
+ * §21.8 — `reserveName` advisory lock kalitini `shop_id` dan oladi, ya'ni
+ * yozuv amallari Shop konteksti ICHIDA chaqirilishi shart. Test servisni
+ * to'g'ridan-to'g'ri chaqirsa, ishlab chiqarishda hech qachon
+ * yuz bermaydigan sharoit — kontekstsiz yozuv — tekshirilgan bo'lardi
+ * (`sale-confirmation.service.spec.ts` dagi bilan bir xil usul).
+ */
+function createScoped(
+  service: ProductService,
+  ...args: Parameters<ProductService['create']>
+): ReturnType<ProductService['create']> {
+  return runWithShopScope(SHOP_ID, () => service.create(...args));
+}
+
+function updateScoped(
+  service: ProductService,
+  ...args: Parameters<ProductService['update']>
+): ReturnType<ProductService['update']> {
+  return runWithShopScope(SHOP_ID, () => service.update(...args));
+}
+
 const CREATE_INPUT = {
   categoryId: 'cat-1',
   brandId: 'brand-1',
@@ -269,7 +294,7 @@ describe('ProductService', () => {
     it('§4.6 — nomni serverda yig‘adi', async () => {
       const { service } = makeService();
 
-      const created = await service.create({ ...CREATE_INPUT }, ACTOR, null);
+      const created = await createScoped(service, { ...CREATE_INPUT }, ACTOR, null);
 
       expect(created.displayName).toBe('Apple iPhone 15 Pro 256GB Qora');
       expect(created.brandName).toBe('Apple');
@@ -279,7 +304,8 @@ describe('ProductService', () => {
     it('§4.7 — aksessuarda xotira va rang tushib qoladi', async () => {
       const { service } = makeService();
 
-      const created = await service.create(
+      const created = await createScoped(
+        service,
         { ...CREATE_INPUT, model: 'Kabel USB-C', storage: null, color: null },
         ACTOR,
         null,
@@ -294,19 +320,23 @@ describe('ProductService', () => {
       });
 
       const error = await expectAppException(
-        service.create({ ...CREATE_INPUT }, ACTOR, null),
+        createScoped(service, { ...CREATE_INPUT }, ACTOR, null),
         ErrorCode.CATALOG_DUPLICATE_NAME,
       );
 
       expect(error.details).toMatchObject({ existingId: 'p-1', isActive: true });
     });
 
-    it('dublikat tekshiruvidan oldin nom bo‘yicha qulf oladi (§17.5 poygasi)', async () => {
+    // §21.8 — kalitda `shop_id` ham bor: advisory lock butun baza bo'ylab
+    // global, RLS unga qo'llanmaydi. Faqat nom bo'yicha qulflansa, ikki
+    // boshqa do'kon bir vaqtda bir xil nom qo'shganda biri ikkinchisini
+    // kutib turardi.
+    it('dublikat tekshiruvidan oldin shop + nom bo‘yicha qulf oladi (§17.5 poygasi)', async () => {
       const { service, locks } = makeService();
 
-      await service.create({ ...CREATE_INPUT }, ACTOR, null);
+      await createScoped(service, { ...CREATE_INPUT }, ACTOR, null);
 
-      expect(locks).toEqual(['apple iphone 15 pro 256gb qora']);
+      expect(locks).toEqual([[SHOP_ID, 'apple iphone 15 pro 256gb qora']]);
     });
 
     it('arxivdagi brendga yangi mahsulot yaratilmaydi', async () => {
@@ -315,7 +345,7 @@ describe('ProductService', () => {
       });
 
       const error = await expectAppException(
-        service.create({ ...CREATE_INPUT }, ACTOR, null),
+        createScoped(service, { ...CREATE_INPUT }, ACTOR, null),
         ErrorCode.CATALOG_TAXONOMY_ARCHIVED,
       );
 
@@ -326,7 +356,7 @@ describe('ProductService', () => {
       const { service } = makeService();
 
       const error = await expectAppException(
-        service.create({ ...CREATE_INPUT, categoryId: 'cat-yoq' }, ACTOR, null),
+        createScoped(service, { ...CREATE_INPUT, categoryId: 'cat-yoq' }, ACTOR, null),
         ErrorCode.NOT_FOUND,
       );
 
@@ -336,7 +366,8 @@ describe('ProductService', () => {
     it('tavsiya narxi Decimal bo‘lib yoziladi, DTO‘da satr bo‘lib qaytadi', async () => {
       const { service, products } = makeService();
 
-      const created = await service.create(
+      const created = await createScoped(
+        service,
         { ...CREATE_INPUT, suggestedPrice: '12500000' },
         ACTOR,
         null,
@@ -351,7 +382,8 @@ describe('ProductService', () => {
     it('§4.6 — model o‘zgarsa nom qayta yig‘iladi', async () => {
       const { service } = makeService({ products: [product({ id: 'p-1' })] });
 
-      const updated = await service.update(
+      const updated = await updateScoped(
+        service,
         'p-1',
         { model: 'iPhone 15 Pro Max' },
         precondition(),
@@ -365,7 +397,14 @@ describe('ProductService', () => {
     it('rangni null qilish nomdan olib tashlaydi', async () => {
       const { service } = makeService({ products: [product({ id: 'p-1' })] });
 
-      const updated = await service.update('p-1', { color: null }, precondition(), ACTOR, null);
+      const updated = await updateScoped(
+        service,
+        'p-1',
+        { color: null },
+        precondition(),
+        ACTOR,
+        null,
+      );
 
       expect(updated.displayName).toBe('Apple iPhone 15 Pro 256GB');
     });
@@ -376,7 +415,14 @@ describe('ProductService', () => {
         brands: [{ id: 'brand-1', name: 'Apple', isActive: false }],
       });
 
-      const updated = await service.update('p-1', { color: 'Oq' }, precondition(), ACTOR, null);
+      const updated = await updateScoped(
+        service,
+        'p-1',
+        { color: 'Oq' },
+        precondition(),
+        ACTOR,
+        null,
+      );
 
       expect(updated.displayName).toBe('Apple iPhone 15 Pro 256GB Oq');
     });
@@ -388,7 +434,7 @@ describe('ProductService', () => {
       });
 
       const error = await expectAppException(
-        service.update('p-1', { currency: Currency.USD }, precondition(), ACTOR, null),
+        updateScoped(service, 'p-1', { currency: Currency.USD }, precondition(), ACTOR, null),
         ErrorCode.CATALOG_PRODUCT_HAS_STOCK,
       );
 
@@ -398,7 +444,8 @@ describe('ProductService', () => {
     it('ombor bo‘sh — valyutani o‘zgartirish mumkin', async () => {
       const { service } = makeService({ products: [product({ id: 'p-1' })] });
 
-      const updated = await service.update(
+      const updated = await updateScoped(
+        service,
         'p-1',
         { currency: Currency.USD },
         precondition(),
@@ -413,7 +460,8 @@ describe('ProductService', () => {
       const { service } = makeService({ products: [product({ id: 'p-1' })] });
 
       await expectAppException(
-        service.update(
+        updateScoped(
+          service,
           'p-1',
           { color: 'Oq' },
           precondition(new Date('2026-08-01T00:00:00.000Z')),
@@ -427,7 +475,14 @@ describe('ProductService', () => {
     it('§4.8 — arxivlash o‘chirish o‘rniga', async () => {
       const { service, products, audit } = makeService({ products: [product({ id: 'p-1' })] });
 
-      const updated = await service.update('p-1', { isActive: false }, precondition(), ACTOR, null);
+      const updated = await updateScoped(
+        service,
+        'p-1',
+        { isActive: false },
+        precondition(),
+        ACTOR,
+        null,
+      );
 
       expect(updated.isActive).toBe(false);
       expect(products.has('p-1')).toBe(true);
@@ -437,7 +492,7 @@ describe('ProductService', () => {
     it('nom o‘zgarmasa boshqa yozuv bilan to‘qnashuv tekshirilmaydi', async () => {
       const { service, locks } = makeService({ products: [product({ id: 'p-1' })] });
 
-      await service.update('p-1', { description: 'Yangi' }, precondition(), ACTOR, null);
+      await updateScoped(service, 'p-1', { description: 'Yangi' }, precondition(), ACTOR, null);
 
       expect(locks).toEqual([]);
     });
