@@ -1,5 +1,5 @@
 import { PrismaPg } from '@prisma/adapter-pg';
-import { CashAccountKind, Currency, Prisma } from '@prisma/client';
+import { CashAccountKind, Currency, Prisma, SaleKind, SaleStatus } from '@prisma/client';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -69,9 +69,10 @@ interface Fixture {
 }
 
 /**
- * Qamrov: `shop_id` ustuni bo'lgan 27 jadvaldan beshtasi — FK talab
- * qilmaydigan, ya'ni izolyatsiyani boshqa modelning holatiga bog'lamasdan
- * tekshirib beradigan modellar. Ular RLS siyosati bir xil shablondan
+ * Qamrov: `shop_id` ustuni bo'lgan 27 jadvaldan **oltitasi** — beshtasi
+ * FK talab qilmaydigan modellar (izolyatsiyani boshqa modelning holatiga
+ * bog'lamasdan tekshiradi) va bittasi — `PaymentSchedule`, ataylab
+ * kompozit-FK naqshini sinash uchun (§21.29). Ular RLS siyosati bir xil shablondan
  * generatsiya qilingani uchun vakillik qiladi (migratsiyaning 3-qismi:
  * bitta `CREATE POLICY` sikli barcha jadvallarga).
  *
@@ -82,12 +83,11 @@ interface Fixture {
  * `FORCE` + siyosat bor) ular uchun pastdagi katalog testida, DMMF'dan
  * olingan ro'yxat bo'yicha avtomatik tekshiriladi (§21.28).
  *
- * Bu yerda sinalmagan yagona narsa — kompozit-FK bolalar jadvallarining
- * (`SaleItem`, `PaymentAllocation`, `StocktakeLine`, `PaymentSchedule`)
- * XULQ-ATVORI: ular `shop_id` ni denormalizatsiya qiladi va otaga
- * kompozit FK bilan bog'lanadi, ya'ni yuqoridagi beshtadan strukturaviy
- * farq qiladi. Ular uchun fixture 8-bosqichda (nasiya), zanjir moduli
- * bilan birga yoziladi — §21.29.
+ * Kompozit-FK naqshi (`shop_id` denormalizatsiya + otaga kompozit FK)
+ * `PaymentSchedule` orqali qamralgan. Qolgan shunday jadvallar
+ * (`SaleItem`, `PaymentAllocation`, `StocktakeLine`) aynan bir xil
+ * naqshdan foydalanadi va bir xil RLS siyosatiga ega, ya'ni ular uchun
+ * alohida zanjir qurish qamrovga yangi narsa qo'shmaydi.
  */
 const FIXTURES: Fixture[] = [
   {
@@ -168,6 +168,66 @@ const FIXTURES: Fixture[] = [
       const result = await client.cashCategory.updateMany({
         where: { id },
         data: { name: 'BOSQINCHI' },
+      });
+      return result.count;
+    },
+  },
+  /**
+   * §21.29 — **kompozit-FK bolalar jadvali**. Yuqoridagi to'rttadan
+   * strukturaviy jihatdan farq qiladi: `shop_id` denormalizatsiya
+   * qilingan va otaga KOMPOZIT FK bilan bog'langan
+   * (`@relation(fields: [contractId, shopId], references: [id, shopId])`).
+   *
+   * Nega alohida tekshiriladi: bunday jadvalda `shop_id` ikki yo'ldan
+   * kelishi mumkin — ustun default'idan (`current_setting`) va otaning
+   * qiymatidan. Ular bir-biriga zid bo'lsa, FK yozuvni to'sishi kerak,
+   * RLS esa qatorni ko'rsatmasligi kerak. Vakil modellar (Customer,
+   * Category, …) bu yo'lni umuman sinamaydi.
+   *
+   * Fikstura butun zanjirni quradi: savdo → shartnoma → jadval qatori.
+   * Qimmat, lekin bittasi ham bo'lsa kerak — §21.28 dagi katalog testi
+   * faqat RLS YOQILGANINI tekshiradi, xulq-atvorni emas.
+   */
+  {
+    model: 'PaymentSchedule',
+    create: async (client, tag) => {
+      const sale = await client.sale.create({
+        data: {
+          kind: SaleKind.INSTALLMENT,
+          status: SaleStatus.CONFIRMED,
+          currency: Currency.UZS,
+          exchangeRate: new Prisma.Decimal('12500'),
+          total: new Prisma.Decimal('1000000'),
+          soldAt: new Date(),
+          confirmedAt: new Date(),
+          number: `TEST-${tag}`,
+        },
+      });
+      const contract = await client.installmentContract.create({
+        data: {
+          saleId: sale.id,
+          currency: Currency.UZS,
+          cashPrice: new Prisma.Decimal('1000000'),
+          markupAmount: new Prisma.Decimal('0'),
+          principal: new Prisma.Decimal('1000000'),
+          downPayment: new Prisma.Decimal('0'),
+        },
+      });
+      const schedule = await client.paymentSchedule.create({
+        data: {
+          contractId: contract.id,
+          sequence: 1,
+          dueDate: new Date('2027-01-15T00:00:00.000Z'),
+          amountDue: new Prisma.Decimal('1000000'),
+        },
+      });
+      return schedule.id;
+    },
+    findById: (client, id) => client.paymentSchedule.findUnique({ where: { id } }),
+    updateById: async (client, id) => {
+      const result = await client.paymentSchedule.updateMany({
+        where: { id },
+        data: { amountDue: new Prisma.Decimal('1') },
       });
       return result.count;
     },

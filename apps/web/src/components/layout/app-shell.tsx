@@ -121,7 +121,16 @@ export function AppShell({ user, children }: { user: CurrentUserDto; children: R
         <RateBar data={todayRate.data} />
       </div>
 
-      <div className="mx-auto flex max-w-5xl gap-6 px-4 pb-24 md:pb-8">
+      {/*
+        Pastki bo'shliq suzuvchi tugmadan KATTA bo'lishi shart. U `fixed`
+        va noutbukda pastdan 24px da turadi, balandligi 56px — ya'ni
+        oxirgi 80px kontentni to'sadi. Ilgari bu yerda `md:pb-8` (32px)
+        edi va sahifa oxiridagi tugma yoki matn tugma ostida qolib
+        ketardi (nasiya shartnomasidagi "Erta yopish" kartasida
+        ko'rindi). Telefonda esa tugma pastki navigatsiya ustida
+        (`bottom-20`), shuning uchun bo'shliq yanada kattaroq.
+      */}
+      <div className="mx-auto flex max-w-5xl gap-6 px-4 pb-40 md:pb-24">
         {/* Noutbukda chap menyu */}
         <nav aria-label="Asosiy menyu" className="hidden w-52 shrink-0 md:block">
           <ul className="flex list-none flex-col gap-1 p-0">
