@@ -183,9 +183,27 @@ export class AuthService {
     return { revoked: result.count };
   }
 
-  /** §2.10 — sozlamalarda ko'rinadigan kirish jurnali. */
-  async listLoginAttempts(limit: number): Promise<LoginAttemptDto[]> {
+  /**
+   * §2.10 — sozlamalarda ko'rinadigan kirish jurnali.
+   *
+   * **Faqat chaqiruvchining O'Z emaili bo'yicha.** `login_attempts`
+   * jadvalida `shop_id` ataylab yo'q (urinish paytida email hali qaysi
+   * Shop'ga tegishli ekani noma'lum — `schema.prisma` izohiga qarang),
+   * ya'ni bu yerda RLS ham, Prisma extension ham hech narsa filtrlamaydi:
+   * chegara SHU `where` ning o'zi.
+   *
+   * Filtrsiz bu endpoint har bir do'kon egasiga BOSHQA do'konlar
+   * egalarining emaili, IP manzili va qurilmasini ko'rsatardi — ekranda
+   * esa u "sizning kirishlaringiz" deb turardi. §2.10 jurnalni
+   * "sozlamalarda ko'rinadi" deb ta'riflaydi, ya'ni u hisobning o'ziniki.
+   *
+   * Email bo'yicha filtr muvaffaqiyatsiz urinishlarni ham qamrab oladi —
+   * jurnalning asosiy qiymati aynan shunda: "kimdir mening hisobimga
+   * kirishga urinyapti".
+   */
+  async listLoginAttempts(actor: RequestUser, limit: number): Promise<LoginAttemptDto[]> {
     const attempts = await this.prisma.loginAttempt.findMany({
+      where: { email: actor.email },
       orderBy: { createdAt: 'desc' },
       take: limit,
     });

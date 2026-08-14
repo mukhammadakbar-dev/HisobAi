@@ -158,11 +158,14 @@ export class AuthController {
   @Roles(UserRole.SHOP_ADMIN)
   @ShopExempt()
   @ApiOperation({ summary: 'Kirish jurnali (§2.10)' })
-  listLoginAttempts(@Query('limit') limit?: string): Promise<LoginAttemptDto[]> {
+  listLoginAttempts(
+    @CurrentUser() user: RequestUser,
+    @Query('limit') limit?: string,
+  ): Promise<LoginAttemptDto[]> {
     const parsed = Number.parseInt(limit ?? '', 10);
     const take =
       Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 200) : LOGIN_ATTEMPTS_PAGE;
-    return this.auth.listLoginAttempts(take);
+    return this.auth.listLoginAttempts(user, take);
   }
 
   // ──────────────────────────── Parollar ────────────────────────────

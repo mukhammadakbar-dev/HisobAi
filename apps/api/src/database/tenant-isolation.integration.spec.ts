@@ -1,10 +1,10 @@
 import { PrismaPg } from '@prisma/adapter-pg';
-import { CashAccountKind, Currency } from '@prisma/client';
+import { CashAccountKind, Currency, Prisma } from '@prisma/client';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { runWithShopScope, runWithoutShopScope } from './shop-context';
-import { withShopScope, type PrismaService } from './prisma.service';
+import { SHOP_SCOPE_EXEMPT_MODELS, withShopScope, type PrismaService } from './prisma.service';
 
 /**
  * Tenant izolyatsiyasi — **haqiqiy PostgreSQL ustida**, `hisobai_app` roli
@@ -315,6 +315,62 @@ describe.skipIf(!TEST_URL)('tenant izolyatsiyasi (haqiqiy DB, hisobai_app)', () 
     );
 
     expect(seenFromShop).toBeNull();
+  });
+
+  /**
+   * `ARCHITECTURE.md` §12: tenant testi "**namuna emas, parametrlangan**
+   * bo'lishi shart: har bir shop-scoped resurs uchun avtomatik ishlasin,
+   * aks holda keyin qo'shilgan resurs testsiz qoladi".
+   *
+   * Yuqoridagi `FIXTURES` beshta modelni **uchidan-uchiga** tekshiradi
+   * (yozish, o'qish, yangilash) — bu qimmat, chunki har biri qo'lda
+   * yozilgan fixture talab qiladi va FK zanjiri bo'lgan jadvallarda u
+   * butun savdo tuzishga aylanib ketardi. Shuning uchun qamrov ikkiga
+   * bo'lingan: xulq-atvor — beshta vakil modelda, **majburlanish esa —
+   * hamma 27 jadvalda**, bazaning o'z katalogidan o'qib.
+   *
+   * Ro'yxat DMMF'dan olinadi, ya'ni yangi shop-scoped model qo'shilib
+   * RLS migratsiyasi yozilmasa, bu test hech kim ro'yxatni
+   * yangilamasdan turib qulaydi — §12 talab qilgan xulq aynan shu.
+   *
+   * Nima tekshiriladi va nega aynan uchtasi:
+   *  - `relrowsecurity` — siyosat umuman yoqilganmi;
+   *  - `relforcerowsecurity` — jadval EGASIGA ham qo'llanadimi (usiz
+   *    `hisobai_migrate` ostidagi har qanday so'rov chegarasiz bo'lardi);
+   *  - siyosat mavjudligi — RLS yoqilgan, lekin siyosatsiz jadval
+   *    hech kimga hech narsa ko'rsatmaydi: "xavfsiz" ko'rinadi, aslida
+   *    esa noto'g'ri sozlangan.
+   */
+  it('shop-scoped 27 jadvalning HAMMASIDA RLS yoqilgan, majburlangan va siyosatli', async () => {
+    const tables = Prisma.dmmf.datamodel.models
+      .filter((model) => !SHOP_SCOPE_EXEMPT_MODELS.has(model.name))
+      .map((model) => model.dbName ?? model.name);
+
+    expect(tables).toHaveLength(27);
+
+    const rows = await base.$queryRaw<
+      { table_name: string; enabled: boolean; forced: boolean; policies: bigint }[]
+    >`
+      SELECT c.relname                        AS table_name,
+             c.relrowsecurity                 AS enabled,
+             c.relforcerowsecurity            AS forced,
+             (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname = ANY(${tables})
+    `;
+
+    const byTable = new Map(rows.map((row) => [row.table_name, row]));
+
+    for (const table of tables) {
+      const row = byTable.get(table);
+      expect(row, `"${table}" jadvali bazada topilmadi — migratsiya qo'llanganmi?`).toBeDefined();
+      expect(row?.enabled, `"${table}": ROW LEVEL SECURITY yoqilmagan`).toBe(true);
+      expect(row?.forced, `"${table}": FORCE ROW LEVEL SECURITY yo'q — ega chetlab o'tadi`).toBe(
+        true,
+      );
+      expect(Number(row?.policies ?? 0), `"${table}": bitta ham siyosat yo'q`).toBeGreaterThan(0);
+    }
   });
 
   it("ulanish RLS ni chetlab o'tmaydigan rol ostida (test o'zini tekshiradi)", async () => {

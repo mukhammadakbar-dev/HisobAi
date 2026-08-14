@@ -48,6 +48,8 @@ interface World {
   user: User | null;
   sessions: Session[];
   resetTokens: PasswordResetToken[];
+  /** `loginAttempt.findMany` ga berilgan argumentlar — pastdagi izohga qarang. */
+  loginAttemptQueries: { where?: { email?: string } }[];
 }
 
 function makeService(overrides: Partial<World> = {}, useRealAudit = false) {
@@ -67,6 +69,7 @@ function makeService(overrides: Partial<World> = {}, useRealAudit = false) {
       { id: 'session-laptop', userId: ACTOR.id, revokedAt: null } as Session,
     ],
     resetTokens: [],
+    loginAttemptQueries: [],
     ...overrides,
   };
 
@@ -129,6 +132,23 @@ function makeService(overrides: Partial<World> = {}, useRealAudit = false) {
         if (!target) return Promise.resolve({ count: 0 });
         target.usedAt = data.usedAt;
         return Promise.resolve({ count: 1 });
+      },
+    },
+    /**
+     * `login_attempts` da `shop_id` ATAYLAB yo'q (urinish paytida email
+     * qaysi Shop'ga tegishli ekani hali noma'lum), ya'ni bu jadvalda RLS
+     * ham, Prisma extension ham hech narsa filtrlamaydi — yagona chegara
+     * servisdagi `where` ning o'zi.
+     *
+     * Shuning uchun dublyor qatorlarni emas, **so'rovning o'zini** yozib
+     * oladi: natija qaytaradigan mock har qanday filtr bilan ham
+     * "ishlaydi", ya'ni filtr tushib qolganini faqat so'rovni o'qib
+     * ushlash mumkin (`sale_counters` testidagi bilan bir xil usul).
+     */
+    loginAttempt: {
+      findMany: (args: { where?: { email?: string } }) => {
+        world.loginAttemptQueries.push(args);
+        return Promise.resolve([]);
       },
     },
     /**
@@ -351,6 +371,33 @@ describe('AuthService', () => {
       } catch (error) {
         expect((error as AppException).code).toBe(ErrorCode.AUTH_TOKEN_INVALID);
       }
+    });
+  });
+
+  /**
+   * §2.10. Bu jadval tenant chegarasidan TASHQARIDA turadi (`shop_id`
+   * ustuni yo'q), ya'ni uni na RLS, na Prisma extension himoya qiladi.
+   * Filtr tushib qolsa har bir do'kon egasi boshqa do'konlar egalarining
+   * emaili, IP manzili va qurilmasini ko'rardi — ekranda esa u
+   * "sizning kirishlaringiz" deb turardi.
+   */
+  describe('kirish jurnali (§2.10)', () => {
+    it('faqat chaqiruvchining o‘z emaili bo‘yicha so‘raladi', async () => {
+      const { service, world } = makeService();
+
+      await service.listLoginAttempts(ACTOR, 50);
+
+      expect(world.loginAttemptQueries).toHaveLength(1);
+      expect(world.loginAttemptQueries[0]?.where).toEqual({ email: EMAIL });
+    });
+
+    it('boshqa hisobning jurnali so‘ralmaydi', async () => {
+      const { service, world } = makeService();
+      const other: RequestUser = { ...ACTOR, id: 'user-2', email: 'boshqa@hisobai.uz' };
+
+      await service.listLoginAttempts(other, 50);
+
+      expect(world.loginAttemptQueries[0]?.where?.email).toBe('boshqa@hisobai.uz');
     });
   });
 });
