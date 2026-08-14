@@ -598,6 +598,24 @@ hujjat ziddiyatida ustun turadi (hujjat boshidagi qoida).
 
 ---
 
+## 22. 7-bosqich qarorlari (2026-08-14 — qaytarish va bekor qilish)
+
+| §     | Qaror | Sabab |
+| ----- | ----- | ----- |
+| 22.1 | **Qaytarish va bekor qilish bitta servisda, lekin ikkita endpoint va ikkita ekran** | Mexanizm bir xil (teskari `sales` qatori), biznes ma'nosi esa boshqa (§8) va `ARCHITECTURE.md` §14.5 umumiy `POST /sales/:id/reverse` ni ataylab rad etadi. Kodda ularni ajratish esa uchta shartni takrorlashga olib kelardi: sana, ombor holati va qamrov. Shuning uchun farqlar bitta `kind` parametrida jamlangan va ular yonma-yon ko'rinib turadi — servis izohida jadval sifatida |
+| 22.2 | **Teskari qatorning `sale_items` lari ham yoziladi, `quantity` musbat; manfiy ishora faqat `sales.total` da** | §17.4 faqat `total` ning manfiyligini talab qiladi. Qatorlarni umuman yozmaslik ham mumkin edi (asl savdodagi `returned_quantity` bor), lekin o'sha ustun — **kesh**, teskari qator esa haqiqat manbai: "nima qaytdi" degan savolga kesh emas, qatorlar javob berishi kerak. Miqdorni manfiy yozish esa `stock_movements` bilan ziddiyat tug'dirardi — u yerda ham miqdor musbat, yo'nalishni `type` bildiradi |
+| 22.3 | **Tannarx snapshoti teskari qatorga ham ko'chiriladi** | Usiz qaytarish "sotuv summasi manfiy, tannarx nol" bo'lib yozilardi va hisobotda qaytarish **foyda keltirgandek** ko'rinardi. §7.11 snapshot'ning butun ma'nosi shunda: keyingi narx o'zgarishi eski yozuvni buzmasin |
+| 22.4 | **Raqam asl raqamdan hosil bo'ladi (`-R1`), `sale_counters` ga tegilmaydi** | §17.4 formatni belgilaydi. Hisoblagichdan raqam olish "bu yil nechta savdo bo'ldi" degan savolga yolg'on javob berardi: teskari yozuv yangi savdo emas. Tartib raqami mavjud teskari qatorlar sonidan olinadi, ya'ni ikkinchi qisman qaytarish `-R2` bo'ladi |
+| 22.5 | **Pul to'lovlar bo'yicha KETMA-KET qaytariladi, proporsional emas** | Qisman qaytarishda summani barcha to'lovlarga ulushlab bo'lish har bir hisobdan tiyin-tiyin pul chiqarardi — kassani sanab tizim bilan solishtirish imkonsiz bo'lardi (§11.3 dagi muammoning o'zi). Ketma-ket qamrash to'liq qaytarishda baribir barcha to'lovlarni aniq nolga chiqaradi (§8.1), qisman qaytarishda esa bitta hisobdan tushunarli summa chiqadi |
+| 22.6 | **Qisman qaytarilgan to'lov `CONFIRMED` bo'lib qoladi; faqat to'liq qoplangani `REVERSED` bo'ladi** | "Yarim qaytarilgan to'lov" degan holat `PaymentStatus` da yo'q va uni ixtiro qilish hisobotni buzardi. Pulning bir qismi mijozda, qolgani do'konda — buni kassa yozuvlari aniq ko'rsatadi, to'lov statusi esa faqat "bu to'lov butunlay bekor qilindimi" degan savolga javob beradi |
+| 22.7 | **Tasdiqlanmagan o'tkazma qaytarishda `REJECTED` bo'ladi, undan pul chiqmaydi** | §17.2 bo'yicha `PENDING_VERIFICATION` to'lov kassaga umuman tushmagan, ya'ni qaytariladigan pul ham yo'q. Uni `REVERSED` qilish "pul kelgan edi, qaytardik" degan yolg'on iz qoldirardi; `REJECTED` esa aynan bo'lgan narsani aytadi — pul kelmadi va endi kutilmaydi |
+| 22.8 | **Qisman qaytarilgan savdo bekor qilinmaydi** | Bekor qilish "jismonan hech narsa bo'lmagan" degani, qisman qaytarish esa mahsulot haqiqatan qaytganini allaqachon qayd etgan. Ikkalasi bitta savdoda rost bo'la olmaydi. Foydalanuvchiga aytiladigan yo'l aniq: qolganini ham qaytarish |
+| 22.9 | **Bekor qilishda ombor `AVAILABLE` bo'ladi, `RETURNED` emas va sabab yozilmaydi** | §16.4 "qaytarilgan mahsulot" belgisi savdo formasida ko'rinadi va u xaridorga aytiladigan ma'lumot. Bekor qilingan savdoda telefon do'kondan umuman chiqmagan — uni qaytgan mahsulot deb belgilash mijozga yolg'on aytish bo'lardi |
+| 22.10 | **Nasiya savdoni qaytarish (§8.5, §16.12) bu bosqichda YO'Q** | Shartnoma va to'lov jadvali moduli 8-bosqichda. §16.12 qarzni "to'lanmagan jadval qatorlaridan, oxirgisidan boshlab" kamaytirishni talab qiladi — bu jadval hali mavjud emas. Bu bosqichda savdo baribir faqat naqd (§20.1), ya'ni bunday savdoni yaratib ham bo'lmaydi |
+| 22.11 | **Qaytarish paneli modal emas — kartaning ichida ochiladi** | Telefonda foydalanuvchi qatorlarni tanlab, miqdorni kiritadi va shu payt yuqoridagi jadvalga qarab turadi. Modal uni to'sib qo'yardi. Ikkala amal bitta panelda, chunki foydalanuvchi ular ORASIDAN tanlaydi — har birining ostida farqi yozib qo'yilgan, aks holda "qaysi birini bosishim kerak edi" degan savol javobsiz qolardi |
+
+---
+
 ## Ochiq savollar
 
 | Mavzu | Savol |

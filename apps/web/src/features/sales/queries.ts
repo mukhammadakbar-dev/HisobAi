@@ -3,9 +3,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query';
 import type {
+  CancelSaleInput,
   ConfirmSaleInput,
   CreateSaleDraftInput,
   Page,
+  ReturnSaleInput,
   SaleDto,
   SaleSummaryDto,
   UpdateSaleDraftInput,
@@ -55,6 +57,10 @@ export const salesApi = {
   removeDraft: (id: string): Promise<void> => api.delete(`/sales/${id}`),
   confirm: (id: string, input: ConfirmSaleInput, idempotencyKey: string): Promise<SaleDto> =>
     api.post(`/sales/${id}/confirm`, input, { idempotencyKey }),
+  returnSale: (id: string, input: ReturnSaleInput, idempotencyKey: string): Promise<SaleDto> =>
+    api.post(`/sales/${id}/return`, input, { idempotencyKey }),
+  cancel: (id: string, input: CancelSaleInput, idempotencyKey: string): Promise<SaleDto> =>
+    api.post(`/sales/${id}/cancel`, input, { idempotencyKey }),
 };
 
 export function useSales(filters: SaleFilters): UseQueryResult<Page<SaleSummaryDto>, ApiError> {
@@ -140,4 +146,49 @@ export function useConfirmSale(
       void queryClient.invalidateQueries({ queryKey: customerKeys.all });
     },
   });
+}
+
+/**
+ * Qaytarish va bekor qilish (§8, §10).
+ *
+ * Kesh tasdiqlashdagi bilan **aynan bir xil** ro'yxat bo'yicha
+ * yangilanadi va bu tasodif emas: teskari yozuv ham o'sha bitta
+ * tranzaksiyada omborni, kassani va ko'rsatkichlarni o'zgartiradi.
+ * Bittasi unutilsa, ega qaytarib olingan telefonni ekranda hali ham
+ * "sotilgan" holida ko'rib turardi.
+ *
+ * `Idempotency-Key` chaqiruvchidan keladi — `useConfirmSale` dagi bilan
+ * bir xil sabab: bu yerda yaratilsa, ikki marta bosilgan "Qaytarish"
+ * tugmasi ombor qoldig'ini ikki barobar oshirib yuborardi.
+ */
+function useSaleReversal<TInput>(
+  id: string,
+  send: (id: string, input: TInput, idempotencyKey: string) => Promise<SaleDto>,
+): UseMutationResult<SaleDto, ApiError, { input: TInput; idempotencyKey: string }> {
+  const queryClient = useQueryClient();
+
+  return useMutation<SaleDto, ApiError, { input: TInput; idempotencyKey: string }>({
+    mutationFn: ({ input, idempotencyKey }) => send(id, input, idempotencyKey),
+    onSuccess: (sale) => {
+      queryClient.setQueryData(saleKeys.detail(id), sale);
+      void queryClient.invalidateQueries({ queryKey: saleKeys.all });
+      void queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+      void queryClient.invalidateQueries({ queryKey: catalogKeys.all });
+      void queryClient.invalidateQueries({ queryKey: cashKeys.all });
+      void queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+      void queryClient.invalidateQueries({ queryKey: customerKeys.all });
+    },
+  });
+}
+
+export function useReturnSale(
+  id: string,
+): UseMutationResult<SaleDto, ApiError, { input: ReturnSaleInput; idempotencyKey: string }> {
+  return useSaleReversal(id, salesApi.returnSale);
+}
+
+export function useCancelSale(
+  id: string,
+): UseMutationResult<SaleDto, ApiError, { input: CancelSaleInput; idempotencyKey: string }> {
+  return useSaleReversal(id, salesApi.cancel);
 }

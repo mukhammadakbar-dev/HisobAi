@@ -1,6 +1,6 @@
 'use client';
 
-import { SaleStatus, multiplyMoney } from '@hisobai/contracts';
+import { ReversalKind, SaleStatus, multiplyMoney } from '@hisobai/contracts';
 import type { SaleDto } from '@hisobai/contracts';
 import Link from 'next/link';
 
@@ -15,16 +15,16 @@ import {
   SALE_STATUS_LABEL,
   SALE_STATUS_TONE,
 } from '../../../lib/labels';
+import { ReversalPanel } from './reversal-panel';
 
 /**
  * Tasdiqlangan savdo kartasi (§7).
  *
- * Ekran **faqat o'qish uchun**: tasdiqlangan savdo o'zgartirilmaydi va
- * o'chirilmaydi, faqat teskari yozuv bilan tuzatiladi (§21, §17.4).
- * "Qaytarish" va "Bekor qilish" tugmalari shu yerda paydo bo'ladi —
- * 6-bosqichda (`TZ.md` §22), qaytarish moduli bilan birga. Hozir ular
- * qo'yilmadi: bosilganda hech narsa qilmaydigan tugma "ishlamayapti"
- * degan xabar bilan qaytadi.
+ * Savdoning o'zi **faqat o'qish uchun**: tasdiqlangan savdo
+ * o'zgartirilmaydi va o'chirilmaydi, faqat teskari yozuv bilan
+ * tuzatiladi (§21, §17.4). Aynan shu sababdan "Qaytarish" va "Bekor
+ * qilish" alohida panelda (`ReversalPanel`) turadi — ular savdoni
+ * TAHRIRLAMAYDI, ustiga yangi qator qo'shadi.
  */
 export function SaleCard({ sale }: { sale: SaleDto }) {
   return (
@@ -161,6 +161,36 @@ export function SaleCard({ sale }: { sale: SaleDto }) {
           <p className="m-0 text-sm text-text-tertiary">To‘lov yozuvi yo‘q.</p>
         )}
       </Card>
+
+      {/* §17.4 — teskari yozuvlar asl savdoning tarixi. Ular status
+          keshidan oldin ko'rsatiladi: "nega qaytarilgan" degan savolga
+          faqat shu ro'yxat javob beradi */}
+      {sale.reversals.length > 0 && (
+        <Card className="flex flex-col gap-3">
+          <h2 className="m-0 text-lg font-semibold">Teskari yozuvlar (§17.4)</h2>
+          <ul className="m-0 flex list-none flex-col gap-2 p-0">
+            {sale.reversals.map((reversal) => (
+              <li
+                key={reversal.id}
+                className="flex flex-wrap items-center justify-between gap-2 text-sm"
+              >
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="tabular font-medium">{reversal.number}</span>
+                  <Badge tone={reversal.reversalKind === ReversalKind.CANCEL ? 'muted' : 'warning'}>
+                    {reversal.reversalKind === ReversalKind.CANCEL
+                      ? 'Bekor qilingan'
+                      : 'Qaytarilgan'}
+                  </Badge>
+                  <span className="text-text-secondary">{formatDateTime(reversal.soldAt)}</span>
+                </span>
+                <Money amount={reversal.total} currency={reversal.currency} />
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      <ReversalPanel sale={sale} />
     </div>
   );
 }

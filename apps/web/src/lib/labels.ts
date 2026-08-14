@@ -7,6 +7,7 @@ import {
   PaymentMethod,
   PaymentStatus,
   ProductType,
+  ReversalReason,
   SaleKind,
   SaleStatus,
   StockMovementType,
@@ -94,6 +95,14 @@ export const SALE_STATUS_TONE: Record<string, 'success' | 'muted' | 'warning' | 
     [SaleStatus.CANCELLED]: 'muted',
     [SaleStatus.REVERSAL]: 'danger',
   };
+
+/** §8.6 — sabab majburiy va audit'ga yoziladi. */
+export const REVERSAL_REASON_LABEL: Record<string, string> = {
+  [ReversalReason.DEFECTIVE]: 'Nuqsonli',
+  [ReversalReason.CUSTOMER_CHANGED_MIND]: 'Mijoz fikri o‘zgardi',
+  [ReversalReason.ENTRY_ERROR]: 'Xato kiritildi',
+  [ReversalReason.OTHER]: 'Boshqa',
+};
 
 // ──────────────────────────────── To'lovlar (§10) ────────────────────────────────
 
