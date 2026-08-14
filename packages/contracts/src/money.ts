@@ -149,6 +149,77 @@ export function multiplyMoney(amount: MoneyInput, factor: number, currency: Curr
 }
 
 /**
+ * Summani teng bo'laklarga bo'lish — **yaxlitlash qoldig'i OXIRGI
+ * bo'lakka** (§17.15).
+ *
+ * Nasiya jadvali uchun yozilgan, lekin qoida umumiy: bo'laklar
+ * yig'indisi butunga **aynan** teng bo'lishi shart. §9.6 jadval
+ * summasini qarzga tenglikka tekshiradi, ya'ni har bo'lakni alohida
+ * yaxlitlash (`total / n` ni n marta) tekshiruvni tiyinlar tufayli
+ * yiqitardi: 100 UZS ni 3 ga bo'lganda 33+33+33 = 99.
+ *
+ * Qoldiq aynan OXIRGI qatorga qo'shiladi, birinchisiga emas: mijoz
+ * birinchi to'lovni eng erta ko'radi va u "notekis" bo'lsa savol
+ * tug'diradi; oxirgisi esa jadval tuzilgandan keyin baribir
+ * tekshiriladigan qator.
+ *
+ * Manfiy summa qabul qilinmaydi — bo'lish faqat qarz taqsimotida
+ * ishlatiladi va u har doim musbat.
+ */
+export function splitMoney(total: MoneyInput, parts: number, currency: Currency): string[] {
+  if (!Number.isSafeInteger(parts) || parts <= 0) {
+    throw new TypeError(`Bo'laklar soni musbat butun son bo'lishi kerak: ${String(parts)}`);
+  }
+
+  const scale = scaleOf(currency);
+  const minor = toMinorUnits(roundMoney(total, currency));
+  if (minor < 0n) {
+    throw new TypeError("Manfiy summani bo'lib bo'lmaydi");
+  }
+
+  const count = BigInt(parts);
+  const base = minor / count;
+  const remainder = minor - base * count;
+
+  return Array.from({ length: parts }, (_, index) =>
+    fromMinorUnits(index === parts - 1 ? base + remainder : base, scale),
+  );
+}
+
+/**
+ * Summaning foizi — nasiya ustamasi uchun (§9.3).
+ *
+ * Foiz `Decimal(5,2)`, ya'ni ikkita kasr xonagacha (`12.50%`). Hisob
+ * `BigInt` da: `amount * percent / 100` ni `Number` bilan qilish
+ * ustamani tiyinga xato hisoblardi va u to'g'ridan-to'g'ri qarzga
+ * (§17.3) o'tib ketardi. Yaxlitlash ROUND_HALF_UP — `roundMoney` bilan
+ * bir xil.
+ */
+export function percentOfMoney(
+  amount: MoneyInput,
+  percent: MoneyInput,
+  currency: Currency,
+): string {
+  const scale = scaleOf(currency);
+  const minor = toMinorUnits(roundMoney(amount, currency));
+
+  // Foizni yuzdan bir ulushigacha butun songa keltiramiz: 12.5 → 1250
+  const { negative, intDigits, fracDigits } = parseDecimal(percent);
+  if (negative) {
+    throw new TypeError(`Ustama foizi manfiy bo'lmasligi kerak: ${String(percent)}`);
+  }
+  const percentMinor = BigInt(`${intDigits}${fracDigits.padEnd(2, '0').slice(0, 2)}`);
+
+  // Bo'luvchi: 100 (foiz) × 100 (foizning kasr xonalari)
+  const scaled = minor * percentMinor;
+  const divisor = 10_000n;
+  const quotient = scaled / divisor;
+  const twiceRemainder = (scaled - quotient * divisor) * 2n;
+
+  return fromMinorUnits(twiceRemainder >= divisor ? quotient + 1n : quotient, scale);
+}
+
+/**
  * Valyutalar orasida aylantirish — do'kon kursi bo'yicha (§1.7, §1.9).
  *
  * Nega `contracts` da: bu qoida **ikkala tomonda ham** kerak. Server uni

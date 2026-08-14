@@ -9,10 +9,13 @@ import {
   SaleStatus,
   StockMovementType,
   UserRole,
+  markupFromPercent,
   multiplyMoney,
+  principalOf,
   roundMoney,
   sumMoney,
   type ConfirmSaleInput,
+  type InstallmentPlanInput,
   type Currency,
   type SaleDto,
   type SalePaymentInput,
@@ -44,7 +47,8 @@ import { MAX_BACKDATE_DAYS, assertDraft, convert, profitOf, saleNotFound } from 
  *  5. to'lovlar yaratiladi — naqd va karta darhol `CONFIRMED`,
  *     o'tkazma `PENDING_VERIFICATION` (§17.2);
  *  6. **faqat `CONFIRMED`** to'lovlar uchun kassa kirimi (§17.2);
- *  7. audit yozuvi.
+ *  7. nasiya bo'lsa — shartnoma va to'lov jadvali (§9.1, §9.6);
+ *  8. audit yozuvi.
  *
  * Bittasi xato bersa — hech biri saqlanmaydi.
  *
@@ -80,6 +84,10 @@ export class SaleConfirmationService {
         if (sale.items.length === 0) {
           throw AppException.rule(ErrorCode.SALE_EMPTY, "Savatga kamida bitta mahsulot qo'shing.");
         }
+
+        // §9.1 — nasiya sharti savdoning TURIGA bog'liq, sxema esa turni
+        // ko'rmaydi (u qoralamada saqlangan), shuning uchun tekshiruv shu yerda
+        const plan = assertPlanMatchesKind(sale, input.installment);
 
         const soldAt = this.resolveSoldAt(input.soldAt, sale.soldAt);
         // §17.11 — savdo SANASIDAGI do'kon kursi, bugungisi emas:
@@ -128,18 +136,25 @@ export class SaleConfirmationService {
           })),
         });
 
-        // 5 va 6 — to'lovlar va kassa
+        // 5 va 6 — to'lovlar va kassa. Naqd savdoda to'lovlar savdo
+        // summasiga teng bo'lishi shart (§17.10), nasiyada esa —
+        // BOSHLANG'ICH TO'LOVGA: qolgani jadval bo'yicha keyin keladi
         await this.recordPayments(tx, {
           sale: confirmed,
           payments: input.payments,
-          total,
+          expectedPaid: plan === null ? total : roundMoney(plan.downPayment, sale.currency),
           rate: rate.storeRate,
           soldAt,
           confirmedAt,
           actor,
         });
 
-        // 7 — audit
+        // 7 — nasiya bo'lsa shartnoma va jadval (§9.1)
+        const contract = plan
+          ? await this.createContract(tx, { sale: confirmed, plan, total, soldAt })
+          : null;
+
+        // 8 — audit
         await this.audit.record(tx, actor.shopId, {
           actorId: actor.id,
           action: 'SALE_CONFIRMED',
@@ -157,6 +172,14 @@ export class SaleConfirmationService {
             backdated:
               businessDay(soldAt, this.timeZone) !== businessDay(confirmedAt, this.timeZone),
             paymentCount: input.payments.length,
+            // §9.1 — shartnoma savdo bilan bitta tranzaksiyada tug'iladi,
+            // ya'ni audit yozuvi ham bitta bo'lishi kerak: ikkitaga
+            // bo'linsa, ular orasida "shartnomasiz nasiya savdo" degan
+            // holat bo'lgandek ko'rinardi
+            contract:
+              contract === null
+                ? null
+                : { id: contract.id, principal: contract.principal, currency: sale.currency },
           },
           ip,
         });
@@ -319,14 +342,15 @@ export class SaleConfirmationService {
     params: {
       sale: SaleRow;
       payments: SalePaymentInput[];
-      total: string;
+      /** To'lovlar yig'indisi AYNAN shunga teng bo'lishi kerak. */
+      expectedPaid: string;
       rate: Prisma.Decimal;
       soldAt: Date;
       confirmedAt: Date;
       actor: RequestUser;
     },
   ): Promise<void> {
-    const { sale, payments, total, rate, soldAt, confirmedAt, actor } = params;
+    const { sale, payments, expectedPaid, rate, soldAt, confirmedAt, actor } = params;
 
     const accounts = await tx.cashAccount.findMany({
       where: { id: { in: [...new Set(payments.map((payment) => payment.cashAccountId))] } },
@@ -367,12 +391,14 @@ export class SaleConfirmationService {
     });
 
     const paidTotal = sumMoney(applied, sale.currency);
-    if (sale.kind === SaleKind.CASH && paidTotal !== total) {
+    if (paidTotal !== expectedPaid) {
       throw AppException.rule(
         ErrorCode.SALE_PAYMENT_MISMATCH,
-        "Naqd savdoda to'lovlar summasi savdo summasiga teng bo'lishi kerak. Qarz qolsa, nasiya rasmiylashtiring.",
+        sale.kind === SaleKind.CASH
+          ? "Naqd savdoda to'lovlar summasi savdo summasiga teng bo'lishi kerak. Qarz qolsa, nasiya rasmiylashtiring."
+          : "Nasiyada to'lovlar summasi boshlang'ich to'lovga teng bo'lishi kerak.",
         'payments',
-        { total, paid: paidTotal, currency: sale.currency },
+        { expected: expectedPaid, paid: paidTotal, currency: sale.currency },
       );
     }
 
@@ -411,6 +437,102 @@ export class SaleConfirmationService {
         });
       }
     }
+  }
+
+  // ──────────────────── 7-qadam: shartnoma va jadval ────────────────────
+
+  /**
+   * Nasiya shartnomasi va to'lov jadvali (§9.1) — **savdo bilan bitta
+   * tranzaksiyada**.
+   *
+   * Alohida "shartnoma yaratish" endpointi ataylab yo'q: ikki qadamga
+   * bo'linsa, birinchisi o'tib ikkinchisi yiqilgan holatda ombordan
+   * telefon chiqib ketgan, qarz esa hech qayerda yozilmagan savdo
+   * qolardi — va uni tuzatadigan yo'l ham bo'lmasdi (§21: tasdiqlangan
+   * savdo o'zgartirilmaydi).
+   *
+   * Ustama summa yoki foizdan (§9.3). Foizdan hisoblashda `contracts`
+   * dagi `markupFromPercent` ishlatiladi — ekran ham aynan shu
+   * funksiyani chaqiradi, ya'ni ega ko'rgan qarz serverning yozadigan
+   * qarziga teng bo'ladi.
+   */
+  private async createContract(
+    tx: Prisma.TransactionClient,
+    params: { sale: SaleRow; plan: InstallmentPlanInput; total: string; soldAt: Date },
+  ): Promise<{ id: string; principal: string }> {
+    const { sale, plan, total, soldAt } = params;
+
+    // §17.3 — `cashPrice` savdo summasiga TENG: savdo qatoridagi narx
+    // naqd narx, ustama esa faqat shartnomada
+    const cashPrice = total;
+    const markupAmount =
+      plan.markupPercent === undefined
+        ? roundMoney(plan.markupAmount ?? '0', sale.currency)
+        : markupFromPercent(cashPrice, plan.markupPercent, sale.currency);
+
+    const downPayment = roundMoney(plan.downPayment, sale.currency);
+    const principal = principalOf({ cashPrice, markupAmount, downPayment }, sale.currency);
+
+    if (Number(principal) <= 0) {
+      throw AppException.rule(
+        ErrorCode.VALIDATION_FAILED,
+        "Boshlang'ich to'lov qarzdan katta yoki unga teng — bu nasiya emas, naqd savdo.",
+        'installment.downPayment',
+        { principal, cashPrice, markupAmount },
+      );
+    }
+
+    // §9.6 — jadval summasi qarzga TENG bo'lishi shart. Teng bo'lmasa
+    // savdo umuman tasdiqlanmaydi: farq qayerdadir qarz bo'lib qolardi
+    // va uni hech bir ekran ko'rsatmasdi
+    const scheduleTotal = sumMoney(
+      plan.schedule.map((row) => row.amount),
+      sale.currency,
+    );
+    if (scheduleTotal !== principal) {
+      throw AppException.rule(
+        ErrorCode.INSTALLMENT_SCHEDULE_SUM_MISMATCH,
+        `Jadval summasi qarzga teng bo'lishi kerak: ${scheduleTotal} ≠ ${principal}.`,
+        'installment.schedule',
+        { scheduleTotal, principal, currency: sale.currency },
+      );
+    }
+
+    const contract = await tx.installmentContract.create({
+      data: {
+        saleId: sale.id,
+        // §9.2 — shartnoma valyutasi savdo valyutasi va o'zgarmaydi
+        currency: sale.currency,
+        cashPrice: new Prisma.Decimal(cashPrice),
+        markupAmount: new Prisma.Decimal(markupAmount),
+        markupPercent:
+          plan.markupPercent === undefined ? null : new Prisma.Decimal(plan.markupPercent),
+        principal: new Prisma.Decimal(principal),
+        downPayment: new Prisma.Decimal(downPayment),
+        schedules: {
+          create: plan.schedule.map((row, index) => ({
+            sequence: index + 1,
+            // Kalendar sana (§2.2) — do'kon zonasiga bog'liq emas
+            dueDate: new Date(`${row.dueDate}T00:00:00.000Z`),
+            amountDue: new Prisma.Decimal(roundMoney(row.amount, sale.currency)),
+          })),
+        },
+      },
+    });
+
+    // Jadval birinchi qatori savdo sanasidan oldin bo'lmasligi kerak —
+    // o'tmishdagi to'lov muddati darhol "kechikkan" bo'lib ko'rinardi (§9.8)
+    const firstDue = plan.schedule[0]?.dueDate;
+    if (firstDue !== undefined && firstDue < businessDay(soldAt, this.timeZone)) {
+      throw AppException.rule(
+        ErrorCode.VALIDATION_FAILED,
+        "Birinchi to'lov muddati savdo sanasidan oldin bo'lmasin.",
+        'installment.schedule',
+        { firstDueDate: firstDue },
+      );
+    }
+
+    return { id: contract.id, principal };
   }
 
   // ──────────────────────────── Yordamchilar ────────────────────────────
@@ -454,4 +576,53 @@ function toLine(item: SaleRow['items'][number], currency: Currency): ReservedLin
     quantity: item.quantity,
     lineTotal: multiplyMoney(item.unitPrice.toString(), item.quantity, currency),
   };
+}
+
+/**
+ * Nasiya sharti savdoning turiga mos kelishini tekshiradi (§9.1).
+ *
+ * Ikkala yo'nalish ham xato:
+ *
+ *  - `INSTALLMENT` savdo shartsiz tasdiqlansa, qarz hech qayerda
+ *    yozilmasdan qolardi — ombordan telefon chiqadi, kassaga esa faqat
+ *    boshlang'ich to'lov tushadi va farqni hech bir ekran ko'rsatmaydi;
+ *  - `CASH` savdoga shart berilsa, chaqiruvchi savdo turini noto'g'ri
+ *    tushungan bo'ladi. Uni jimgina e'tiborsiz qoldirish — ega nasiya
+ *    rasmiylashtirdim deb o'ylab, aslida naqd savdo qilib qo'yishi.
+ *
+ * Nasiyada mijoz ham MAJBURIY: qarzdorsiz qarz bo'lmaydi. §6.1 mijozni
+ * faqat NAQD savdoda ixtiyoriy qiladi.
+ */
+function assertPlanMatchesKind(
+  sale: SaleRow,
+  plan: InstallmentPlanInput | undefined,
+): InstallmentPlanInput | null {
+  if (sale.kind === SaleKind.CASH) {
+    if (plan !== undefined) {
+      throw AppException.rule(
+        ErrorCode.VALIDATION_FAILED,
+        "Naqd savdoda nasiya sharti bo'lmaydi.",
+        'installment',
+      );
+    }
+    return null;
+  }
+
+  if (plan === undefined) {
+    throw AppException.rule(
+      ErrorCode.VALIDATION_FAILED,
+      "Nasiya savdoni tasdiqlash uchun shartnoma sharti va to'lov jadvali kerak.",
+      'installment',
+    );
+  }
+
+  if (sale.customerId === null) {
+    throw AppException.rule(
+      ErrorCode.SALE_CUSTOMER_REQUIRED,
+      'Nasiya savdoda mijoz majburiy — qarz kimning zimmasida ekani yozilishi kerak.',
+      'customerId',
+    );
+  }
+
+  return plan;
 }

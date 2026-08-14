@@ -60,9 +60,7 @@ const shopFields = z
  * orqali to'ldiriladi — setup formasi bitta ekranda hammasini so'rashga
  * majbur emas.
  */
-export const createShopSchema = shopFields
-  .required({ name: true })
-  .strict();
+export const createShopSchema = shopFields.required({ name: true }).strict();
 export type CreateShopInput = z.infer<typeof createShopSchema>;
 
 /**

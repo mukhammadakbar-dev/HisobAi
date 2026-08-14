@@ -48,7 +48,7 @@ export const createShopAdminSchema = z
   .object({
     email,
     password,
-    displayName: z.string().trim().min(1, "Ism kiriting").max(120),
+    displayName: z.string().trim().min(1, 'Ism kiriting').max(120),
   })
   .strict();
 export type CreateShopAdminInput = z.infer<typeof createShopAdminSchema>;

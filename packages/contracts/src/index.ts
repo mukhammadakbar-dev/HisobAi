@@ -1,5 +1,6 @@
 export * from './catalog';
 export * from './enums';
+export * from './installment';
 export * from './errors';
 export * from './money';
 export * from './pagination';
@@ -12,6 +13,7 @@ export * from './schemas/common';
 export * from './schemas/customer';
 export * from './schemas/dashboard';
 export * from './schemas/exchange-rate';
+export * from './schemas/installment';
 export * from './schemas/inventory';
 export * from './schemas/platform';
 export * from './schemas/sale';

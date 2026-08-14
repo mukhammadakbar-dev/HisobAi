@@ -56,6 +56,8 @@ interface Options {
   items?: SaleItemFixture[];
   status?: SaleStatus;
   accountCurrency?: Currency;
+  kind?: SaleKind;
+  customerId?: string | null;
 }
 
 interface SaleItemFixture {
@@ -89,14 +91,14 @@ function makeService(options: Options = {}) {
   const sale = {
     id: 'sale-1',
     number: null,
-    kind: SaleKind.CASH,
+    kind: options.kind ?? SaleKind.CASH,
     status: options.status ?? SaleStatus.DRAFT,
     currency: Currency.UZS,
     exchangeRate: RATE,
     total: new Prisma.Decimal('0'),
     soldAt: new Date('2026-08-12T09:00:00.000Z'),
     confirmedAt: null,
-    customerId: null,
+    customerId: options.customerId === undefined ? null : options.customerId,
     customer: null,
     createdAt: new Date('2026-08-12T08:00:00.000Z'),
     updatedAt: new Date('2026-08-12T08:00:00.000Z'),
@@ -111,6 +113,7 @@ function makeService(options: Options = {}) {
   const cashEntries: Record<string, unknown>[] = [];
   const movements: Record<string, unknown>[] = [];
   const saleUpdates: Record<string, unknown>[] = [];
+  const contracts: Record<string, unknown>[] = [];
 
   const tx = {
     sale: {
@@ -122,6 +125,12 @@ function makeService(options: Options = {}) {
       }),
     },
     saleItem: { update: vi.fn(() => Promise.resolve({})) },
+    installmentContract: {
+      create: vi.fn((args: { data: Record<string, unknown> }) => {
+        contracts.push(args.data);
+        return Promise.resolve({ id: 'contract-1', ...args.data });
+      }),
+    },
     inventoryItem: {
       updateMany: vi.fn(() => Promise.resolve({ count: options.reservedCount ?? 1 })),
       findUniqueOrThrow: vi.fn(() =>
@@ -189,7 +198,7 @@ function makeService(options: Options = {}) {
     config as never,
   );
 
-  return { service, tx, payments, cashEntries, movements, saleUpdates, audit };
+  return { service, tx, payments, cashEntries, movements, saleUpdates, contracts, audit };
 }
 
 function confirmInput(overrides: Partial<ConfirmSaleInput> = {}): ConfirmSaleInput {
@@ -362,5 +371,192 @@ describe('SaleConfirmationService', () => {
 
     expect(movements).toHaveLength(1);
     expect(movements[0]).toMatchObject({ type: 'SALE', quantity: 1, referenceType: 'SALE' });
+  });
+
+  /**
+   * Nasiya (§9.1) — shartnoma savdo bilan **bitta tranzaksiyada**
+   * tug'iladi. Bu yerdagi tekshiruvlar buzilsa, qarz hech qayerda
+   * yozilmasdan qolardi: ombordan telefon chiqadi, kassaga esa faqat
+   * boshlang'ich to'lov tushadi va farqni hech bir ekran ko'rsatmaydi.
+   */
+  describe('nasiya (§9)', () => {
+    const CUSTOMER_ID = '33333333-3333-4333-8333-333333333333';
+
+    function installmentInput(plan: Partial<ConfirmSaleInput['installment']> = {}) {
+      return confirmInput({
+        // §17.10 — nasiyada to'lovlar BOSHLANG'ICH TO'LOVGA teng bo'ladi
+        payments: [
+          {
+            method: PaymentMethod.CASH,
+            amount: '4000000',
+            currency: Currency.UZS,
+            cashAccountId: ACCOUNT_ID,
+          },
+        ],
+        installment: {
+          downPayment: '4000000',
+          schedule: [
+            { dueDate: '2026-09-12', amount: '5200000' },
+            { dueDate: '2026-10-12', amount: '5200000' },
+          ],
+          ...plan,
+        } as ConfirmSaleInput['installment'],
+      });
+    }
+
+    it('§17.3 — qarz = naqd narx + ustama − boshlang‘ich to‘lov', async () => {
+      const { service, contracts } = makeService({
+        kind: SaleKind.INSTALLMENT,
+        customerId: CUSTOMER_ID,
+      });
+
+      await confirmScoped(
+        service,
+        'sale-1',
+        installmentInput({ markupAmount: '2400000' }),
+        ACTOR,
+        null,
+      );
+
+      const contract = contracts[0];
+      // 12 000 000 + 2 400 000 − 4 000 000
+      expect(String(contract?.principal)).toBe('10400000');
+      expect(String(contract?.cashPrice)).toBe('12000000');
+      expect(String(contract?.markupAmount)).toBe('2400000');
+      expect(String(contract?.downPayment)).toBe('4000000');
+      // §9.2 — shartnoma valyutasi savdo valyutasi
+      expect(contract?.currency).toBe(Currency.UZS);
+    });
+
+    it('§9.3 — ustama foizdan hisoblanadi', async () => {
+      const { service, contracts } = makeService({
+        kind: SaleKind.INSTALLMENT,
+        customerId: CUSTOMER_ID,
+      });
+
+      await confirmScoped(
+        service,
+        'sale-1',
+        installmentInput({ markupPercent: '20' }),
+        ACTOR,
+        null,
+      );
+
+      expect(String(contracts[0]?.markupAmount)).toBe('2400000');
+      expect(String(contracts[0]?.principal)).toBe('10400000');
+    });
+
+    it('§9.6 — jadval summasi qarzga teng bo‘lmasa tasdiqlanmaydi', async () => {
+      const { service } = makeService({ kind: SaleKind.INSTALLMENT, customerId: CUSTOMER_ID });
+
+      await expect(
+        confirmScoped(
+          service,
+          'sale-1',
+          installmentInput({
+            markupAmount: '2400000',
+            schedule: [{ dueDate: '2026-09-12', amount: '9000000' }],
+          }),
+          ACTOR,
+          null,
+        ),
+      ).rejects.toMatchObject({
+        code: ErrorCode.INSTALLMENT_SCHEDULE_SUM_MISMATCH,
+        details: { scheduleTotal: '9000000', principal: '10400000' },
+      });
+    });
+
+    it('jadval qatorlari tartib raqami bilan yoziladi', async () => {
+      const { service, contracts } = makeService({
+        kind: SaleKind.INSTALLMENT,
+        customerId: CUSTOMER_ID,
+      });
+
+      await confirmScoped(
+        service,
+        'sale-1',
+        installmentInput({ markupAmount: '2400000' }),
+        ACTOR,
+        null,
+      );
+
+      const schedules = (contracts[0]?.schedules as { create: Record<string, unknown>[] }).create;
+      expect(schedules.map((row) => row.sequence)).toEqual([1, 2]);
+      expect(schedules.map((row) => String(row.amountDue))).toEqual(['5200000', '5200000']);
+    });
+
+    // §17.10 nasiyada BOSHLANG'ICH TO'LOVGA nisbatan qo'llanadi: savdo
+    // summasi talab qilinsa, nasiya degan tushunchaning o'zi yo'qolardi
+    it('to‘lovlar boshlang‘ich to‘lovga teng bo‘lmasa rad etiladi', async () => {
+      const { service } = makeService({ kind: SaleKind.INSTALLMENT, customerId: CUSTOMER_ID });
+
+      await expect(
+        confirmScoped(
+          service,
+          'sale-1',
+          confirmInput({
+            payments: [
+              {
+                method: PaymentMethod.CASH,
+                amount: '1000000',
+                currency: Currency.UZS,
+                cashAccountId: ACCOUNT_ID,
+              },
+            ],
+            installment: {
+              downPayment: '4000000',
+              markupAmount: '2400000',
+              schedule: [{ dueDate: '2026-09-12', amount: '10400000' }],
+            } as ConfirmSaleInput['installment'],
+          }),
+          ACTOR,
+          null,
+        ),
+      ).rejects.toMatchObject({ code: ErrorCode.SALE_PAYMENT_MISMATCH });
+    });
+
+    it('nasiyada mijoz majburiy', async () => {
+      const { service } = makeService({ kind: SaleKind.INSTALLMENT, customerId: null });
+
+      await expect(
+        confirmScoped(
+          service,
+          'sale-1',
+          installmentInput({ markupAmount: '2400000' }),
+          ACTOR,
+          null,
+        ),
+      ).rejects.toMatchObject({ code: ErrorCode.SALE_CUSTOMER_REQUIRED });
+    });
+
+    it('nasiya savdo shartsiz tasdiqlanmaydi', async () => {
+      const { service } = makeService({ kind: SaleKind.INSTALLMENT, customerId: CUSTOMER_ID });
+
+      await expect(
+        confirmScoped(service, 'sale-1', confirmInput(), ACTOR, null),
+      ).rejects.toMatchObject({ code: ErrorCode.VALIDATION_FAILED });
+    });
+
+    it('naqd savdoga nasiya sharti berilmaydi', async () => {
+      const { service } = makeService();
+
+      await expect(
+        confirmScoped(
+          service,
+          'sale-1',
+          installmentInput({ markupAmount: '2400000' }),
+          ACTOR,
+          null,
+        ),
+      ).rejects.toMatchObject({ code: ErrorCode.VALIDATION_FAILED });
+    });
+
+    it('naqd savdoda shartnoma umuman yaratilmaydi', async () => {
+      const { service, contracts } = makeService();
+
+      await confirmScoped(service, 'sale-1', confirmInput(), ACTOR, null);
+
+      expect(contracts).toHaveLength(0);
+    });
   });
 });

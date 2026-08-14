@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { Currency, PaymentMethod, ReversalReason, SaleKind, SaleStatus } from '../enums';
 import type { PaymentStatus, ReversalKind } from '../enums';
+import { installmentPlanSchema } from './installment';
 import {
   calendarDate,
   enumList,
@@ -29,10 +30,11 @@ import {
  * o'zgartiriladi, chegirma esa hisobotda `tavsiya narx − haqiqiy narx`
  * sifatida chiqadi (§7.4).
  *
- * 5-bosqichda faqat **naqd savdo**: `kind` uchun `CASH` dan boshqa qiymat
- * qabul qilinmaydi. Nasiya (`INSTALLMENT`) 7-bosqichda shartnoma va
- * to'lov jadvali bilan birga keladi — usiz `INSTALLMENT` savdo qarzni
- * hech qayerda qoldirmasdan "yo'qolgan" bo'lardi.
+ * **Nasiya** (§9) 8-bosqichda qo'shildi: `kind = INSTALLMENT` bo'lsa
+ * tasdiqlashda `installment` sharti majburiy va shartnoma o'sha
+ * tranzaksiya ichida yaratiladi (§9.1). Undan oldingi bosqichlarda
+ * `kind` faqat `CASH` bo'la olardi — shartnomasiz nasiya savdo qarzni
+ * hech qayerda qoldirmasdan "yo'qotgan" bo'lardi.
  */
 
 const note = z.string().trim().max(300, 'Izoh 300 belgidan oshmasin').nullable().optional();
@@ -69,7 +71,12 @@ export const createSaleDraftSchema = z
   .object({
     /** §6.1 — naqd savdoda mijoz ixtiyoriy. */
     customerId: uuidString.nullable().optional(),
-    kind: z.literal(SaleKind.CASH).default(SaleKind.CASH),
+    /**
+     * §22 — 8-bosqichdan boshlab nasiya ham mumkin. Shartnoma savdo
+     * TASDIQLANGANDA yaratiladi (§9.1), ya'ni qoralamada `kind` faqat
+     * niyatni bildiradi va hech narsaga ta'sir qilmaydi.
+     */
+    kind: z.enum(SaleKind).default(SaleKind.CASH),
     /** §1.9 — bitta savdo, bitta valyuta. */
     currency: z.enum(Currency),
     /** §7.5 — 7 kungacha orqaga; chegara serverda, do'kon zonasi bo'yicha. */
@@ -128,6 +135,13 @@ export const confirmSaleSchema = z
     payments: z.array(salePaymentInputSchema).min(1, "Kamida bitta to'lov kiriting").max(10),
     /** Tasdiqlash paytida sanani oxirgi marta to'g'irlash mumkin (§7.5). */
     soldAt: isoDateTime.optional(),
+    /**
+     * §9.1 — nasiya sharti. `kind = INSTALLMENT` bo'lsa MAJBURIY va
+     * shartnoma o'sha tranzaksiya ichida yaratiladi; naqd savdoda esa
+     * bo'lmasligi kerak. Ikkalasini ham server tekshiradi — sxema
+     * savdoning turini ko'rmaydi (u qoralamada saqlangan).
+     */
+    installment: installmentPlanSchema.optional(),
   })
   .strict();
 export type ConfirmSaleInput = z.infer<typeof confirmSaleSchema>;
