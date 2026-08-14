@@ -15,15 +15,19 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   UserRole,
+  cancelSaleSchema,
   confirmSaleSchema,
   createSaleDraftSchema,
+  returnSaleSchema,
   saleQuerySchema,
   updateSaleDraftSchema,
 } from '@hisobai/contracts';
 import type {
+  CancelSaleInput,
   ConfirmSaleInput,
   CreateSaleDraftInput,
   Page,
+  ReturnSaleInput,
   SaleDto,
   SaleQuery,
   SaleSummaryDto,
@@ -36,6 +40,7 @@ import { readPrecondition } from '../common/optimistic-lock';
 import type { AuthedRequest, RequestUser } from '../common/request-user';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { SaleConfirmationService } from './sale-confirmation.service';
+import { SaleReversalService } from './sale-reversal.service';
 import { SalesService } from './sales.service';
 
 /**
@@ -46,8 +51,9 @@ import { SalesService } from './sales.service';
  * bosadi va ikkinchi savdo ombordan yana bitta telefonni yechib
  * ketardi (§17.6).
  *
- * `POST /sales/:id/return` va `/cancel` bu yerda **yo'q** — ular
- * qaytarish moduli bilan 6-bosqichda keladi (`ARCHITECTURE.md` §6).
+ * `POST /sales/:id/return` va `/cancel` — 7-bosqich (§8, §10). Umumiy
+ * `POST /sales/:id/reverse` ataylab yo'q (`ARCHITECTURE.md` §14.5):
+ * qaytarish va bekor qilish biznes ma'nosi jihatidan boshqa amallar.
  */
 @ApiTags('sales')
 @Controller('sales')
@@ -55,6 +61,7 @@ export class SalesController {
   constructor(
     private readonly sales: SalesService,
     private readonly confirmation: SaleConfirmationService,
+    private readonly reversal: SaleReversalService,
   ) {}
 
   @Get()
@@ -125,5 +132,37 @@ export class SalesController {
     @Req() request: AuthedRequest,
   ): Promise<SaleDto> {
     return this.confirmation.confirm(id, body, user, request.ip ?? null);
+  }
+
+  /**
+   * §8 — mahsulot qaytib keldi. Javob **asl savdo** kartasi: qaytarish
+   * uni o'zgartiradi (status, qaytarilgan miqdor) va foydalanuvchi
+   * o'sha ekranda qoladi.
+   */
+  @Post(':id/return')
+  @Roles(UserRole.SHOP_ADMIN)
+  @Idempotent()
+  @ApiOperation({ summary: 'Qaytarish — qisman ham (§8.4)' })
+  returnSale(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(returnSaleSchema)) body: ReturnSaleInput,
+    @CurrentUser() user: RequestUser,
+    @Req() request: AuthedRequest,
+  ): Promise<SaleDto> {
+    return this.reversal.returnSale(id, body, user, request.ip ?? null);
+  }
+
+  /** §16.5 — faqat oxirgi 7 kun ichidagi savdolarga. */
+  @Post(':id/cancel')
+  @Roles(UserRole.SHOP_ADMIN)
+  @Idempotent()
+  @ApiOperation({ summary: 'Bekor qilish (§16.5)' })
+  cancel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(cancelSaleSchema)) body: CancelSaleInput,
+    @CurrentUser() user: RequestUser,
+    @Req() request: AuthedRequest,
+  ): Promise<SaleDto> {
+    return this.reversal.cancel(id, body, user, request.ip ?? null);
   }
 }

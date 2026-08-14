@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { CashModule } from '../cash/cash.module';
 import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 import { SaleConfirmationService } from './sale-confirmation.service';
+import { SaleReversalService } from './sale-reversal.service';
 import { SalesController } from './sales.controller';
 import { SalesService } from './sales.service';
 
@@ -18,7 +19,7 @@ import { SalesService } from './sales.service';
 @Module({
   imports: [CashModule, ExchangeRatesModule],
   controllers: [SalesController],
-  providers: [SalesService, SaleConfirmationService],
+  providers: [SalesService, SaleConfirmationService, SaleReversalService],
   exports: [SalesService],
 })
 export class SalesModule {}

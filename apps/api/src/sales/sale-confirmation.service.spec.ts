@@ -102,6 +102,9 @@ function makeService(options: Options = {}) {
     updatedAt: new Date('2026-08-12T08:00:00.000Z'),
     items,
     payments: [],
+    // §17.4 — tasdiqlashda teskari qator bo'lishi mumkin emas, lekin
+    // `SALE_INCLUDE` uni baribir yuklaydi va mapper ustidan yuradi
+    reversals: [],
   };
 
   const payments: Record<string, unknown>[] = [];

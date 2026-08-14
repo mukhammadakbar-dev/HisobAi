@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-import { Currency, PaymentMethod, SaleKind, SaleStatus } from '../enums';
-import type { PaymentStatus } from '../enums';
+import { Currency, PaymentMethod, ReversalReason, SaleKind, SaleStatus } from '../enums';
+import type { PaymentStatus, ReversalKind } from '../enums';
 import {
   calendarDate,
   enumList,
@@ -132,6 +132,66 @@ export const confirmSaleSchema = z
   .strict();
 export type ConfirmSaleInput = z.infer<typeof confirmSaleSchema>;
 
+/**
+ * Qaytariladigan qator (§8.4 — qisman qaytarish).
+ *
+ * `quantity` **majburiy va aniq**: "hammasini qaytar" degan qisqartma
+ * ataylab yo'q. Miqdorli mahsulotda qisman qaytarish odatiy hol, ya'ni
+ * standart qiymat qo'yilsa u ko'pincha noto'g'ri bo'lardi — foydalanuvchi
+ * esa buni faqat ombor qoldig'i o'zgargandan keyin sezardi.
+ */
+export const returnSaleItemSchema = z
+  .object({
+    saleItemId: uuidString,
+    quantity: z.number().int().positive().max(999),
+  })
+  .strict();
+export type ReturnSaleItemInput = z.infer<typeof returnSaleItemSchema>;
+
+/**
+ * Qaytarish (§8) — mahsulot haqiqatan qaytib keldi.
+ *
+ * Sana **yuborilmaydi**: §8.7 qaytarish o'z sanasiga yozilishini talab
+ * qiladi, ya'ni uni tanlash imkoniyati o'sha talabni buzish yo'lidan
+ * boshqa narsa emas. Shu tufayli §8.8 muddat cheklovini ham kerak
+ * qilmaydi — o'tgan davr aylanmasi baribir o'zgarmaydi.
+ *
+ * `reason` majburiy (§8.6) va `OTHER` tanlansa `note` ham talab qilinadi:
+ * "boshqa" degan yozuv oradan bir oy o'tib hech narsani tushuntirmaydi.
+ */
+export const returnSaleSchema = z
+  .object({
+    items: z.array(returnSaleItemSchema).min(1, 'Kamida bitta qator tanlang').max(100),
+    reason: z.enum(ReversalReason),
+    note,
+  })
+  .strict()
+  .refine((value) => value.reason !== ReversalReason.OTHER || Boolean(value.note?.trim()), {
+    message: '"Boshqa" sababda izoh yozing',
+    path: ['note'],
+  });
+export type ReturnSaleInput = z.infer<typeof returnSaleSchema>;
+
+/**
+ * Bekor qilish (§8, §16.5) — savdo xato kiritilgan, jismonan hech narsa
+ * bo'lmagan.
+ *
+ * Qatorlar tanlanmaydi: qisman bekor qilish degan tushuncha yo'q. "Savdo
+ * umuman bo'lmagandek" degani — hammasi yoki hech narsa; yarmi bekor
+ * qilingan savdo esa aynan qaytarishning o'zi bo'lardi.
+ */
+export const cancelSaleSchema = z
+  .object({
+    reason: z.enum(ReversalReason),
+    note,
+  })
+  .strict()
+  .refine((value) => value.reason !== ReversalReason.OTHER || Boolean(value.note?.trim()), {
+    message: '"Boshqa" sababda izoh yozing',
+    path: ['note'],
+  });
+export type CancelSaleInput = z.infer<typeof cancelSaleSchema>;
+
 export const saleQuerySchema = z
   .object({
     status: enumList(SaleStatus, 'Kamida bitta holat tanlang').optional(),
@@ -187,6 +247,14 @@ export interface SaleSummaryDto {
   customerId: string | null;
   customerName: string | null;
   itemCount: number;
+  /**
+   * §17.4 — teskari yozuv ham oddiy `sales` qatori, ya'ni u ro'yxatga
+   * ham tushadi. Bu maydonsiz ro'yxatda manfiy summali "savdo" paydo
+   * bo'lardi va uning nima ekani faqat raqamdagi `-R1` dan taxmin
+   * qilinardi.
+   */
+  reversesSaleId: string | null;
+  reversalKind: ReversalKind | null;
 }
 
 export interface SaleDto extends SaleSummaryDto {
@@ -201,6 +269,16 @@ export interface SaleDto extends SaleSummaryDto {
    */
   profit: string | null;
   confirmedAt: string | null;
+  /** §8.6 — sabab teskari yozuvning o'zida turadi; asl savdoda `null`. */
+  reversalReason: ReversalReason | null;
+  reversalNote: string | null;
+  /**
+   * Shu savdo ustiga yozilgan teskari qatorlar (§17.4). Asl savdoning
+   * `status` va `returnedQuantity` si — ulardan hosila kesh, ya'ni
+   * karta "nima uchun qaytarilgan" degan savolga shu ro'yxatdan javob
+   * beradi, keshdan emas.
+   */
+  reversals: SaleSummaryDto[];
   createdAt: string;
   updatedAt: string;
 }

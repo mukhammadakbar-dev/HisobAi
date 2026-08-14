@@ -21,6 +21,18 @@ export const SALE_INCLUDE = {
     include: { cashAccount: { select: { id: true, name: true } } },
     orderBy: { createdAt: 'asc' },
   },
+  /**
+   * §17.4 — teskari qatorlar. Kartadagi "qaytarilgan" ma'lumoti
+   * `status` keshidan emas, aynan shu ro'yxatdan chiqadi: kesh nima
+   * qaytarilganini ham, nega qaytarilganini ham ayta olmaydi.
+   */
+  reversals: {
+    include: {
+      customer: { select: { id: true, fullName: true } },
+      _count: { select: { items: true } },
+    },
+    orderBy: { createdAt: 'asc' },
+  },
 } satisfies Prisma.SaleInclude;
 
 export const SALE_SUMMARY_INCLUDE = {
@@ -43,6 +55,8 @@ export function toSummaryDto(row: SaleSummaryRow): SaleSummaryDto {
     customerId: row.customerId,
     customerName: row.customer?.fullName ?? null,
     itemCount: row._count.items,
+    reversesSaleId: row.reversesSaleId,
+    reversalKind: row.reversalKind,
   };
 }
 
@@ -61,6 +75,11 @@ export function toSaleDto(
     customerId: row.customerId,
     customerName: row.customer?.fullName ?? null,
     itemCount: row.items.length,
+    reversesSaleId: row.reversesSaleId,
+    reversalKind: row.reversalKind,
+    reversalReason: row.reversalReason,
+    reversalNote: row.reversalNote,
+    reversals: row.reversals.map(toSummaryDto),
     // §16.1 — kurs snapshot tasdiqlashda yoziladi. Qoralamada ustun
     // `0` bo'lib turadi (NOT NULL), lekin DTO'da `null`: "hali
     // aniqlanmagan" ni nol kurs deb ko'rsatish yolg'on bo'lardi

@@ -420,6 +420,53 @@ export class CashEntriesService {
     });
   }
 
+  /**
+   * Savdo qaytarilganda/bekor qilinganda pulning kassadan chiqishi
+   * (§8, §11.7).
+   *
+   * **Chiqim aynan to'lov tushgan hisobdan** bo'ladi va aynan o'sha
+   * valyutada: naqd olingan pul naqd qaytadi, kartaga tushgani kartadan.
+   * Aks holda §11.1 buzilardi — kassa yashigidagi pulni sanab tizim
+   * bilan solishtirib bo'lmay qolardi.
+   *
+   * `sourceType = REVERSAL` (§11.7): bu yozuv qo'lda tahrirlanmaydi va
+   * hisobotda daromadning kamayishi sifatida emas, teskari yozuv
+   * sifatida ko'rinadi.
+   *
+   * `reversesEntryId` ATAYLAB to'ldirilmaydi: bitta to'lov bitta kassa
+   * kirimini tug'diradi, lekin qisman qaytarishda chiqim undan kichik
+   * bo'ladi va "bu yozuv anavini bekor qiladi" degan bog'lanish yolg'on
+   * bo'lardi. Bog'lanish `paymentId` orqali saqlanadi — u ikkala
+   * yozuvda ham bir xil.
+   */
+  async createReversal(
+    tx: Prisma.TransactionClient,
+    params: {
+      accountId: string;
+      paymentId: string;
+      /** Teskari `sales` qatori (§17.4) — yozuvning manbasi. */
+      reversalId: string;
+      amount: string;
+      currency: Currency;
+      occurredAt: Date;
+      actorId: string | null;
+    },
+  ): Promise<void> {
+    await tx.cashEntry.create({
+      data: {
+        accountId: params.accountId,
+        direction: CashDirection.OUT,
+        amount: new Prisma.Decimal(params.amount),
+        currency: params.currency,
+        occurredAt: params.occurredAt,
+        sourceType: CashSourceType.REVERSAL,
+        sourceId: params.reversalId,
+        paymentId: params.paymentId,
+        createdById: params.actorId,
+      },
+    });
+  }
+
   // ──────────────────────────── Yordamchilar ────────────────────────────
 
   /**
