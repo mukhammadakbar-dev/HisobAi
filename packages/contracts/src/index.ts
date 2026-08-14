@@ -17,5 +17,6 @@ export * from './schemas/installment';
 export * from './schemas/inventory';
 export * from './schemas/payment';
 export * from './schemas/platform';
+export * from './schemas/report';
 export * from './schemas/sale';
 export * from './schemas/shop';

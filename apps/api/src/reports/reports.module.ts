@@ -5,6 +5,7 @@ import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 import { ShopsModule } from '../shops/shops.module';
 import { DashboardService } from './dashboard.service';
 import { ReportsController } from './reports.controller';
+import { ReportsService } from './reports.service';
 
 /**
  * Hisobotlar (`DECISIONS.md` §14).
@@ -16,6 +17,6 @@ import { ReportsController } from './reports.controller';
 @Module({
   imports: [CashModule, ExchangeRatesModule, ShopsModule],
   controllers: [ReportsController],
-  providers: [DashboardService],
+  providers: [DashboardService, ReportsService],
 })
 export class ReportsModule {}
