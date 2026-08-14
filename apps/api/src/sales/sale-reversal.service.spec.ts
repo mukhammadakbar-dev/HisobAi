@@ -1,4 +1,5 @@
 import {
+  ContractStatus,
   Currency,
   ErrorCode,
   InventoryStatus,
@@ -75,6 +76,10 @@ interface Options {
   reversalCount?: number;
   /** Ombor birligi allaqachon boshqa holatda — shartli `UPDATE` 0 qaytaradi. */
   restockCount?: number;
+  /** To'lov id → shu to'lovdan ilgari qaytarilgan pul (to'lov valyutasida). */
+  alreadyRefunded?: Record<string, string>;
+  /** Savdoga bog'langan nasiya shartnomasi (§17.18). */
+  contract?: { id: string; status: ContractStatus } | null;
 }
 
 function makeService(options: Options = {}) {
@@ -153,6 +158,7 @@ function makeService(options: Options = {}) {
   const paymentUpdates: { id: string; data: Record<string, unknown> }[] = [];
   const inventoryUpdates: { where: Record<string, unknown>; data: Record<string, unknown> }[] = [];
   const batchUpdates: { where: Record<string, unknown>; data: Record<string, unknown> }[] = [];
+  const contractUpdates: Record<string, unknown>[] = [];
 
   const tx = {
     sale: {
@@ -199,6 +205,27 @@ function makeService(options: Options = {}) {
         return Promise.resolve({});
       }),
     },
+    /**
+     * Shu to'lovdan ILGARI qaytarilgan pul (§11.1). Dublyor uni
+     * fiksturadan oladi: aynan shu qiymat ikkinchi qisman qaytarishning
+     * chegarasini belgilaydi.
+     */
+    cashEntry: {
+      aggregate: vi.fn((args: { where: { paymentId: string } }) =>
+        Promise.resolve({
+          _sum: {
+            amount: new Prisma.Decimal(options.alreadyRefunded?.[args.where.paymentId] ?? '0'),
+          },
+        }),
+      ),
+    },
+    installmentContract: {
+      findUnique: vi.fn(() => Promise.resolve(options.contract ?? null)),
+      update: vi.fn((args: { data: Record<string, unknown> }) => {
+        contractUpdates.push(args.data);
+        return Promise.resolve({});
+      }),
+    },
   };
 
   const prisma = {
@@ -239,6 +266,7 @@ function makeService(options: Options = {}) {
     paymentUpdates,
     inventoryUpdates,
     batchUpdates,
+    contractUpdates,
     audit,
   };
 }
@@ -744,6 +772,188 @@ describe('SaleReversalService', () => {
         note: 'Ekran',
         reversalNumber: '2026-00147-R1',
       });
+    });
+  });
+
+  /**
+   * Code-review topilmalari (2026-08-14). Har uchalasi ham jimgina
+   * noto'g'ri pul yoki qarz qoldirardi va ilova ishlashda davom etardi.
+   */
+  describe('takroriy qisman qaytarish', () => {
+    it('ilgari qaytarilgan pul hisobga olinadi — hisobdan ortiqcha chiqmaydi', async () => {
+      // To'lov 600 000 bo'lgan hisobdan 500 000 allaqachon qaytgan:
+      // ikkinchi qaytarishda undan faqat 100 000 qolgan
+      const { service, cashOut } = makeService({
+        items: [
+          {
+            id: 'item-1',
+            quantity: 3,
+            inventoryItemId: null,
+            batchId: 'batch-1',
+            unitPrice: '500000',
+          },
+        ],
+        payments: [
+          { id: 'payment-1', paidAmount: '600000', appliedAmount: '600000' },
+          { id: 'payment-2', paidAmount: '900000', appliedAmount: '900000' },
+        ],
+        alreadyRefunded: { 'payment-1': '500000' },
+      });
+
+      await returnScoped(
+        service,
+        'sale-1',
+        { ...REASON, items: [{ saleItemId: 'item-1', quantity: 1 }] },
+        ACTOR,
+        null,
+      );
+
+      // 500 000 dan: 100 000 birinchi hisobdan (qolgani shu), 400 000 ikkinchisidan
+      expect(cashOut).toEqual([
+        expect.objectContaining({ paymentId: 'payment-1', amount: '100000' }),
+        expect.objectContaining({ paymentId: 'payment-2', amount: '400000' }),
+      ]);
+    });
+
+    it('puli butunlay qaytgan to‘lov REVERSED bo‘ladi', async () => {
+      const { service, paymentUpdates } = makeService({
+        items: [
+          {
+            id: 'item-1',
+            quantity: 3,
+            inventoryItemId: null,
+            batchId: 'batch-1',
+            unitPrice: '500000',
+          },
+        ],
+        payments: [{ id: 'payment-1', paidAmount: '600000', appliedAmount: '600000' }],
+        alreadyRefunded: { 'payment-1': '100000' },
+      });
+
+      await returnScoped(
+        service,
+        'sale-1',
+        { ...REASON, items: [{ saleItemId: 'item-1', quantity: 1 }] },
+        ACTOR,
+        null,
+      );
+
+      expect(paymentUpdates).toEqual([
+        { id: 'payment-1', data: { status: PaymentStatus.REVERSED } },
+      ]);
+    });
+
+    it('qisman qaytarishda kutilayotgan o‘tkazma RAD ETILMAYDI', async () => {
+      const { service, paymentUpdates } = makeService({
+        items: [
+          {
+            id: 'item-1',
+            quantity: 3,
+            inventoryItemId: null,
+            batchId: 'batch-1',
+            unitPrice: '500000',
+          },
+        ],
+        payments: [{ id: 'payment-1', status: PaymentStatus.PENDING_VERIFICATION }],
+      });
+
+      await returnScoped(
+        service,
+        'sale-1',
+        { ...REASON, items: [{ saleItemId: 'item-1', quantity: 1 }] },
+        ACTOR,
+        null,
+      );
+
+      // Savdo hali kuchda — pul kelganda tasdiqlanadigan qator qolishi kerak
+      expect(paymentUpdates).toHaveLength(0);
+    });
+
+    it('to‘liq qaytarishda kutilayotgan o‘tkazma rad etiladi', async () => {
+      const { service, paymentUpdates } = makeService({
+        payments: [{ id: 'payment-1', status: PaymentStatus.PENDING_VERIFICATION }],
+      });
+
+      await returnScoped(
+        service,
+        'sale-1',
+        { ...REASON, items: [{ saleItemId: 'item-1', quantity: 1 }] },
+        ACTOR,
+        null,
+      );
+
+      expect(paymentUpdates).toEqual([
+        { id: 'payment-1', data: { status: PaymentStatus.REJECTED } },
+      ]);
+    });
+  });
+
+  /** §17.18 — savdo qaytarilsa/bekor qilinsa shartnoma BEKOR QILINGAN. */
+  describe('nasiya shartnomasi (§17.18)', () => {
+    it('to‘liq qaytarishda shartnoma bekor qilinadi', async () => {
+      const { service, contractUpdates } = makeService({
+        contract: { id: 'contract-1', status: ContractStatus.ACTIVE },
+      });
+
+      await returnScoped(
+        service,
+        'sale-1',
+        { ...REASON, items: [{ saleItemId: 'item-1', quantity: 1 }] },
+        ACTOR,
+        null,
+      );
+
+      expect(contractUpdates[0]).toMatchObject({ status: ContractStatus.CANCELLED });
+    });
+
+    it('bekor qilishda ham shartnoma bekor qilinadi', async () => {
+      const { service, contractUpdates } = makeService({
+        contract: { id: 'contract-1', status: ContractStatus.ACTIVE },
+      });
+
+      await cancelScoped(
+        service,
+        'sale-1',
+        { reason: ReversalReason.ENTRY_ERROR, note: null },
+        ACTOR,
+        null,
+      );
+
+      expect(contractUpdates[0]).toMatchObject({ status: ContractStatus.CANCELLED });
+    });
+
+    // §16.12 hali yozilmagan — qarzni jimgina o'zgartirmasdan qoldirish
+    // noto'g'ri qarz qoldirardi, shuning uchun amal ochiq rad etiladi
+    it('nasiya savdoni qisman qaytarish hozircha rad etiladi', async () => {
+      const { service } = makeService({
+        items: [{ id: 'item-1', quantity: 3, inventoryItemId: null, batchId: 'batch-1' }],
+        contract: { id: 'contract-1', status: ContractStatus.ACTIVE },
+      });
+
+      await expectAppException(
+        returnScoped(
+          service,
+          'sale-1',
+          { ...REASON, items: [{ saleItemId: 'item-1', quantity: 1 }] },
+          ACTOR,
+          null,
+        ),
+        ErrorCode.VALIDATION_FAILED,
+      );
+    });
+
+    it('shartnomasiz savdoda hech narsa o‘zgarmaydi', async () => {
+      const { service, contractUpdates } = makeService();
+
+      await returnScoped(
+        service,
+        'sale-1',
+        { ...REASON, items: [{ saleItemId: 'item-1', quantity: 1 }] },
+        ACTOR,
+        null,
+      );
+
+      expect(contractUpdates).toHaveLength(0);
     });
   });
 });

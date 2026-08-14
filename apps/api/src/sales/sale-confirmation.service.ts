@@ -498,6 +498,18 @@ export class SaleConfirmationService {
       );
     }
 
+    // Jadval birinchi qatori savdo sanasidan oldin bo'lmasligi kerak —
+    // o'tmishdagi to'lov muddati darhol "kechikkan" bo'lib ko'rinardi (§9.8)
+    const firstDue = plan.schedule[0]?.dueDate;
+    if (firstDue !== undefined && firstDue < businessDay(soldAt, this.timeZone)) {
+      throw AppException.rule(
+        ErrorCode.VALIDATION_FAILED,
+        "Birinchi to'lov muddati savdo sanasidan oldin bo'lmasin.",
+        'installment.schedule',
+        { firstDueDate: firstDue },
+      );
+    }
+
     const contract = await tx.installmentContract.create({
       data: {
         saleId: sale.id,
@@ -519,18 +531,6 @@ export class SaleConfirmationService {
         },
       },
     });
-
-    // Jadval birinchi qatori savdo sanasidan oldin bo'lmasligi kerak —
-    // o'tmishdagi to'lov muddati darhol "kechikkan" bo'lib ko'rinardi (§9.8)
-    const firstDue = plan.schedule[0]?.dueDate;
-    if (firstDue !== undefined && firstDue < businessDay(soldAt, this.timeZone)) {
-      throw AppException.rule(
-        ErrorCode.VALIDATION_FAILED,
-        "Birinchi to'lov muddati savdo sanasidan oldin bo'lmasin.",
-        'installment.schedule',
-        { firstDueDate: firstDue },
-      );
-    }
 
     return { id: contract.id, principal };
   }

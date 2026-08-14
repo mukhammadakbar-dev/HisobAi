@@ -71,7 +71,17 @@ export function markupFromPercent(
  */
 export function addMonthsClamped(date: string, months: number): string {
   const [year, month, day] = date.split('-').map((part) => Number.parseInt(part, 10));
-  if (year === undefined || month === undefined || day === undefined) {
+  // `undefined` tekshiruvi YETARLI EMAS: `Number.parseInt('XX', 10)`
+  // `NaN` beradi va u `undefined` emas — natijada funksiya jimgina
+  // "NaN-NaN-NaN" qaytarardi va u jadvalga sana bo'lib tushardi
+  if (
+    year === undefined ||
+    month === undefined ||
+    day === undefined ||
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day)
+  ) {
     throw new TypeError(`Sana YYYY-MM-DD ko'rinishida bo'lsin: ${date}`);
   }
 

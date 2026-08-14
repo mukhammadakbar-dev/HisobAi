@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  CashSourceType,
+  ContractStatus,
   ErrorCode,
   InventoryStatus,
   PaymentStatus,
@@ -21,6 +23,7 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { CashEntriesService } from '../cash/cash-entries.service';
 import { AppException } from '../common/app.exception';
+import { isUniqueViolation } from '../common/prisma-errors';
 import { businessDay } from '../common/dates';
 import type { RequestUser } from '../common/request-user';
 import type { Env } from '../config/env';
@@ -133,41 +136,59 @@ export class SaleReversalService {
           sale.currency,
         );
 
-        const reversal = await tx.sale.create({
-          data: {
-            number,
-            customerId: sale.customerId,
-            kind: sale.kind,
-            status: SaleStatus.REVERSAL,
-            currency: sale.currency,
-            // §1.8, §8.1 — ASL kurs. Bugungi kurs olinsa, savdo nolga
-            // chiqmasdan soxta kurs foydasi/zarari paydo bo'lardi
-            exchangeRate: sale.exchangeRate,
-            total: new Prisma.Decimal(returnedTotal).negated(),
-            soldAt: occurredAt,
-            confirmedAt: createdAt,
-            createdById: actor.id,
-            reversesSaleId: sale.id,
-            reversalKind: kind,
-            reversalReason: reason,
-            reversalNote: note,
-            items: {
-              create: lines.map((line) => ({
-                productId: line.item.productId,
-                inventoryItemId: line.item.inventoryItemId,
-                batchId: line.item.batchId,
-                quantity: line.quantity,
-                unitPrice: line.item.unitPrice,
-                // §7.11 — tannarx ham ko'chiriladi: qaytgan mahsulotning
-                // foydasi asl savdodagi tannarx bilan teskari yozilmasa,
-                // hisobotda qaytarish foyda keltirgandek ko'rinardi
-                costSnapshot: line.item.costSnapshot,
-                costCurrency: line.item.costCurrency,
-                suggestedPriceSnapshot: line.item.suggestedPriceSnapshot,
-              })),
+        /**
+         * Ikki parallel qaytarish bir xil `-R1` raqamini hisoblashi
+         * mumkin: raqam tranzaksiya boshida o'qilgan qatorlardan
+         * chiqadi va `READ COMMITTED` da ikkinchisi birinchisining
+         * hali yozilmagan qatorini ko'rmaydi. `@@unique([shopId, number])`
+         * buni baribir to'sadi — bu yerda u tushunarli xatoga
+         * aylantiriladi, aks holda foydalanuvchi 500 ni ko'rardi.
+         */
+        const reversal = await tx.sale
+          .create({
+            data: {
+              number,
+              customerId: sale.customerId,
+              kind: sale.kind,
+              status: SaleStatus.REVERSAL,
+              currency: sale.currency,
+              // §1.8, §8.1 — ASL kurs. Bugungi kurs olinsa, savdo nolga
+              // chiqmasdan soxta kurs foydasi/zarari paydo bo'lardi
+              exchangeRate: sale.exchangeRate,
+              total: new Prisma.Decimal(returnedTotal).negated(),
+              soldAt: occurredAt,
+              confirmedAt: createdAt,
+              createdById: actor.id,
+              reversesSaleId: sale.id,
+              reversalKind: kind,
+              reversalReason: reason,
+              reversalNote: note,
+              items: {
+                create: lines.map((line) => ({
+                  productId: line.item.productId,
+                  inventoryItemId: line.item.inventoryItemId,
+                  batchId: line.item.batchId,
+                  quantity: line.quantity,
+                  unitPrice: line.item.unitPrice,
+                  // §7.11 — tannarx ham ko'chiriladi: qaytgan mahsulotning
+                  // foydasi asl savdodagi tannarx bilan teskari yozilmasa,
+                  // hisobotda qaytarish foyda keltirgandek ko'rinardi
+                  costSnapshot: line.item.costSnapshot,
+                  costCurrency: line.item.costCurrency,
+                  suggestedPriceSnapshot: line.item.suggestedPriceSnapshot,
+                })),
+              },
             },
-          },
-        });
+          })
+          .catch((error: unknown) => {
+            if (isUniqueViolation(error)) {
+              throw AppException.conflict(
+                ErrorCode.SALE_ALREADY_RETURNED,
+                "Bu savdo ustida ayni paytda boshqa qaytarish bajarilmoqda — qaytadan urinib ko'ring.",
+              );
+            }
+            throw error;
+          });
 
         // 2 — ombor
         await this.restock(tx, {
@@ -196,8 +217,15 @@ export class SaleReversalService {
           amount: returnedTotal,
           reversalId: reversal.id,
           occurredAt,
+          full: status !== SaleStatus.PARTIALLY_RETURNED,
           actor,
         });
+
+        // §17.18 — savdo qaytarilsa yoki bekor qilinsa shartnoma BEKOR
+        // QILINGAN bo'ladi. Usiz mijoz "umuman bo'lmagan" savdo uchun
+        // qarzdor bo'lib qolardi: telefon omborga qaytadi, jadval esa
+        // to'lovni kutib turaveradi
+        await this.cancelContract(tx, sale, status, actor);
 
         // 5 — audit (§8.6 — sabab audit'ga yoziladi)
         await this.audit.record(tx, actor.shopId, {
@@ -323,11 +351,6 @@ export class SaleReversalService {
    * qo'yishi mumkin edi va §11.1 ("karta puli kassa yashigida yo'q")
    * buzilardi.
    *
-   * Faqat `CONFIRMED` to'lovlar qamraladi: `PENDING_VERIFICATION`
-   * o'tkazma kassaga umuman tushmagan (§17.2), ya'ni undan qaytariladigan
-   * pul ham yo'q. Bunday to'lov shunchaki `REJECTED` bo'ladi — pul
-   * kelmagan, savdo esa endi mavjud emas.
-   *
    * To'lovlar **ketma-ket** qamraladi va qisman qaytarishda summa
    * tugaganda to'xtaydi. To'liq qaytarishda bu barcha to'lovlarni aniq
    * nolga chiqaradi (§8.1). Proporsional bo'lish ataylab tanlanmadi: u
@@ -335,9 +358,22 @@ export class SaleReversalService {
    * solishtirishni imkonsiz qilardi — §11.3 da nomlangan muammoning
    * o'zi.
    *
-   * §8.5 nasiyada pulni qaytarish/qaytarmaslikni **egaga** qoldiradi;
-   * bu bosqichda savdo faqat naqd bo'lgani uchun (§20.1) bunday tanlov
-   * hali paydo bo'lmaydi.
+   * **Har to'lovdan qancha pul allaqachon qaytgani hisobga olinadi.**
+   * Manba — o'sha to'lovga bog'langan `REVERSAL` kassa yozuvlari: ular
+   * pul kassadan qachon va qancha chiqqanini aniq biladi. Usiz ikkinchi
+   * qisman qaytarish yana BIRINCHI to'lovdan boshlab hisoblardi va
+   * hisobdan tushgan pul unga umuman tushmagan summadan oshib ketardi —
+   * kassani sanab solishtirish imkonsiz bo'lardi (aynan §11.1 buzilardi).
+   *
+   * Chegara **to'lov valyutasida** hisoblanadi, savdo valyutasida emas:
+   * kassadan chiqadigan haqiqiy pul ham shu valyutada va §11.1 uchun
+   * ahamiyatlisi aynan shu.
+   *
+   * `PENDING_VERIFICATION` o'tkazma kassaga umuman tushmagan (§17.2),
+   * ya'ni undan qaytariladigan pul yo'q. U faqat savdo TO'LIQ qaytarilsa
+   * `REJECTED` bo'ladi: qisman qaytarishda savdo hali kuchda va kelayotgan
+   * pulni rad etish uni yo'qotardi — pul kelganda tasdiqlanadigan to'lov
+   * qatori qolmasdi.
    */
   private async refund(
     tx: Prisma.TransactionClient,
@@ -346,53 +382,75 @@ export class SaleReversalService {
       amount: string;
       reversalId: string;
       occurredAt: Date;
+      /** Savdo butunlay qaytdimi — kutilayotgan o'tkazmaning taqdiri shunga bog'liq. */
+      full: boolean;
       actor: RequestUser;
     },
   ): Promise<RefundLine[]> {
-    const { sale, amount, reversalId, occurredAt, actor } = params;
+    const { sale, amount, reversalId, occurredAt, full, actor } = params;
     const refunds: RefundLine[] = [];
 
     let remaining = new Prisma.Decimal(amount);
 
     for (const payment of sale.payments) {
-      if (remaining.lessThanOrEqualTo(0)) break;
-
       if (payment.status === PaymentStatus.PENDING_VERIFICATION) {
-        await tx.payment.update({
-          where: { id: payment.id },
-          data: { status: PaymentStatus.REJECTED },
-        });
+        if (full) {
+          await tx.payment.update({
+            where: { id: payment.id },
+            data: { status: PaymentStatus.REJECTED },
+          });
+        }
         continue;
       }
       if (payment.status !== PaymentStatus.CONFIRMED) continue;
+      if (remaining.lessThanOrEqualTo(0)) continue;
 
-      // `appliedAmount` — savdo valyutasidagi qiymat, ya'ni qaytariladigan
-      // summa bilan bir xil o'lchovda. Haqiqiy pul esa `paidCurrency` da
-      // chiqadi, shuning uchun ulush asl kurs bo'yicha aylantiriladi (§8.1)
-      const covered = Prisma.Decimal.min(remaining, payment.appliedAmount);
-      remaining = remaining.minus(covered);
+      // Shu to'lovdan ilgari qaytarilgan pul (oldingi qisman qaytarishlar)
+      const previous = await tx.cashEntry.aggregate({
+        where: { paymentId: payment.id, sourceType: CashSourceType.REVERSAL },
+        _sum: { amount: true },
+      });
+      const alreadyBack = previous._sum.amount ?? new Prisma.Decimal(0);
+      const availablePaid = payment.paidAmount.minus(alreadyBack);
+      if (availablePaid.lessThanOrEqualTo(0)) continue;
 
-      const isFull = covered.equals(payment.appliedAmount);
-      const paidBack = isFull
-        ? payment.paidAmount.toString()
-        : convert(covered, sale.currency, payment.paidCurrency, payment.exchangeRate);
+      // Qancha qaytarish kerakligini to'lov valyutasiga keltiramiz (§8.1 —
+      // ASL kurs), so'ng shu to'lovda qolgan pul bilan cheklaymiz
+      const wantPaid = new Prisma.Decimal(
+        convert(remaining, sale.currency, payment.paidCurrency, payment.exchangeRate),
+      );
+      const takePaid = Prisma.Decimal.min(wantPaid, availablePaid);
+      if (takePaid.lessThanOrEqualTo(0)) continue;
+
+      // Savdo valyutasidagi ekvivalenti — qolgan summadan aynan shuncha ayriladi
+      const takeApplied = Prisma.Decimal.min(
+        remaining,
+        new Prisma.Decimal(
+          convert(takePaid, payment.paidCurrency, sale.currency, payment.exchangeRate),
+        ),
+      );
+      remaining = remaining.minus(takeApplied);
+
+      const paidBack = roundMoney(takePaid.toString(), payment.paidCurrency);
+      const drained = availablePaid.minus(takePaid).lessThanOrEqualTo(0);
 
       if (payment.cashAccountId) {
         await this.cashEntries.createReversal(tx, {
           accountId: payment.cashAccountId,
           paymentId: payment.id,
           reversalId,
-          amount: roundMoney(paidBack, payment.paidCurrency),
+          amount: paidBack,
           currency: payment.paidCurrency,
           occurredAt,
           actorId: actor.id,
         });
       }
 
-      // Qisman qaytarishda to'lov `CONFIRMED` bo'lib qoladi: pulning bir
-      // qismi mijozda, qolgani do'konda — "yarim qaytarilgan to'lov"
-      // degan holat esa yo'q va uni ixtiro qilish hisobotni buzardi
-      if (isFull) {
+      // To'lov puli BUTUNLAY qaytganda `REVERSED` bo'ladi — bir necha
+      // qisman qaytarishdan keyin ham. Qisman holatda `CONFIRMED` bo'lib
+      // qoladi: "yarim qaytarilgan to'lov" degan status yo'q va uni
+      // ixtiro qilish hisobotni buzardi
+      if (drained) {
         await tx.payment.update({
           where: { id: payment.id },
           data: { status: PaymentStatus.REVERSED },
@@ -401,13 +459,71 @@ export class SaleReversalService {
 
       refunds.push({
         paymentId: payment.id,
-        amount: roundMoney(paidBack, payment.paidCurrency),
+        amount: paidBack,
         currency: payment.paidCurrency,
-        full: isFull,
+        full: drained,
       });
     }
 
     return refunds;
+  }
+
+  // ──────────────────────── Nasiya shartnomasi ────────────────────────
+
+  /**
+   * §17.18 — savdo qaytarilsa yoki bekor qilinsa shartnoma **BEKOR
+   * QILINGAN** bo'ladi.
+   *
+   * Usiz mijoz mavjud bo'lmagan savdo uchun qarzdor bo'lib qolardi:
+   * telefon omborga qaytadi, boshlang'ich to'lov qaytariladi, jadval
+   * esa qolgan to'lovlarni kutib turaveradi va shartnoma qarzdorlar
+   * ro'yxatida ko'rinib turadi.
+   *
+   * **Qisman qaytarish bu yerda to'siladi**, bekor qilinmaydi: §16.12
+   * qarzni qaytgan qatorlar qiymati va unga tegishli proporsional
+   * ustama miqdorida kamaytirishni, kamayishni esa faqat to'lanmagan
+   * jadval qatorlaridan — oxirgisidan boshlab — ayirishni talab qiladi
+   * (§9.10 buzilmasin). Bu alohida hisob va u shu bosqichning keyingi
+   * qismida keladi. Yarim ishlagan variant — qarzni umuman
+   * o'zgartirmaslik — jimgina noto'g'ri qarz qoldirardi, shuning uchun
+   * amal ochiq xato bilan rad etiladi.
+   */
+  private async cancelContract(
+    tx: Prisma.TransactionClient,
+    sale: SaleRow,
+    status: SaleStatus,
+    actor: RequestUser,
+  ): Promise<void> {
+    const contract = await tx.installmentContract.findUnique({
+      where: { saleId: sale.id },
+      select: { id: true, status: true },
+    });
+    if (!contract) return;
+
+    if (status === SaleStatus.PARTIALLY_RETURNED) {
+      throw AppException.conflict(
+        ErrorCode.VALIDATION_FAILED,
+        "Nasiya savdoni qisman qaytarish hali qo'llab-quvvatlanmaydi (§16.12) — savdoni to'liq qaytaring.",
+        { contractId: contract.id },
+      );
+    }
+
+    if (contract.status === ContractStatus.CANCELLED) return;
+
+    await tx.installmentContract.update({
+      where: { id: contract.id },
+      data: { status: ContractStatus.CANCELLED, closedAt: new Date() },
+    });
+
+    await this.audit.record(tx, actor.shopId, {
+      actorId: actor.id,
+      action: 'INSTALLMENT_CONTRACT_CANCELLED',
+      entityType: 'InstallmentContract',
+      entityId: contract.id,
+      before: { status: contract.status },
+      after: { status: ContractStatus.CANCELLED, saleId: sale.id },
+      ip: null,
+    });
   }
 
   // ──────────────────────────── Yordamchilar ────────────────────────────

@@ -132,7 +132,18 @@ export type SalePaymentInput = z.infer<typeof salePaymentInputSchema>;
 
 export const confirmSaleSchema = z
   .object({
-    payments: z.array(salePaymentInputSchema).min(1, "Kamida bitta to'lov kiriting").max(10),
+    /**
+     * §16.3 — nasiyada boshlang'ich to'lov 0 bo'lishi mumkin, ya'ni
+     * to'lovlar ro'yxati BO'SH bo'lishi ham to'g'ri. Sxema darajasida
+     * `min(1)` turganda bunday savdoni tasdiqlab bo'lmasdi: har bir
+     * to'lov musbat bo'lishi shart, yig'indisi esa nolga teng bo'lishi
+     * kerak edi — bajarib bo'lmaydigan shart.
+     *
+     * Naqd savdoda bo'sh ro'yxat baribir o'tmaydi: server yig'indini
+     * savdo summasiga tenglikka tekshiradi (§17.10) va u har doim
+     * noldan katta.
+     */
+    payments: z.array(salePaymentInputSchema).max(10),
     /** Tasdiqlash paytida sanani oxirgi marta to'g'irlash mumkin (§7.5). */
     soldAt: isoDateTime.optional(),
     /**
