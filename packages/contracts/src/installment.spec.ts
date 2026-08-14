@@ -7,7 +7,7 @@ import {
   markupFromPercent,
   principalOf,
 } from './installment';
-import { percentOfMoney, splitMoney, sumMoney } from './money';
+import { percentOfMoney, prorateMoney, splitMoney, sumMoney } from './money';
 
 /**
  * Nasiya hisobi — §9.6 tekshiruvining poydevori.
@@ -75,6 +75,36 @@ describe('percentOfMoney (§9.3)', () => {
 
   it('manfiy foiz rad etiladi', () => {
     expect(() => percentOfMoney('100', '-5', Currency.UZS)).toThrow(TypeError);
+  });
+});
+
+/**
+ * §16.12 — nasiya qisman qaytarilganda ustamaning proporsional ulushi.
+ * Bu qiymat to'g'ridan-to'g'ri mijozning qarzini kamaytiradi, ya'ni
+ * bir tiyinlik xato ham unga tegib o'tadi.
+ */
+describe('prorateMoney (§16.12)', () => {
+  it('uchdan bir qaytsa ustamaning uchdan biri', () => {
+    expect(prorateMoney('2400000', '4000000', '12000000', Currency.UZS)).toBe('800000');
+  });
+
+  it('hammasi qaytsa ustama to‘liq', () => {
+    expect(prorateMoney('2400000', '12000000', '12000000', Currency.UZS)).toBe('2400000');
+  });
+
+  it('hech narsa qaytmasa nol', () => {
+    expect(prorateMoney('2400000', '0', '12000000', Currency.UZS)).toBe('0');
+  });
+
+  // Bo'linmaydigan nisbat: 1/3 ulush yuqoriga yaxlitlanadi
+  it('yarmi yuqoriga yaxlitlanadi (ROUND_HALF_UP)', () => {
+    expect(prorateMoney('1', '1', '2', Currency.UZS)).toBe('1');
+    expect(prorateMoney('10', '1', '3', Currency.UZS)).toBe('3');
+  });
+
+  it('nol maxraj va manfiy qiymat rad etiladi', () => {
+    expect(() => prorateMoney('100', '1', '0', Currency.UZS)).toThrow(TypeError);
+    expect(() => prorateMoney('-100', '1', '2', Currency.UZS)).toThrow(TypeError);
   });
 });
 

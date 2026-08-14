@@ -220,6 +220,43 @@ export function percentOfMoney(
 }
 
 /**
+ * Summaning ulushi: `amount × numerator / denominator` (§16.12).
+ *
+ * Nasiya qisman qaytarilganda qarz **qaytgan qatorlar qiymati va unga
+ * tegishli proporsional ustama** miqdorida kamayadi. Ulush aynan shu
+ * yerda hisoblanadi: `markup × qaytgan_qiymat / naqd_narx`.
+ *
+ * `percentOfMoney` bu ish uchun yaramaydi — u foizni ikkita kasr
+ * xonagacha oladi, nisbat esa ixtiyoriy bo'lishi mumkin (masalan
+ * 1/3). Yaxlitlash ROUND_HALF_UP, hisob butunlay `BigInt` da (§17.14):
+ * bu qiymat to'g'ridan-to'g'ri mijozning qarzini kamaytiradi.
+ */
+export function prorateMoney(
+  amount: MoneyInput,
+  numerator: MoneyInput,
+  denominator: MoneyInput,
+  currency: Currency,
+): string {
+  const scale = scaleOf(currency);
+  const minor = toMinorUnits(roundMoney(amount, currency));
+  const top = toMinorUnits(roundMoney(numerator, currency));
+  const bottom = toMinorUnits(roundMoney(denominator, currency));
+
+  if (bottom === 0n) {
+    throw new TypeError("Nisbatning maxraji nol bo'lishi mumkin emas");
+  }
+  if (minor < 0n || top < 0n || bottom < 0n) {
+    throw new TypeError("Ulush hisobida manfiy qiymat bo'lmaydi");
+  }
+
+  const scaled = minor * top;
+  const quotient = scaled / bottom;
+  const twiceRemainder = (scaled - quotient * bottom) * 2n;
+
+  return fromMinorUnits(twiceRemainder >= bottom ? quotient + 1n : quotient, scale);
+}
+
+/**
  * Valyutalar orasida aylantirish — do'kon kursi bo'yicha (§1.7, §1.9).
  *
  * Nega `contracts` da: bu qoida **ikkala tomonda ham** kerak. Server uni

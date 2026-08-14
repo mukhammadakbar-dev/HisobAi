@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { CashModule } from '../cash/cash.module';
+import { PaymentsModule } from '../payments/payments.module';
 import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 import { SaleConfirmationService } from './sale-confirmation.service';
 import { SaleReversalService } from './sale-reversal.service';
@@ -17,7 +18,7 @@ import { SalesService } from './sales.service';
  * bilan buzilardi.
  */
 @Module({
-  imports: [CashModule, ExchangeRatesModule],
+  imports: [CashModule, ExchangeRatesModule, PaymentsModule],
   controllers: [SalesController],
   providers: [SalesService, SaleConfirmationService, SaleReversalService],
   exports: [SalesService],

@@ -78,8 +78,13 @@ interface Options {
   restockCount?: number;
   /** To'lov id → shu to'lovdan ilgari qaytarilgan pul (to'lov valyutasida). */
   alreadyRefunded?: Record<string, string>;
-  /** Savdoga bog'langan nasiya shartnomasi (§17.18). */
-  contract?: { id: string; status: ContractStatus } | null;
+  /** Savdoga bog'langan nasiya shartnomasi (§17.18, §16.12). */
+  contract?: {
+    id: string;
+    status: ContractStatus;
+    cashPrice?: string;
+    markupAmount?: string;
+  } | null;
 }
 
 function makeService(options: Options = {}) {
@@ -159,6 +164,7 @@ function makeService(options: Options = {}) {
   const inventoryUpdates: { where: Record<string, unknown>; data: Record<string, unknown> }[] = [];
   const batchUpdates: { where: Record<string, unknown>; data: Record<string, unknown> }[] = [];
   const contractUpdates: Record<string, unknown>[] = [];
+  const debtReductions: { amount: string }[] = [];
 
   const tx = {
     sale: {
@@ -220,7 +226,18 @@ function makeService(options: Options = {}) {
       ),
     },
     installmentContract: {
-      findUnique: vi.fn(() => Promise.resolve(options.contract ?? null)),
+      findUnique: vi.fn(() =>
+        Promise.resolve(
+          options.contract
+            ? {
+                ...options.contract,
+                currency: Currency.UZS,
+                cashPrice: new Prisma.Decimal(options.contract.cashPrice ?? '12000000'),
+                markupAmount: new Prisma.Decimal(options.contract.markupAmount ?? '0'),
+              }
+            : null,
+        ),
+      ),
       update: vi.fn((args: { data: Record<string, unknown> }) => {
         contractUpdates.push(args.data);
         return Promise.resolve({});
@@ -248,9 +265,23 @@ function makeService(options: Options = {}) {
   };
   const config = { get: vi.fn(() => 'Asia/Tashkent') };
 
+  /**
+   * §16.12 — qarzni kamaytirish `AllocationService` da (jadval keshini
+   * biladigan yagona joy). Bu yerda uning CHAQIRILGANI va qanday summa
+   * bilan chaqirilgani tekshiriladi; kamaytirishning o'zi
+   * `allocation.service.spec.ts` da sinaladi.
+   */
+  const allocation = {
+    reduceDebt: vi.fn((_tx: unknown, params: { amount: string }) => {
+      debtReductions.push(params);
+      return Promise.resolve({ reduced: params.amount, unabsorbed: '0' });
+    }),
+  };
+
   const service = new SaleReversalService(
     prisma as never,
     cash as never,
+    allocation as never,
     audit as never,
     config as never,
   );
@@ -267,6 +298,8 @@ function makeService(options: Options = {}) {
     inventoryUpdates,
     batchUpdates,
     contractUpdates,
+    debtReductions,
+    allocation,
     audit,
   };
 }
@@ -922,24 +955,111 @@ describe('SaleReversalService', () => {
       expect(contractUpdates[0]).toMatchObject({ status: ContractStatus.CANCELLED });
     });
 
-    // §16.12 hali yozilmagan — qarzni jimgina o'zgartirmasdan qoldirish
-    // noto'g'ri qarz qoldirardi, shuning uchun amal ochiq rad etiladi
-    it('nasiya savdoni qisman qaytarish hozircha rad etiladi', async () => {
-      const { service } = makeService({
-        items: [{ id: 'item-1', quantity: 3, inventoryItemId: null, batchId: 'batch-1' }],
+    /**
+     * §16.12 — qisman qaytarilgan nasiyada qarz **qaytgan qatorlar
+     * qiymati va unga tegishli proporsional ustama** miqdorida kamayadi.
+     *
+     * Ustama nega proporsional: u butun savdoga qo'yilgan (§9.3). Uni
+     * to'liq qoldirish qaytarilgan mahsulot uchun ustama undirish
+     * bo'lardi; butunlay olib tashlash esa qolgan mahsulot uchun
+     * ustamani bekor qilardi.
+     */
+    it('qisman qaytarishda qarz qiymat + proporsional ustama miqdorida kamayadi', async () => {
+      const { service, debtReductions, contractUpdates } = makeService({
+        items: [
+          {
+            id: 'item-1',
+            quantity: 3,
+            inventoryItemId: null,
+            batchId: 'batch-1',
+            unitPrice: '4000000',
+          },
+        ],
+        contract: {
+          id: 'contract-1',
+          status: ContractStatus.ACTIVE,
+          cashPrice: '12000000',
+          markupAmount: '2400000',
+        },
+      });
+
+      await returnScoped(
+        service,
+        'sale-1',
+        { ...REASON, items: [{ saleItemId: 'item-1', quantity: 1 }] },
+        ACTOR,
+        null,
+      );
+
+      // Qaytgan qiymat 4 000 000 (12 000 000 ning uchdan biri),
+      // ustama ulushi 2 400 000 / 3 = 800 000
+      expect(debtReductions).toHaveLength(1);
+      expect(debtReductions[0]).toMatchObject({ amount: '4800000' });
+      // Qisman qaytarishda shartnoma BEKOR QILINMAYDI — savdoning
+      // qolgan qismi kuchda
+      expect(contractUpdates).toHaveLength(0);
+    });
+
+    it('ustamasiz shartnomada qarz faqat qiymat miqdorida kamayadi', async () => {
+      const { service, debtReductions } = makeService({
+        items: [
+          {
+            id: 'item-1',
+            quantity: 2,
+            inventoryItemId: null,
+            batchId: 'batch-1',
+            unitPrice: '6000000',
+          },
+        ],
+        contract: { id: 'contract-1', status: ContractStatus.ACTIVE, markupAmount: '0' },
+      });
+
+      await returnScoped(
+        service,
+        'sale-1',
+        { ...REASON, items: [{ saleItemId: 'item-1', quantity: 1 }] },
+        ACTOR,
+        null,
+      );
+
+      expect(debtReductions).toHaveLength(1);
+      expect(debtReductions[0]).toMatchObject({ amount: '6000000' });
+    });
+
+    /**
+     * §8.5 — nasiyada to'langan pulni qaytarish/qaytarmaslikni EGA
+     * qo'lda hal qiladi. Mijoz bir necha oy to'lagan bo'lishi mumkin va
+     * bu summani nima qilish — muzokara masalasi, hisob-kitob emas.
+     */
+    it('nasiyada pul avtomatik qaytarilmaydi (§8.5)', async () => {
+      const { service, cashOut, paymentUpdates } = makeService({
         contract: { id: 'contract-1', status: ContractStatus.ACTIVE },
       });
 
-      await expectAppException(
-        returnScoped(
-          service,
-          'sale-1',
-          { ...REASON, items: [{ saleItemId: 'item-1', quantity: 1 }] },
-          ACTOR,
-          null,
-        ),
-        ErrorCode.VALIDATION_FAILED,
+      await returnScoped(
+        service,
+        'sale-1',
+        { ...REASON, items: [{ saleItemId: 'item-1', quantity: 1 }] },
+        ACTOR,
+        null,
       );
+
+      expect(cashOut).toHaveLength(0);
+      expect(paymentUpdates).toHaveLength(0);
+    });
+
+    it('naqd savdoda esa pul o‘sha zahoti qaytadi', async () => {
+      const { service, cashOut } = makeService();
+
+      await returnScoped(
+        service,
+        'sale-1',
+        { ...REASON, items: [{ saleItemId: 'item-1', quantity: 1 }] },
+        ACTOR,
+        null,
+      );
+
+      expect(cashOut).toHaveLength(1);
     });
 
     it('shartnomasiz savdoda hech narsa o‘zgarmaydi', async () => {

@@ -62,7 +62,11 @@ function makeService(
         }) => {
           if (args.select) return Promise.resolve(rows);
 
-          const visible = rows.filter((row) => row.status !== ScheduleStatus.PAID);
+          const wanted = args.where.status;
+          const visible =
+            typeof wanted === 'string'
+              ? rows.filter((row) => row.status === wanted)
+              : rows.filter((row) => row.status !== ScheduleStatus.PAID);
           const direction = args.orderBy?.sequence === 'desc' ? -1 : 1;
           return Promise.resolve(
             [...visible].sort((left, right) => (left.sequence - right.sequence) * direction),
@@ -77,8 +81,14 @@ function makeService(
         const row = rows.find((item) => item.id === args.where.id);
         if (row) {
           if (args.data.amountPaid instanceof Prisma.Decimal) row.amountPaid = args.data.amountPaid;
+          if (args.data.amountDue instanceof Prisma.Decimal) row.amountDue = args.data.amountDue;
           if (typeof args.data.status === 'string') row.status = args.data.status as ScheduleStatus;
         }
+        return Promise.resolve({});
+      }),
+      delete: vi.fn((args: { where: { id: string } }) => {
+        const index = rows.findIndex((row) => row.id === args.where.id);
+        if (index >= 0) rows.splice(index, 1);
         return Promise.resolve({});
       }),
       updateMany: vi.fn((args: { data: { status: ScheduleStatus } }) => {
@@ -373,6 +383,94 @@ describe('AllocationService', () => {
       const outstanding = await service.outstandingOf(tx as never, 'contract-1', Currency.UZS);
 
       expect(outstanding).toBe('1600000');
+    });
+  });
+
+  /**
+   * §16.12 — nasiya savdo qisman qaytarilganda qarzning kamayishi.
+   *
+   * Ikkita qoida qattiq: kamayish **faqat to'lanmagan** qatorlardan
+   * (§9.10 — to'langanga taqsimot bog'langan) va **oxirgisidan
+   * boshlab** (mijozning eng yaqin to'lov muddati joyida qolsin).
+   */
+  describe('qarzni kamaytirish (§16.12)', () => {
+    it('oxirgi to‘lanmagan qatordan boshlab ayriladi', async () => {
+      const { service, tx, rows } = makeService(SCHEDULE_3);
+
+      const outcome = await service.reduceDebt(tx as never, {
+        contractId: 'contract-1',
+        amount: '1500000',
+        currency: Currency.UZS,
+      });
+
+      // 3-qator butunlay yo'qoladi, 2-qator 500 000 ga kamayadi,
+      // 1-qator (eng yaqin muddat) TEGILMAYDI
+      expect(rows.map((row) => row.id)).toEqual(['sch-1', 'sch-2']);
+      expect(rows[1]?.amountDue.toString()).toBe('500000');
+      expect(rows[0]?.amountDue.toString()).toBe('1000000');
+      expect(outcome).toEqual({ reduced: '1500000', unabsorbed: '0' });
+    });
+
+    it('to‘langan va qisman to‘langan qatorga TEGILMAYDI (§9.10)', async () => {
+      const { service, tx, rows } = makeService([
+        {
+          id: 'sch-1',
+          sequence: 1,
+          amountDue: '1000000',
+          amountPaid: '1000000',
+          status: ScheduleStatus.PAID,
+        },
+        {
+          id: 'sch-2',
+          sequence: 2,
+          amountDue: '1000000',
+          amountPaid: '300000',
+          status: ScheduleStatus.PARTIAL,
+        },
+        { id: 'sch-3', sequence: 3, amountDue: '1000000' },
+      ]);
+
+      const outcome = await service.reduceDebt(tx as never, {
+        contractId: 'contract-1',
+        amount: '2000000',
+        currency: Currency.UZS,
+      });
+
+      // Faqat 3-qator yo'qoladi; qolgan 1 000 000 hech qayerdan ayrilmaydi
+      expect(rows.map((row) => row.id)).toEqual(['sch-1', 'sch-2']);
+      expect(outcome).toEqual({ reduced: '1000000', unabsorbed: '1000000' });
+    });
+
+    /**
+     * §8.5 — to'lanmagan qatorlar yetmasa shartnoma yopiladi va
+     * ortiqcha qism qaytarilmaydi: uni ega qo'lda hal qiladi. Tizim
+     * o'zi pul chiqarsa, so'ralmagan qaytarim bo'lardi.
+     */
+    it('to‘lanmagan qatorlar yetmasa shartnoma yopiladi, ortig‘i qaytarilmaydi', async () => {
+      const { service, tx, contractUpdates } = makeService([
+        { id: 'sch-1', sequence: 1, amountDue: '1000000' },
+      ]);
+
+      const outcome = await service.reduceDebt(tx as never, {
+        contractId: 'contract-1',
+        amount: '3000000',
+        currency: Currency.UZS,
+      });
+
+      expect(outcome).toEqual({ reduced: '1000000', unabsorbed: '2000000' });
+      expect(contractUpdates[0]).toMatchObject({ status: ContractStatus.CLOSED });
+    });
+
+    it('qarz to‘liq qoplansa qolgan jadval bo‘shaydi', async () => {
+      const { service, tx, rows } = makeService(SCHEDULE_3);
+
+      await service.reduceDebt(tx as never, {
+        contractId: 'contract-1',
+        amount: '3000000',
+        currency: Currency.UZS,
+      });
+
+      expect(rows).toHaveLength(0);
     });
   });
 });

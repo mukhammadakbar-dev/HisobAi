@@ -138,6 +138,66 @@ export class AllocationService {
   }
 
   /**
+   * Qarzni kamaytirish — nasiya savdo **qisman** qaytarilganda (§16.12).
+   *
+   * Kamayish **faqat to'lanmagan qatorlardan va OXIRGISIDAN boshlab**
+   * ayriladi. Ikkala shart ham §9.10 dan kelib chiqadi: to'langan va
+   * qisman to'langan qatorga tegib bo'lmaydi (ularga taqsimotlar
+   * bog'langan), oxirgidan boshlash esa mijozning eng yaqin to'lov
+   * muddatini joyida qoldiradi — u allaqachon pul rejalashtirgan va
+   * uni surish uchun sabab yo'q.
+   *
+   * To'lanmagan qatorlar yetmasa, shartnoma **yopiladi** va ortiqcha
+   * qism qaytarilmaydi: §16.12 uni ochiq qoldiradi va §8.5 ga
+   * yo'naltiradi — to'langan pulni qaytarish/qaytarmaslikni **ega
+   * qo'lda hal qiladi**. Tizim buni o'zi qilsa, mijozga
+   * so'ralmagan pul chiqarib yuborardi.
+   *
+   * Status `CLOSED`, `CANCELLED` emas: savdoning qolgan qismi kuchda va
+   * mijoz uni sotib olgan. §17.18 `CANCELLED` ni savdo **butunlay**
+   * qaytarilgan holatga qoldiradi.
+   */
+  async reduceDebt(
+    tx: Prisma.TransactionClient,
+    params: { contractId: string; amount: string; currency: Currency },
+  ): Promise<{ reduced: string; unabsorbed: string }> {
+    const { contractId, amount, currency } = params;
+
+    const schedules = await tx.paymentSchedule.findMany({
+      where: { contractId, status: ScheduleStatus.UNPAID },
+      orderBy: { sequence: 'desc' },
+    });
+
+    let remaining = new Prisma.Decimal(amount);
+    let reduced = new Prisma.Decimal(0);
+
+    for (const schedule of schedules) {
+      if (remaining.lessThanOrEqualTo(0)) break;
+
+      const take = Prisma.Decimal.min(remaining, schedule.amountDue);
+      remaining = remaining.minus(take);
+      reduced = reduced.plus(take);
+
+      const nextDue = schedule.amountDue.minus(take);
+      if (nextDue.lessThanOrEqualTo(0)) {
+        // Qator butunlay yo'qoladi: to'lanmagan qatorga hech qanday
+        // taqsimot bog'lanmagan, ya'ni uni o'chirish tarixni buzmaydi.
+        // "0 so'mlik to'lov muddati" esa jadvalda ma'nosiz qator bo'lardi
+        await tx.paymentSchedule.delete({ where: { id: schedule.id } });
+      } else {
+        await tx.paymentSchedule.update({
+          where: { id: schedule.id },
+          data: { amountDue: nextDue },
+        });
+      }
+    }
+
+    await this.settle(tx, contractId, currency);
+
+    return { reduced: reduced.toString(), unabsorbed: remaining.toString() };
+  }
+
+  /**
    * Qarz qoldig'i — jadvaldan hisoblanadi, ustunda saqlanmaydi.
    *
    * `Σ(amountDue − amountPaid)`. Saqlangan "qoldiq" ustuni jadval bilan

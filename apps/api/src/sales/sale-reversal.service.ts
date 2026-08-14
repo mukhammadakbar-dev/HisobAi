@@ -12,6 +12,7 @@ import {
   StockMovementType,
   UserRole,
   multiplyMoney,
+  prorateMoney,
   roundMoney,
   sumMoney,
   type CancelSaleInput,
@@ -28,6 +29,7 @@ import { businessDay } from '../common/dates';
 import type { RequestUser } from '../common/request-user';
 import type { Env } from '../config/env';
 import { PrismaService } from '../database/prisma.service';
+import { AllocationService } from '../payments/allocation.service';
 import { SALE_INCLUDE, toSaleDto, type SaleRow } from './sales.mappers';
 import { MAX_BACKDATE_DAYS, convert, profitOf, saleNotFound } from './sales.service';
 
@@ -66,6 +68,7 @@ export class SaleReversalService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cashEntries: CashEntriesService,
+    private readonly allocation: AllocationService,
     private readonly audit: AuditService,
     private readonly config: ConfigService<Env, true>,
   ) {}
@@ -211,21 +214,34 @@ export class SaleReversalService {
         const status = nextOriginalStatus(sale, lines, kind);
         await tx.sale.update({ where: { id: sale.id }, data: { status } });
 
-        // 4 — pul (§11.7 — tuzatish faqat teskari yozuv orqali)
-        const refunded = await this.refund(tx, {
-          sale,
-          amount: returnedTotal,
-          reversalId: reversal.id,
-          occurredAt,
-          full: status !== SaleStatus.PARTIALLY_RETURNED,
-          actor,
-        });
+        // 4 — nasiya shartnomasi (§17.18, §16.12)
+        const contract = await this.adjustContract(tx, sale, { status, returnedTotal, actor });
 
-        // §17.18 — savdo qaytarilsa yoki bekor qilinsa shartnoma BEKOR
-        // QILINGAN bo'ladi. Usiz mijoz "umuman bo'lmagan" savdo uchun
-        // qarzdor bo'lib qolardi: telefon omborga qaytadi, jadval esa
-        // to'lovni kutib turaveradi
-        await this.cancelContract(tx, sale, status, actor);
+        /**
+         * 5 — pul (§11.7 — tuzatish faqat teskari yozuv orqali).
+         *
+         * **Nasiyada pul avtomatik qaytarilmaydi** (§8.5): to'langan
+         * pulni qaytarish yoki qaytarmaslikni EGA qo'lda hal qiladi.
+         * Sabab hujjatda ochiq: qaytarilgan telefon uchun mijoz
+         * allaqachon bir necha oy to'lagan bo'lishi mumkin va bu
+         * summani nima qilish — muzokara masalasi, hisob-kitob emas.
+         * Ega qaroridan keyin har bir to'lovni alohida
+         * `POST /payments/:id/reverse` bilan qaytaradi.
+         *
+         * Naqd savdoda esa aksincha: pul o'sha zahoti qaytadi, chunki
+         * u bitta amalda to'liq to'langan (§17.10).
+         */
+        const refunded =
+          contract === null
+            ? await this.refund(tx, {
+                sale,
+                amount: returnedTotal,
+                reversalId: reversal.id,
+                occurredAt,
+                full: status !== SaleStatus.PARTIALLY_RETURNED,
+                actor,
+              })
+            : [];
 
         // 5 — audit (§8.6 — sabab audit'ga yoziladi)
         await this.audit.record(tx, actor.shopId, {
@@ -246,6 +262,7 @@ export class SaleReversalService {
             occurredAt: occurredAt.toISOString(),
             lines: lines.map((line) => ({ saleItemId: line.item.id, quantity: line.quantity })),
             refunded,
+            contract,
           },
           ip,
         });
@@ -479,51 +496,85 @@ export class SaleReversalService {
    * esa qolgan to'lovlarni kutib turaveradi va shartnoma qarzdorlar
    * ro'yxatida ko'rinib turadi.
    *
-   * **Qisman qaytarish bu yerda to'siladi**, bekor qilinmaydi: §16.12
-   * qarzni qaytgan qatorlar qiymati va unga tegishli proporsional
-   * ustama miqdorida kamaytirishni, kamayishni esa faqat to'lanmagan
-   * jadval qatorlaridan — oxirgisidan boshlab — ayirishni talab qiladi
-   * (§9.10 buzilmasin). Bu alohida hisob va u shu bosqichning keyingi
-   * qismida keladi. Yarim ishlagan variant — qarzni umuman
-   * o'zgartirmaslik — jimgina noto'g'ri qarz qoldirardi, shuning uchun
-   * amal ochiq xato bilan rad etiladi.
+   * **Qisman qaytarishda esa qarz KAMAYADI** (§16.12): qaytgan qatorlar
+   * qiymati va unga tegishli **proporsional ustama** miqdorida.
+   * Kamayish faqat to'lanmagan qatorlardan va oxirgisidan boshlab
+   * ayriladi — `AllocationService.reduceDebt` ga qarang.
+   *
+   * Ustama nega proporsional: u butun savdoga qo'yilgan (§9.3), ya'ni
+   * savdoning yarmi qaytsa ustamaning ham yarmi asossiz bo'lib qoladi.
+   * Uni to'liq qoldirish mijozdan qaytarilgan mahsulot uchun ustama
+   * undirish bo'lardi; butunlay olib tashlash esa qolgan mahsulot
+   * uchun ustamani bekor qilardi.
    */
-  private async cancelContract(
+  private async adjustContract(
     tx: Prisma.TransactionClient,
     sale: SaleRow,
-    status: SaleStatus,
-    actor: RequestUser,
-  ): Promise<void> {
+    params: { status: SaleStatus; returnedTotal: string; actor: RequestUser },
+  ): Promise<ContractOutcome | null> {
+    const { status, returnedTotal, actor } = params;
+
     const contract = await tx.installmentContract.findUnique({
       where: { saleId: sale.id },
-      select: { id: true, status: true },
+      select: { id: true, status: true, currency: true, cashPrice: true, markupAmount: true },
     });
-    if (!contract) return;
+    if (!contract) return null;
+    if (contract.status === ContractStatus.CANCELLED) return null;
 
-    if (status === SaleStatus.PARTIALLY_RETURNED) {
-      throw AppException.conflict(
-        ErrorCode.VALIDATION_FAILED,
-        "Nasiya savdoni qisman qaytarish hali qo'llab-quvvatlanmaydi (§16.12) — savdoni to'liq qaytaring.",
-        { contractId: contract.id },
-      );
+    if (status !== SaleStatus.PARTIALLY_RETURNED) {
+      await tx.installmentContract.update({
+        where: { id: contract.id },
+        data: { status: ContractStatus.CANCELLED, closedAt: new Date() },
+      });
+
+      await this.audit.record(tx, actor.shopId, {
+        actorId: actor.id,
+        action: 'INSTALLMENT_CONTRACT_CANCELLED',
+        entityType: 'InstallmentContract',
+        entityId: contract.id,
+        before: { status: contract.status },
+        after: { status: ContractStatus.CANCELLED, saleId: sale.id },
+        ip: null,
+      });
+
+      return { contractId: contract.id, cancelled: true };
     }
 
-    if (contract.status === ContractStatus.CANCELLED) return;
+    // §16.12 — qaytgan qiymat + unga tegishli ustama ulushi
+    const markupShare = prorateMoney(
+      contract.markupAmount.toString(),
+      returnedTotal,
+      contract.cashPrice.toString(),
+      contract.currency,
+    );
+    const reduction = sumMoney([returnedTotal, markupShare], contract.currency);
 
-    await tx.installmentContract.update({
-      where: { id: contract.id },
-      data: { status: ContractStatus.CANCELLED, closedAt: new Date() },
+    const outcome = await this.allocation.reduceDebt(tx, {
+      contractId: contract.id,
+      amount: reduction,
+      currency: contract.currency,
     });
 
     await this.audit.record(tx, actor.shopId, {
       actorId: actor.id,
-      action: 'INSTALLMENT_CONTRACT_CANCELLED',
+      action: 'INSTALLMENT_DEBT_REDUCED',
       entityType: 'InstallmentContract',
       entityId: contract.id,
-      before: { status: contract.status },
-      after: { status: ContractStatus.CANCELLED, saleId: sale.id },
+      after: {
+        saleId: sale.id,
+        returnedTotal,
+        markupShare,
+        reduction,
+        reduced: outcome.reduced,
+        // §8.5 — to'lanmagan qatorlar yetmagan qism: uni qaytarish yoki
+        // qaytarmaslikni EGA hal qiladi, tizim o'zi pul chiqarmaydi
+        unabsorbed: outcome.unabsorbed,
+        currency: contract.currency,
+      },
       ip: null,
     });
+
+    return { contractId: contract.id, cancelled: false, ...outcome, markupShare, reduction };
   }
 
   // ──────────────────────────── Yordamchilar ────────────────────────────
@@ -561,6 +612,17 @@ interface ResolvedLine {
   item: SaleRow['items'][number];
   quantity: number;
   lineTotal: string;
+}
+
+/** Qaytarish nasiya shartnomasiga qanday ta'sir qilgani — audit uchun. */
+interface ContractOutcome {
+  contractId: string;
+  cancelled: boolean;
+  reduced?: string;
+  /** §8.5 — to'lanmagan qatorlar yetmagan qism; ega qo'lda hal qiladi. */
+  unabsorbed?: string;
+  markupShare?: string;
+  reduction?: string;
 }
 
 interface RefundLine {
