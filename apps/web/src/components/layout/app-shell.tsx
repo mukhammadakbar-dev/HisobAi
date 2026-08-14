@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  BarChart3,
   Boxes,
   CalendarClock,
   LayoutDashboard,
@@ -62,6 +63,7 @@ const SECONDARY_NAV: NavItem[] = [
    * ombordan ustun qo'yish tartibni buzardi.
    */
   { href: '/installments', label: 'Nasiya', icon: CalendarClock },
+  { href: '/reports', label: 'Hisobot', icon: BarChart3 },
   { href: '/products', label: 'Katalog', icon: Tags },
   { href: '/cashbook', label: 'Kassa', icon: Wallet },
   { href: '/settings', label: 'Sozlamalar', icon: Settings },

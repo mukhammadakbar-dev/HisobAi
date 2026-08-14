@@ -62,6 +62,17 @@ export default function SettingsPage() {
           </Link>
         </div>
 
+        {/* §2.2 — audit jurnali faqat SHOP_ADMIN uchun
+            (`PERMISSIONS.md`). U kundalik ish emas, tekshiruv vositasi —
+            shuning uchun sozlamalar ichida */}
+        {can(user.data, 'audit.view') && (
+          <div className="border-t border-border-soft pt-4">
+            <Link href="/settings/audit" className="text-sm font-medium text-link hover:underline">
+              Audit jurnali →
+            </Link>
+          </div>
+        )}
+
         {/* §4.4 — kategoriya va brendni tahrirlash, arxivlash, birlashtirish */}
         {can(user.data, 'catalog.view') && (
           <div className="border-t border-border-soft pt-4">

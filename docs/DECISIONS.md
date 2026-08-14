@@ -638,6 +638,25 @@ hujjat ziddiyatida ustun turadi (hujjat boshidagi qoida).
 
 ---
 
+## 24. 9-bosqich qarorlari (2026-08-14 — hisobotlar)
+
+| §     | Qaror | Sabab |
+| ----- | ----- | ----- |
+| 24.1 | **Teskari `sales` qatorlari hisobotga KIRADI, foydasi esa qo'lda teskarilanadi** | §8 qaytarish hisobotda ko'rinishini talab qiladi. Teskari qatorning `total` i manfiy, ya'ni aylanma o'z-o'zidan sof qiymatga keladi. Lekin foyda QATORLARDAN hisoblanadi va ular musbat (§22.2 — ishorani `total` olib yuradi), ya'ni hisob musbat foyda berardi: qaytarilgan telefon foyda keltirgandek ko'rinardi. Savdo SONIGA esa teskari yozuv kirmaydi — u yangi savdo emas |
+| 24.2 | **Aylantirish savdo paytidagi SNAPSHOT kursda; ombor qiymati esa BUGUNGI kursda** | Ikki xil savolga ikki xil javob. Foyda — o'tgan davr faktisi (§5.9, §1.7): bugungi kurs o'zgarganda o'tgan oyning hisoboti o'zgarmasligi kerak. Ombor esa hali sotilmagan mol, ya'ni "hozir qancha turadi" degan savol. Bitta qoidaga keltirish ikkalasidan birini yolg'on qilardi |
+| 24.3 | **Oldingi davr — shu uzunlikdagi, bevosita oldin turgan oraliq** (§13.5) | "O'tgan oyning shu kuni" emas: 31 kunlik oyni 28 kunlik oy bilan solishtirish foizni o'z-o'zidan buzardi. Uzunlik kunlarda o'lchanadi va `to` inklyuziv bo'lgani uchun bitta qo'shiladi |
+| 24.4 | **Oldingi qiymat nol bo'lsa `changePercent` — `null`, `0` yoki `100` emas** | Nolga bo'lish aniqlanmagan va noldan o'sish har doim "cheksiz". `+100%` deb ko'rsatish ega qaror qabul qiladigan raqamni yolg'on qilardi. Ekran bunday holatda "—" chizadi |
+| 24.5 | **Kassa xarajatlaridan `OPENING_BALANCE`, `EXCHANGE` va `REVERSAL` chiqariladi** | Birinchisi umuman harakat emas (§11.4), ikkinchisi pulni bir hisobdan ikkinchisiga ko'chiradi (§11.6), uchinchisi esa aylanmadan allaqachon ayrilgan (teskari `sales` qatori orqali) — uni yana xarajat sanash bir summani ikki marta hisoblash bo'lardi |
+| 24.6 | **Dinamikada savdosiz kunlar ham nuqta sifatida qaytadi** | Ularsiz grafik uzuq bo'lardi: savdo bo'lmagan kun chizmadan tushib qolib, ikki kun yonma-yon turgandek ko'rinardi va pasayish umuman ko'rinmasdi |
+| 24.7 | **Hafta dushanbadan boshlanadi** | O'zbekistonda ish haftasi shu kundan boshlanadi va "haftalik savdo" degani aynan shu oraliq. `getUTCDay()` ning yakshanba-boshlanishi kalendar emas, texnik detal |
+| 24.8 | **Mahsulot jadvali FOYDA bo'yicha saralanadi, aylanma bo'yicha emas** | §13.7 savolining o'zi "qancha foyda keltirdi". Ko'p sotilgan, lekin foydasiz mahsulot ro'yxat tepasida turishi ega uchun chalg'ituvchi bo'lardi. Miqdor manfiy bo'lishi ham mumkin (qaytarish ko'p bo'lgan davr) — bu haqiqiy holat va yashirilmaydi |
+| 24.9 | **Qarzdorlar tartibi: avval kechikish, keyin summa** (§13.8) | Ro'yxatning maqsadi — "kimga qo'ng'iroq qilish kerak" degan savolga javob. Alifbo yoki summa bo'yicha saralash eng ko'p kechikkan mijozni ro'yxat o'rtasida yashirardi. Qarzi qolmagan shartnoma ro'yxatga tushmaydi va bu §16.11 statusiga TAYANMAYDI: hisob har doim jadvaldan qilinadi |
+| 24.10 | **Ombor qiymatida kurs yo'qligi `rateMissing` bilan ochiq aytiladi** | Jimgina nolga aylantirish ombor qiymatini sababsiz kamaytirib ko'rsatardi va ega buni bilmasdi. "Baholanmadi" bilan "nol" — ikki xil javob |
+| 24.11 | **Audit ekranida faqat ko'rish; `/audit-logs` da faqat `GET`** | `hisobai_app` roli uchun `audit_logs` da `UPDATE`/`DELETE` bazaning o'zida bekor qilingan (§12, §21.16) — o'chirish tugmasi bosilganda baribir ishlamasdi. Aktyor nomi ALOHIDA so'rov bilan qo'shiladi: `actor_id` da FK yo'q (§21.3), ya'ni Prisma `include` ni tuzib bera olmaydi |
+| 24.12 | **Hisobot grafigi ham Recharts'siz** | `revenue-chart.tsx` dagi bilan bir xil sabab (`FRONTEND.md` §14 — eng og'ir bog'liqlik). Ikki qator ustun uchun kutubxona olib kelish sahifa byudjetining katta qismini bitta blokka sarflash bo'lardi. Grafik ko'rmaydigan foydalanuvchi uchun ayni ma'lumot `sr-only` jadvalda |
+
+---
+
 ## Ochiq savollar
 
 | Mavzu | Savol |
