@@ -35,10 +35,10 @@ import { CustomersService } from './customers.service';
 /**
  * Mijozlar (§6).
  *
- * `GET /customers/:id/history` (ARCHITECTURE §) hozircha **yo'q**:
- * u savdo va to'lovlardan iborat, ular esa 5- va 7-bosqichda keladi.
- * Bo'sh tarix qaytaradigan endpoint "savdo yo'q" degan yolg'on
- * xulosaga asos berardi.
+ * ULANMAGAN UCH — `GET /customers/:id/history` hamon **yo'q**. Ilgari
+ * sabab asosli edi: savdo va to'lov modullari yozilmagan, bo'sh tarix
+ * "savdo yo'q" degan yolg'on xulosaga asos berardi. Endi 5, 7 va
+ * 8-bosqichlar tayyor, ya'ni tarixning manbasi bor va sabab tugadi.
  */
 @ApiTags('customers')
 @Controller('customers')

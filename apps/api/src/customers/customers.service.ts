@@ -27,8 +27,11 @@ import { PrismaService } from '../database/prisma.service';
  * Ikkita narsa bu servisda **ataylab yo'q**:
  *
  *  - **Qarz** (§6.11, §6.12) — u savdo va to'lovlardan hisoblanadi,
- *    saqlanmaydi. Modullar 5- va 7-bosqichda keladi; ustun ham,
- *    maydon ham qo'shilmaydi, aks holda qo'lda yozish yo'li ochilardi.
+ *    saqlanmaydi; ustun ham, maydon ham qo'shilmaydi, aks holda qo'lda
+ *    yozish yo'li ochilardi. ULANMAGAN UCH: manba modullar (5, 7, 8)
+ *    endi tayyor va qarzdorlar hisoboti uni hisoblaydi, lekin `CustomerDto`
+ *    hali ham qarzsiz — ya'ni §6.11 ("joriy qarz USD va UZS alohida")
+ *    bajarilmagan. Hisoblangan qiymat sifatida DTO'ga qo'shilishi kerak.
  *  - **Passport rasmi** (§6.6, §6.7) — `Storage` moduli bilan birga
  *    9-bosqichda, §18.1 dagi mahsulot rasmi bilan bir xil sabab.
  *    `passport_file_id` ustuni schema'da allaqachon bor.

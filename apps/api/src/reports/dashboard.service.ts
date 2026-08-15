@@ -45,9 +45,14 @@ const LOW_STOCK_LIMIT = 5;
  * talab qilgan dinamikani ko'rsatadi va kengroq davr uchun
  * `/reports` ga o'tiladi.
  *
- * Nasiya bloklari (`duePayments`, `overdue`) hozircha **bo'sh**:
- * shartnoma va to'lov jadvali 7-bosqichda keladi. Bo'sh massiv bu
- * yerda yolg'on emas — tizimda hali birorta nasiya shartnomasi yo'q.
+ * ULANMAGAN UCH — nasiya bloklari (`duePayments`, `overdue`) hamon
+ * qattiq bo'sh qaytariladi (quyida), lekin 8-bosqich `InstallmentContract`
+ * va `PaymentSchedule` ni allaqachon yozgan. Ilgari bo'sh massiv yolg'on
+ * emas edi (tizimda birorta shartnoma yo'q edi) — endi **yolg'on**: ega
+ * "bugun hech kim to'lamaydi" degan xulosaga keladi, holbuki jadval
+ * qatorlari bazada bor. §14 talab qilgan ikkala blok ham `PaymentSchedule`
+ * dan hisoblanishi kerak; qarzdorlar hisoboti (`reports.service.ts`) buni
+ * allaqachon qiladi, ya'ni so'rov mantiqi tayyor va takrorlanadi.
  */
 @Injectable()
 export class DashboardService {

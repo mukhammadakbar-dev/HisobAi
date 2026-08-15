@@ -2,18 +2,32 @@
 
 Telefon do'konlari uchun ombor, savdo, nasiya, kassa va AI tahlil CRM'i.
 
-**Holat:** v0.2.1 — **5-bosqich tugadi, MVP-1 yakunlandi**. Kesuvchi
-poydevor (xato formati, validatsiya, idempotency, pul serializatsiyasi,
-pagination, ruxsat, rate limiting), auth va sozlamalar, valyuta kursi,
-**katalog va ombor** (kategoriya/brend birlashtirish bilan, mahsulot
-shabloni, seriyali birlik va partiya, qabul qilish), **mijozlar** (E.164
-normalizatsiyasi, dublikat tekshiruvi, belgilash va arxivlash), so'ngra
-**naqd savdo va kassa** (qoralama, tasdiqlash tranzaksiyasi, aralash
-to'lov, kassa hisoblari va yozuvlari, boshlang'ich qoldiq, dashboard)
-ishlaydi. Ekranlar: `/dashboard`, `/sales`, `/sales/new`, `/cashbook`,
-`/products`, `/inventory`, qabul formasi, `/customers`,
-`/settings/catalog`. Biznes modullari `docs/TZ.md` §22 dagi tartibda
-davom etadi (keyingi bosqich — **qaytarish va bekor qilish**, MVP-2).
+**Holat:** v0.2.1 — **9-bosqich tugadi, MVP-2 yakunlandi**.
+
+`docs/TZ.md` §22 dagi bosqichlar bo'yicha bajarilgani:
+
+| #   | Bosqich                          | Nima ishlaydi                                                                                          |
+| --- | -------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| 1   | Kesuvchi poydevor                | Xato formati, validatsiya, idempotency, pul serializatsiyasi, pagination, ruxsat, rate limiting, audit  |
+| 2   | Auth va sozlamalar               | Argon2id, sessiya, login cheklovi va jurnali, do'kon sozlamalari, CBU va do'kon kursi                   |
+| 3   | Katalog va ombor                 | Kategoriya/brend (birlashtirish bilan), mahsulot shabloni, seriyali birlik va partiya, qabul qilish     |
+| 4   | Mijozlar                         | E.164 normalizatsiyasi, dublikat tekshiruvi, belgilash va arxivlash                                    |
+| 5   | Naqd savdo va kassa              | Qoralama, tasdiqlash tranzaksiyasi, aralash to'lov, kassa hisoblari, boshlang'ich qoldiq, dashboard     |
+| 6   | Platforma va tenant izolyatsiyasi | `SUPERADMIN` paneli, SHOP_ADMIN accountlari, Shop setup oqimi, Prisma extension + PostgreSQL RLS       |
+| 7   | Qaytarish va bekor qilish        | Teskari yozuv, qisman qaytarish                                                                        |
+| 8   | Nasiya va to'lovlar              | Shartnoma, to'lov jadvali, to'lov taqsimoti, erta yopish, jadvalni qayta tuzish                        |
+| 9   | Hisobotlar                       | Davr xulosasi, dinamika, mahsulot foydasi, ombor qiymati, qarzdorlar, audit ko'rinishi                  |
+
+Ekranlar: `/dashboard`, `/sales`, `/sales/new`, `/sales/[id]`,
+`/installments`, `/installments/[id]`, `/cashbook`, `/products`,
+`/inventory`, qabul formasi, `/customers`, `/reports`, `/reports/debts`,
+`/settings`, `/settings/catalog`, `/settings/security`,
+`/settings/audit`, `/setup-shop` va `/superadmin/*` paneli.
+
+**Keyingi bosqich — 10: hujjatlar (shartnoma PDF) va fayl saqlash.**
+Boshlangan, lekin tugallanmagan ish `wip/10-bosqich-storage` tarmog'ida:
+`Storage` moduli yozilgan, ammo `app.module.ts` ga ulanmagan — nima
+yetishmayotgani o'sha tarmoqning commit xabarida sanalgan.
 
 ## Hujjatlar
 
@@ -59,11 +73,22 @@ cp apps/web/.env.example apps/web/.env      # ixtiyoriy
 psql -h localhost -U postgres -c 'create database hisob_ai;'
 
 pnpm db:generate
-pnpm db:migrate
-pnpm db:seed
+pnpm db:migrate     # `hisobai_app` va `hisobai_migrate` rollarini PAROLSIZ yaratadi
 
+# MAJBURIY (§21.16): ilova ishlash vaqtida faqat `hisobai_app` orqali
+# ulanadi. Rolga parol qo'yilmasa va `DATABASE_URL_APP` to'ldirilmasa,
+# API ishga tushmaydi — zaxira yo'l ataylab yo'q.
+psql -U postgres -c "ALTER ROLE hisobai_app WITH PASSWORD 'app-paroli'"
+#  → so'ng apps/api/.env dagi DATABASE_URL_APP ni to'ldiring
+
+pnpm db:seed
 pnpm dev
 ```
+
+Izolyatsiya integratsiya testlari (`*.integration.spec.ts`) alohida baza
+talab qiladi — `apps/api/prisma/README-test-db.md`. `DATABASE_URL_TEST`
+berilmasa ular o'zlarini o'tkazib yuboradi, ya'ni `pnpm test` bazasiz
+mashinada ham yashil bo'ladi.
 
 - Web: `http://localhost:3000`
 - API: `http://localhost:4000/api/v1`
@@ -95,6 +120,13 @@ pnpm format
 - **Moliyaviy `POST` idempotent** — `Idempotency-Key` majburiy (§17.6).
 - **Ruxsat: default DENY** — `@Roles()` yoki `@Public()` yo'q endpoint
   hech kimga ochilmaydi.
+- **Shop filtri qo'lda yozilmaydi** — servisda `where: { shopId }` yo'q.
+  Izolyatsiyani Prisma extension (ergonomika) va PostgreSQL RLS (kafolat)
+  beradi (§21.7, §21.13). Kontekstsiz so'rov `SHOP_CONTEXT_MISSING` bilan
+  yiqiladi — jimgina bo'sh natija emas (§21.15).
+- **Ilova superuser bilan ulanmaydi** — faqat `DATABASE_URL_APP`
+  (`hisobai_app`: `NOSUPERUSER`, `NOBYPASSRLS`). Superuser RLS'ni chetlab
+  o'tadi, ya'ni zaxira yo'l himoyani jimgina o'chirardi (§21.16).
 - **UI'da faqat semantik rang tokenlari** — `bg-neutral-900` emas,
   `bg-surface-page`. Aks holda element bir mavzuda o'qilmas bo'ladi.
 - Build artifaktlari (`.js`, `.d.ts`, `*.tsbuildinfo`) git'ga kirmaydi.

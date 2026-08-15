@@ -188,9 +188,15 @@ export class CashEntriesService {
   /**
    * §11.8 — o'sha kuni ichida o'chirish.
    *
-   * Ertasiga yozuv **teskari yozuv** bilan tuzatiladi (u qaytarish
-   * moduli bilan, 6-bosqichda keladi): o'tgan kunning kassa hisoboti
-   * bir marta chiqarilgandan keyin o'zgarmasligi kerak.
+   * Ertasiga yozuv **teskari yozuv** bilan tuzatilishi kerak: o'tgan
+   * kunning kassa hisoboti bir marta chiqarilgandan keyin o'zgarmasligi
+   * kerak.
+   *
+   * ULANMAGAN UCH: `createReversal()` mavjud, lekin uni faqat
+   * `sale-reversal.service.ts` va `payments.service.ts` chaqiradi —
+   * QO'LDA kiritilgan kassa yozuvi uchun teskari yozuv marshruti yo'q
+   * (`cash.controller.ts` da faqat `DELETE /cash-entries/:id`). Ya'ni
+   * ertangi kunda qo'lda kiritilgan xato yozuvni tuzatib bo'lmaydi.
    */
   async remove(id: string, actor: RequestUser, ip: string | null): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
