@@ -2,9 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   BASE_CURRENCY,
+  ContractStatus,
   Currency,
   InventoryStatus,
   SaleStatus,
+  ScheduleStatus,
   UserRole,
   multiplyMoney,
   roundMoney,
@@ -12,16 +14,27 @@ import {
   type DashboardActivityDto,
   type DashboardChartPointDto,
   type DashboardDto,
+  type DashboardDuePaymentDto,
   type DashboardLowStockDto,
+  type DashboardOverdueCustomerDto,
+  type DashboardOverdueDto,
 } from '@hisobai/contracts';
 import { Prisma } from '@prisma/client';
 
 import { CashAccountsService } from '../cash/cash-accounts.service';
-import { businessDay, dayStartInstant, today } from '../common/dates';
+import {
+  businessDay,
+  daysBetween,
+  dayStartInstant,
+  fromCalendarDate,
+  toCalendarDate,
+  today,
+} from '../common/dates';
 import type { RequestUser } from '../common/request-user';
 import type { Env } from '../config/env';
 import { PrismaService } from '../database/prisma.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { outstandingOfRows } from '../payments/allocation.service';
 import { convert } from '../sales/sales.service';
 import { ShopsService } from '../shops/shops.service';
 
@@ -31,6 +44,15 @@ const CHART_DAYS = 14;
 const ACTIVITY_LIMIT = 8;
 /** "Kam qolgan" ro'yxatida ko'rsatiladigan mahsulotlar soni. */
 const LOW_STOCK_LIMIT = 5;
+/**
+ * §14.4 — muddati o'tgan qarzdorlar bloki "eng katta bir nechtasi" ni
+ * ko'rsatadi (`dashboard.ts` DTO izohi): to'liq ro'yxat allaqachon
+ * `/reports/debts` da bor (`ReportsService.debtors()`), bu yerda faqat
+ * ega birinchi ekranda "kimga birinchi qo'ng'iroq qilish kerak" degan
+ * savolga javob beradigan qisqa ro'yxat kerak — LOW_STOCK_LIMIT bilan
+ * bir xil uzunlik tanlangan (kichik ekranda mos keladi).
+ */
+const OVERDUE_TOP_LIMIT = 5;
 
 /**
  * Dashboard (§14) — **bitta so'rov** (§14.1).
@@ -45,14 +67,11 @@ const LOW_STOCK_LIMIT = 5;
  * talab qilgan dinamikani ko'rsatadi va kengroq davr uchun
  * `/reports` ga o'tiladi.
  *
- * ULANMAGAN UCH — nasiya bloklari (`duePayments`, `overdue`) hamon
- * qattiq bo'sh qaytariladi (quyida), lekin 8-bosqich `InstallmentContract`
- * va `PaymentSchedule` ni allaqachon yozgan. Ilgari bo'sh massiv yolg'on
- * emas edi (tizimda birorta shartnoma yo'q edi) — endi **yolg'on**: ega
- * "bugun hech kim to'lamaydi" degan xulosaga keladi, holbuki jadval
- * qatorlari bazada bor. §14 talab qilgan ikkala blok ham `PaymentSchedule`
- * dan hisoblanishi kerak; qarzdorlar hisoboti (`reports.service.ts`) buni
- * allaqachon qiladi, ya'ni so'rov mantiqi tayyor va takrorlanadi.
+ * Nasiya bloklari (`duePayments`, `overdue`, §14.3–§14.4) — `credit()`
+ * ga qarang. `ReportsService.debtors()` mantig'i shu yerda ATAYLAB
+ * takrorlanadi, to'g'ridan-to'g'ri chaqirilmaydi: u SHARTNOMA
+ * darajasida qaytaradi va `phone` ni olib kelmaydi, dashboard'ga esa
+ * MIJOZ darajasidagi agregatsiya va telefon raqami kerak (§14.3).
  */
 @Injectable()
 export class DashboardService {
@@ -79,22 +98,22 @@ export class DashboardService {
     const rate = await this.rates.getForDate(day);
     const storeRate = rate?.storeRate ?? null;
 
-    const [sales, cashAccounts, inventory, chart, activity] = await Promise.all([
+    const [sales, cashAccounts, inventory, chart, activity, credit] = await Promise.all([
       this.todaySales(dayStart, dayEnd, storeRate, showCost),
       showCost ? this.cash() : Promise.resolve(null),
       this.inventory(storeRate, showCost),
       this.chart(day, storeRate),
       this.activity(),
+      this.credit(day, storeRate),
     ]);
 
     return {
       date: day,
       currency: BASE_CURRENCY,
       sales,
-      // 7-bosqich: nasiya shartnomasi va to'lov jadvali
-      duePayments: [],
+      duePayments: credit.duePayments,
       cashAccounts,
-      overdue: { customersCount: 0, totalAmount: roundMoney('0', BASE_CURRENCY), top: [] },
+      overdue: credit.overdue,
       inventory,
       recentActivity: activity,
       chart,
@@ -175,6 +194,147 @@ export class DashboardService {
       currency: account.currency,
       balance: account.balance,
     }));
+  }
+
+  /**
+   * Nasiya bloklari — §14.3 "bugun/ertaga to'lovi keladiganlar" va
+   * §14.4 "muddati o'tgan qarzlar" — **bitta so'rovdan** hisoblanadi
+   * (§14.1): ikkalasi ham xuddi shu `PaymentSchedule` qatorlaridan
+   * kelib chiqadi, ya'ni ikkinchi so'rov faqat ma'lumotni takrorlagan
+   * bo'lardi.
+   *
+   * `outstandingOfRows` (`../payments/allocation.service`) — qarz
+   * qoldig'ining yagona formulasi (`Σ(amountDue − amountPaid)`), shu
+   * yerda HAR BIR qatorga alohida qo'llaniladi: to'liq `amountDue`
+   * emas, qisman to'langan qatorning QOLGAN qismi kerak.
+   *
+   * `storeRate` chaqiruvchidan keladi (`get()` da bir marta olingan,
+   * §1.5) — `ReportsService.debtors()` dagi kabi qayta so'ramaymiz,
+   * chunki u aynan shu ma'noni beradi: "bugungi kunga oxirgi ma'lum
+   * do'kon kursi".
+   */
+  private async credit(
+    day: string,
+    storeRate: Prisma.Decimal | null,
+  ): Promise<{ duePayments: DashboardDuePaymentDto[]; overdue: DashboardOverdueDto }> {
+    const tomorrow = toCalendarDate(new Date(fromCalendarDate(day).getTime() + 86_400_000));
+
+    const contracts = await this.prisma.installmentContract.findMany({
+      where: { status: ContractStatus.ACTIVE },
+      select: {
+        currency: true,
+        sale: {
+          select: {
+            customerId: true,
+            customer: { select: { fullName: true, phonePrimary: true } },
+          },
+        },
+        // `PAID` qatorlar ikkala blokka ham keraksiz — so'rovdan
+        // chiqarib tashlanadi, jadvalda ular allaqachon yopilgan
+        schedules: {
+          where: { status: { not: ScheduleStatus.PAID } },
+          select: { id: true, dueDate: true, amountDue: true, amountPaid: true },
+          orderBy: { sequence: 'asc' },
+        },
+      },
+    });
+
+    const duePayments: DashboardDuePaymentDto[] = [];
+    const overdueByCustomer = new Map<
+      string,
+      { customerName: string; daysOverdue: number; amounts: string[] }
+    >();
+
+    for (const contract of contracts) {
+      // §9.1 — nasiya savdo mijozsiz tasdiqlanmaydi
+      // (`SALE_CUSTOMER_REQUIRED`, `sale-confirmation.service.ts`), ya'ni
+      // amalda bu holat bo'lmaydi. Tekshiruv faqat himoya uchun: Prisma
+      // `sale.customer` ni nullable deb belgilagan (naqd savdoda mijoz
+      // ixtiyoriy, §6.1), ya'ni tip darajasida bu yerni tashlab
+      // yuborishga majbur qiladi — birinchi ekranni yiqitgandan ko'ra
+      // shubhali qatorni chiqarib tashlash xavfsizroq
+      const customerId = contract.sale.customerId;
+      const customer = contract.sale.customer;
+      if (!customerId || !customer) continue;
+
+      for (const schedule of contract.schedules) {
+        const outstanding = outstandingOfRows([schedule]);
+        // §16.11 — ifodalab bo'lmaydigan qoldiq PAID bo'lmagan qatorda
+        // ham qolishi mumkin, lekin u nasiya bloklarida "qarz" emas
+        if (Number(outstanding) <= 0) continue;
+
+        const dueDate = toCalendarDate(schedule.dueDate);
+
+        // §14.3 — faqat bugun va ertaga, har qator o'z valyutasida
+        if (dueDate === day || dueDate === tomorrow) {
+          duePayments.push({
+            installmentId: schedule.id,
+            customerId,
+            customerName: customer.fullName,
+            phone: customer.phonePrimary,
+            dueDate,
+            amount: outstanding,
+            currency: contract.currency,
+          });
+        }
+
+        // §14.4 — mijoz bo'yicha jamlanadi, bazaviy valyutada
+        if (dueDate < day) {
+          const inBase =
+            contract.currency === BASE_CURRENCY
+              ? outstanding
+              : storeRate
+                ? convert(new Prisma.Decimal(outstanding), contract.currency, BASE_CURRENCY, storeRate)
+                : // §1.5 — kurs yo'q bo'lsa nolga aylanadi, `debtors()` dagi
+                  // xatti-harakat bilan bir xil: JIMGINA yo'qolmaydi, lekin
+                  // dashboard ham kursi yo'q sabab yiqilmasligi kerak
+                  '0';
+
+          const entry = overdueByCustomer.get(customerId) ?? {
+            customerName: customer.fullName,
+            daysOverdue: 0,
+            amounts: [],
+          };
+          // Eng eski to'lanmagan qator — eng katta kechikish
+          entry.daysOverdue = Math.max(entry.daysOverdue, daysBetween(dueDate, day));
+          entry.amounts.push(inBase);
+          overdueByCustomer.set(customerId, entry);
+        }
+      }
+    }
+
+    // Tartib: `dueDate` bo'yicha o'sish, keyin summa bo'yicha kamayish
+    duePayments.sort(
+      (left, right) =>
+        left.dueDate.localeCompare(right.dueDate) || Number(right.amount) - Number(left.amount),
+    );
+
+    const overdueCustomers: DashboardOverdueCustomerDto[] = [...overdueByCustomer.entries()].map(
+      ([customerId, entry]) => ({
+        customerId,
+        customerName: entry.customerName,
+        daysOverdue: entry.daysOverdue,
+        amount: sumMoney(entry.amounts, BASE_CURRENCY),
+      }),
+    );
+
+    // `debtors()` dagi bilan bir xil tartib: avval kechikish, keyin summa
+    overdueCustomers.sort(
+      (left, right) =>
+        right.daysOverdue - left.daysOverdue || Number(right.amount) - Number(left.amount),
+    );
+
+    return {
+      duePayments,
+      overdue: {
+        customersCount: overdueCustomers.length,
+        totalAmount: sumMoney(
+          overdueCustomers.map((row) => row.amount),
+          BASE_CURRENCY,
+        ),
+        top: overdueCustomers.slice(0, OVERDUE_TOP_LIMIT),
+      },
+    };
   }
 
   // ──────────────────────────── §14.4 ────────────────────────────
