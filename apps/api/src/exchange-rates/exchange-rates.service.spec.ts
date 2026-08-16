@@ -98,9 +98,14 @@ function makeService(options: {
     return bucket;
   };
 
+  // Argumentlar ataylab e'lon qilingan: `record(tx, …)` ga `tx` haqiqatan
+  // uzatilganini tekshirish uchun chaqiruv argumentlari tipda ko'rinishi
+  // kerak (ARCHITECTURE §6 — audit asosiy o'zgarish bilan bitta
+  // tranzaksiyada). Argumentsiz `vi.fn()` da `mock.calls[0][0]` bo'sh
+  // kortej bo'lib, tekshiruvni yozib bo'lmasdi.
   const audit = {
-    record: vi.fn(() => Promise.resolve()),
-    recordDetached: vi.fn(() => Promise.resolve()),
+    record: vi.fn((..._args: unknown[]) => Promise.resolve()),
+    recordDetached: vi.fn((..._args: unknown[]) => Promise.resolve()),
   };
 
   const shopExchangeRateModel = {
@@ -380,7 +385,21 @@ describe('ExchangeRatesService', () => {
     it("qo'lda yangilash audit'ga tushadi (§3.10)", async () => {
       const { service, audit } = makeService({ fetchedCbu: '12100' });
       await service.syncFromCbu({ actor, ip: '::1' });
-      expect(audit.recordDetached).toHaveBeenCalledOnce();
+
+      // ARCHITECTURE §6 — audit asosiy o'zgarish bilan BITTA tranzaksiyada,
+      // ya'ni `record(tx, …)`. `recordDetached` faqat o'qish amallari uchun
+      // (`audit.service.ts`); kurs o'zgarishi esa yozuv amali, shuning uchun
+      // u yerda ishlatilishi tranzaksiya kafolatini buzardi.
+      expect(audit.record).toHaveBeenCalledOnce();
+      expect(audit.recordDetached).not.toHaveBeenCalled();
+
+      // Birinchi argument — tranzaksiya klienti. Buni tekshirmasak, test
+      // `record` ga `tx` o'rniga `undefined` uzatilgan holatda ham yashil
+      // bo'lardi va T-02 regressiyasi sezilmay o'tardi.
+      expect(audit.record.mock.calls[0]?.[0]).toBeDefined();
+      expect(audit.record.mock.calls[0]?.[2]).toMatchObject({
+        action: 'EXCHANGE_RATE_SYNCED',
+      });
     });
 
     it("qo'lda yangilash MANUAL kursni ham ustidan yozmaydi (§16.8)", async () => {
@@ -450,7 +469,10 @@ describe('ExchangeRatesService', () => {
       expect(shopStore.get('shop-a')?.get(today(TIMEZONE))?.storeRate.toString()).toBe('12240');
       expect(shopStore.get('shop-b')?.get(today(TIMEZONE))?.storeRate.toString()).toBe('12600');
 
-      // Tizim amali — audit yozilmaydi (§18.4)
+      // Tizim amali — audit yozilmaydi (§18.4). Ikkala yo'l ham tekshiriladi:
+      // `auditSync` `record(tx, …)` ga o'tgandan keyin faqat `recordDetached`
+      // ni tekshirish yolg'on yashil beradi.
+      expect(audit.record).not.toHaveBeenCalled();
       expect(audit.recordDetached).not.toHaveBeenCalled();
     });
 

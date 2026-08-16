@@ -24,6 +24,22 @@ import { describe, expect, it } from 'vitest';
  *  - kerakli qiymatni tranzaksiyadan OLDIN o'qib, ichkariga tayyor
  *    holda kiritish (kurs bilan shunday qilingan — u snapshot qiymat,
  *    §1.7).
+ *
+ * **Bir qavat vositalilik.** `$transaction` tanasida ba'zan boshqa
+ * servisga emas, SHU SINFNING shaxsiy metodiga (`this.<metod>(`, bitta
+ * nuqta) qo'ng'iroq qilinadi va aynan o'sha metod ichida chaqiruv
+ * `tx`siz ketadi (masalan `exchange-rates.service.ts`dagi
+ * `applyCbuRateToShop` → `auditSync` xatosi — T-02). Bunday chaqiruv
+ * `this.(\w+)\.(\w+)\(` naqshiga mos kelmaydi, chunki oraliqda ikkinchi
+ * nuqta yo'q. Shuning uchun bu skript shaxsiy metod chaqiruvlarini ham
+ * topadi, o'sha metodning tanasini SHU FAYLDA qidiradi va uning ichidagi
+ * `this.<bog'liqlik>.<metod>(` chaqiruvlarini xuddi shu qoidalar bilan
+ * tekshiradi. Bu FAQAT bitta qavatni qamraydi — agar shaxsiy metod o'z
+ * navbatida yana boshqa shaxsiy metodni chaqirsa (ikki qavat vositalilik),
+ * bu skript buni KO'RMAYDI. Bu ataylab qilingan chegara: sodda regex
+ * asosidagi tekshiruv chuqur rekursiyaga borsa, o'zi ham xato qiluvchi
+ * murakkab parserga aylanadi. Amalda servislar bunchalik chuqur
+ * vositalanmaydi.
  */
 
 /**
@@ -60,8 +76,8 @@ function sourceFiles(dir: string): string[] {
 }
 
 /** `$transaction(` dan keyingi qavs ichidagi to'liq tana. */
-function transactionBodies(source: string): { body: string; line: number }[] {
-  const bodies: { body: string; line: number }[] = [];
+function transactionBodies(source: string): { body: string; start: number; line: number }[] {
+  const bodies: { body: string; start: number; line: number }[] = [];
 
   for (const match of source.matchAll(/\$transaction\(/g)) {
     const start = (match.index ?? 0) + match[0].length - 1;
@@ -74,6 +90,7 @@ function transactionBodies(source: string): { body: string; line: number }[] {
         if (depth === 0) {
           bodies.push({
             body: source.slice(start, index),
+            start,
             line: source.slice(0, match.index).split('\n').length,
           });
           break;
@@ -84,22 +101,90 @@ function transactionBodies(source: string): { body: string; line: number }[] {
   return bodies;
 }
 
+/**
+ * Berilgan matn bo'lagi ichidagi `this.<bog'liqlik>.<metod>(` chaqiruvlarini
+ * topadi va `tx`siz ketganlarini xato deb belgilaydi. `bodyStart` — bu
+ * bo'lakning asl manbadagi boshlanish indeksi, faqat to'g'ri qator raqamini
+ * hisoblash uchun kerak.
+ */
+function dependencyViolations(
+  source: string,
+  body: string,
+  bodyStart: number,
+  file: string,
+): Violation[] {
+  const found: Violation[] = [];
+  for (const call of body.matchAll(/this\.(\w+)\.(\w+)\(\s*([^,)\s]*)/g)) {
+    const [, dependency, method, firstArgument] = call;
+    if (dependency === undefined || HARMLESS.has(dependency)) continue;
+    // `tx` uzatilgan — to'g'ri yo'l
+    if (firstArgument === 'tx') continue;
+
+    found.push({
+      file: file.slice(SERVICE_ROOT.length + 1),
+      line: source.slice(0, bodyStart + (call.index ?? 0)).split('\n').length,
+      call: `this.${dependency}.${String(method)}(`,
+    });
+  }
+  return found;
+}
+
+/**
+ * SHU FAYLDA e'lon qilingan `methodName` metodining tanasini (jingalak
+ * qavslar orasi) qidiradi. Faqat sinf a'zosi bo'lgan metodlar uchun ishlaydi
+ * — imzo qatorida `(` boshlanishidan oldin balanslangan qavs (parametrlar),
+ * so'ng birinchi `{` dan balanslangan `}` gacha (`transactionBodies` bilan
+ * bir xil usul). Topilmasa (masalan boshqa faylda e'lon qilingan bo'lsa)
+ * `null` — bu holat sukut bo'yicha o'tkazib yuboriladi (§ yuqoridagi izoh).
+ */
+function methodBody(source: string, methodName: string): { body: string; start: number } | null {
+  const defRe = new RegExp(`\\n[ \\t]*(?:private |public |protected )?(?:static )?(?:async )?${methodName}\\s*\\(`);
+  const match = defRe.exec(source);
+  if (!match) return null;
+
+  let depth = 0;
+  let index = match.index + match[0].length - 1;
+  for (; index < source.length; index += 1) {
+    if (source[index] === '(') depth += 1;
+    else if (source[index] === ')') {
+      depth -= 1;
+      if (depth === 0) break;
+    }
+  }
+
+  const braceStart = source.indexOf('{', index);
+  if (braceStart === -1) return null;
+
+  let braceDepth = 0;
+  for (let i = braceStart; i < source.length; i += 1) {
+    if (source[i] === '{') braceDepth += 1;
+    else if (source[i] === '}') {
+      braceDepth -= 1;
+      if (braceDepth === 0) {
+        return { body: source.slice(braceStart + 1, i), start: braceStart + 1 };
+      }
+    }
+  }
+  return null;
+}
+
 function violationsIn(file: string): Violation[] {
   const source = readFileSync(file, 'utf8');
   const found: Violation[] = [];
 
-  for (const { body, line } of transactionBodies(source)) {
-    for (const call of body.matchAll(/this\.(\w+)\.(\w+)\(\s*([^,)\s]*)/g)) {
-      const [, dependency, method, firstArgument] = call;
-      if (dependency === undefined || HARMLESS.has(dependency)) continue;
-      // `tx` uzatilgan — to'g'ri yo'l
-      if (firstArgument === 'tx') continue;
+  for (const { body, start } of transactionBodies(source)) {
+    found.push(...dependencyViolations(source, body, start, file));
 
-      found.push({
-        file: file.slice(SERVICE_ROOT.length + 1),
-        line,
-        call: `this.${dependency}.${String(method)}(`,
-      });
+    // Bir qavat vositalilik: shaxsiy metod chaqiruvi (`this.<metod>(`,
+    // ikkinchi nuqtasiz) — uning tanasini shu faylda topib, o'sha yerdagi
+    // bog'liqlik chaqiruvlarini ham tekshiramiz (yuqoridagi klass izohi).
+    for (const call of body.matchAll(/this\.(\w+)\(/g)) {
+      const methodName = call[1];
+      if (methodName === undefined) continue;
+      const resolved = methodBody(source, methodName);
+      if (!resolved) continue; // shu faylda e'lon qilinmagan — o'tkazib yuboriladi
+
+      found.push(...dependencyViolations(source, resolved.body, resolved.start, file));
     }
   }
   return found;

@@ -89,6 +89,51 @@ const envSchema = z.object({
   MAIL_PROVIDER: z.enum(['console', 'smtp']).default('console'),
   AI_PROVIDER: z.enum(['none', 'anthropic']).default('none'),
   AI_API_KEY: z.string().optional(),
+
+  /**
+   * §15.5 — fayl havolalarini imzolash uchun HMAC kaliti (`files.service.ts`,
+   * `wip/10-bosqich-storage`). `STORAGE_SECRET_KEY` bilan ADASHTIRMASLIK
+   * kerak: u — MinIO/S3 kirish kaliti, bu esa ilova o'zi generatsiya
+   * qiladigan vaqtinchalik havolalarni imzolaydi, ikkalasi mustaqil sirlar.
+   * Development'da ixtiyoriy (Storage moduli hali yo'q), lekin production'da
+   * bo'sh qolsa imzo kaliti `undefined` bo'lib, havolalar soxtalashtirishga
+   * ochiq qoladi — shuning uchun pastdagi `superRefine`da production uchun
+   * majburiy qilingan (default YO'Q, `DATABASE_URL_APP` bilan bir xil sabab).
+   */
+  FILE_URL_SECRET: z.string().min(32).optional(),
+});
+
+/**
+ * NODE_ENV ga bog'liq, bir nechta maydonni birga ko'radigan qoidalar —
+ * shuning uchun oddiy `.refine()` o'rniga `superRefine()`: har biri o'z
+ * maydoniga bog'langan xato beradi, birinchisi ikkinchisini yashirmaydi.
+ */
+const envSchemaWithRules = envSchema.superRefine((env, ctx) => {
+  if (env.NODE_ENV !== 'production') return;
+
+  // `ConsoleMailProvider` (`mail.provider.ts`) parol tiklash havolasini —
+  // token bilan birga — ochiq matnda logga yozadi (§2.6 zaxira yo'l,
+  // faqat development uchun mo'ljallangan). Production'da bu tokenni
+  // log agregatoriga chiqarib, hisobni egallab olish yo'lini ochadi.
+  if (env.MAIL_PROVIDER === 'console') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['MAIL_PROVIDER'],
+      message:
+        "Production muhitida MAIL_PROVIDER=console ishlatib bo'lmaydi — parol tiklash " +
+        "havolasi (token bilan) ochiq matnda logga yoziladi. SMTP provayderini sozlang.",
+    });
+  }
+
+  // §15.5 — imzolangan fayl havolalari kaliti bo'sh bo'lsa, production'da
+  // havolalarni soxtalashtirish mumkin bo'lib qoladi.
+  if (!env.FILE_URL_SECRET) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['FILE_URL_SECRET'],
+      message: 'FILE_URL_SECRET majburiy — production fayl havolalarini imzolash uchun (§15.5)',
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -109,7 +154,7 @@ function dropEmpty(raw: Record<string, unknown>): Record<string, unknown> {
 }
 
 export function validateEnv(raw: Record<string, unknown>): Env {
-  const parsed = envSchema.safeParse(dropEmpty(raw));
+  const parsed = envSchemaWithRules.safeParse(dropEmpty(raw));
   if (!parsed.success) {
     const details = parsed.error.issues
       .map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`)

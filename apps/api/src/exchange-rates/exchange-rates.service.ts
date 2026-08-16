@@ -387,7 +387,7 @@ export class ExchangeRatesService {
       // qaytarish" amali bor.
       if (existing?.source === ExchangeRateSource.MANUAL) {
         this.logger.log("Do'kon kursi qo'lda qo'yilgani uchun saqlandi (§16.8)");
-        await this.auditSync(context, existing, existing, cbuRate);
+        await this.auditSync(tx, context, existing, existing, cbuRate);
         return { outcome: 'MANUAL_PRESERVED', rate: toDto(existing, cbuRate) };
       }
 
@@ -407,7 +407,7 @@ export class ExchangeRatesService {
           });
 
       this.logger.log(`Kurs yozildi: CBU ${cbuRate.rate.toString()} → do'kon ${storeRate}`);
-      await this.auditSync(context, existing, saved, cbuRate);
+      await this.auditSync(tx, context, existing, saved, cbuRate);
       return { outcome: 'WRITTEN', rate: toDto(saved, cbuRate) };
     });
   }
@@ -433,8 +433,17 @@ export class ExchangeRatesService {
     }
   }
 
-  /** §3.10 — faqat odam boshlagan yangilash audit'ga tushadi. */
+  /**
+   * §3.10 — faqat odam boshlagan yangilash audit'ga tushadi.
+   *
+   * `tx` bilan chaqiriladi (`this.audit.record`, `recordDetached` EMAS):
+   * bu yozuv `applyCbuRateToShop`ning `$transaction` tanasi ichidan
+   * chaqiriladi, ya'ni asosiy kurs o'zgarishi bilan bitta tranzaksiyada
+   * bo'lishi shart (ARCHITECTURE §6, §3.10) — aks holda kurs saqlanib,
+   * audit yozuvi rollback holatida yo'qolib qolishi mumkin edi.
+   */
   private async auditSync(
+    tx: Prisma.TransactionClient,
     context: { actor: RequestUser; ip: string | null } | undefined,
     before: ShopExchangeRate | null,
     after: ShopExchangeRate,
@@ -442,7 +451,7 @@ export class ExchangeRatesService {
   ): Promise<void> {
     if (!context) return;
 
-    await this.audit.recordDetached(context.actor.shopId, {
+    await this.audit.record(tx, context.actor.shopId, {
       actorId: context.actor.id,
       action: 'EXCHANGE_RATE_SYNCED',
       entityType: 'ShopExchangeRate',

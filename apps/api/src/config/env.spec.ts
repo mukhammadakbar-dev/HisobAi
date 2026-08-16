@@ -57,4 +57,65 @@ describe('validateEnv', () => {
   it("to'ldirilgan ADMIN_PASSWORD hali ham tekshiriladi", () => {
     expect(() => validateEnv({ ...minimal, ADMIN_PASSWORD: 'qisqa' })).toThrow(/ADMIN_PASSWORD/);
   });
+
+  // T-04 — `ConsoleMailProvider` parol tiklash havolasini (token bilan)
+  // ochiq matnda logga yozadi (§2.6). Production'da bu tokenni oshkor
+  // qiladi, shuning uchun bu birikma konfiguratsiya xatosi.
+  const withFileSecret = { FILE_URL_SECRET: 'x'.repeat(32) };
+
+  it('production + MAIL_PROVIDER=console — yiqiladi', () => {
+    expect(() =>
+      validateEnv({
+        ...minimal,
+        ...withFileSecret,
+        NODE_ENV: 'production',
+        MAIL_PROVIDER: 'console',
+      }),
+    ).toThrow(/MAIL_PROVIDER/);
+  });
+
+  it("production + MAIL_PROVIDER=smtp — o'tadi", () => {
+    expect(() =>
+      validateEnv({
+        ...minimal,
+        ...withFileSecret,
+        NODE_ENV: 'production',
+        MAIL_PROVIDER: 'smtp',
+      }),
+    ).not.toThrow();
+  });
+
+  it("development + MAIL_PROVIDER=console — o'tadi", () => {
+    expect(() =>
+      validateEnv({ ...minimal, NODE_ENV: 'development', MAIL_PROVIDER: 'console' }),
+    ).not.toThrow();
+  });
+
+  // T-03 tayyorgarligi — §15.5 imzolangan fayl havolalari kaliti.
+  it('production + FILE_URL_SECRET yo‘q — yiqiladi', () => {
+    expect(() =>
+      validateEnv({ ...minimal, NODE_ENV: 'production', MAIL_PROVIDER: 'smtp' }),
+    ).toThrow(/FILE_URL_SECRET/);
+  });
+
+  it('production + FILE_URL_SECRET (32+ belgi) — o‘tadi', () => {
+    const env = validateEnv({
+      ...minimal,
+      ...withFileSecret,
+      NODE_ENV: 'production',
+      MAIL_PROVIDER: 'smtp',
+    });
+    expect(env.FILE_URL_SECRET).toBe(withFileSecret.FILE_URL_SECRET);
+  });
+
+  it('development’da FILE_URL_SECRET ixtiyoriy', () => {
+    const env = validateEnv(minimal);
+    expect(env.FILE_URL_SECRET).toBeUndefined();
+  });
+
+  it('FILE_URL_SECRET 32 belgidan qisqa bo‘lsa rad etiladi', () => {
+    expect(() => validateEnv({ ...minimal, FILE_URL_SECRET: 'qisqa' })).toThrow(
+      /FILE_URL_SECRET/,
+    );
+  });
 });
