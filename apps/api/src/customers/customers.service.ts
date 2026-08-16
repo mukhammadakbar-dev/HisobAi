@@ -18,6 +18,7 @@ import {
   type CustomerSummaryDto,
   type Page,
   type PaymentStatus,
+  type ReversalKind,
   type UpdateCustomerInput,
 } from '@hisobai/contracts';
 import type { Customer, Prisma } from '@prisma/client';
@@ -63,17 +64,29 @@ const CURRENCY_ORDER = Object.values(Currency);
  * `PARTIALLY_RETURNED`, `RETURNED`) ga `CANCELLED` qo'shilgan: u yerda
  * bekor qilingan savdo aylanmaga kirmagani uchun chiqarib tashlanadi,
  * lekin mijoz TARIXIDA bu hodisa haqiqatan sodir bo'lgan va ko'rinishi
- * kerak. `DRAFT` — hech narsaga ta'sir qilmagan (§7.7), `REVERSAL` esa
- * alohida "savdo" emas, asl qatorning teskari YOZUVI (§17.4); uning
- * fakti asl qatorning shu ro'yxatdagi `status`i orqali allaqachon
- * ko'rinadi — ikkalasini ham qo'shish bitta voqeani ikki marta
- * ko'rsatardi.
+ * kerak. `DRAFT` — hech narsaga ta'sir qilmagan (§7.7), shuning uchun
+ * hamon chiqarib tashlanadi.
+ *
+ * `REVERSAL` esa endi QO'SHILGAN. Avval bu yerda chiqarib tashlangan
+ * edi, sabab qilib "uning fakti asl qatorning `status`i orqali
+ * allaqachon ko'rinadi — ikkalasini qo'shish bitta voqeani ikki marta
+ * ko'rsatardi" deyilgan edi. Bu sabab NOTO'G'RI edi: u HISOBOT
+ * mantig'ini (§24.1 — bitta voqeani ikki marta sanash aylanma/foyda
+ * yig'indisida haqiqiy xavf) TARIX mantig'iga ko'chirgan. Tarixda savdo
+ * va uning qaytarilishi bitta voqeaning ikki ifodasi EMAS — ikki XIL
+ * PAYTDAGI ikki XIL hodisa: asl qator "RETURNED"/"CANCELLED" deb turadi,
+ * lekin QACHON qaytarilgani (`REVERSAL` qatorining o'z `at`i, ko'pincha
+ * asl savdodan ancha keyin — §8.7 qaytarish o'z sanasiga yoziladi)
+ * shu qo'shimcha qatorsiz umuman ko'rinmaydi. "Yanvarda oldi, martda
+ * qaytardi" — aynan §6.9 ("Ehtiyot bo'ling" belgisi) ega qaraydigan
+ * naqsh, va uni ko'rsatish uchun ikkala vaqt ham tarixda bo'lishi kerak.
  */
 const HISTORY_SALE_STATUSES: SaleStatus[] = [
   SaleStatus.CONFIRMED,
   SaleStatus.PARTIALLY_RETURNED,
   SaleStatus.RETURNED,
   SaleStatus.CANCELLED,
+  SaleStatus.REVERSAL,
 ];
 
 @Injectable()
@@ -126,16 +139,19 @@ export class CustomersService {
    * yangisi tepada). `ARCHITECTURE.md` §8: `/customers/:id/history`.
    *
    * **Savdo manbai** — shu mijozning `sales` qatorlari,
-   * `HISTORY_SALE_STATUSES` bilan cheklangan: `DRAFT` chiqarib
-   * tashlanadi (u hech narsaga ta'sir qilmagan, §7.7), `REVERSAL` ham
-   * chiqarib tashlanadi — bu alohida "savdo" emas, balki asl savdoning
-   * teskari YOZUVI (§17.4, manfiy `total`); uning fakti asl qatorning
-   * `status`i orqali (`RETURNED`/`PARTIALLY_RETURNED`/`CANCELLED`) allaqachon
-   * ko'rinadi. `dashboard.service.ts`dagi `CONFIRMED_STATUSES`dan farqi —
-   * bu yerga `CANCELLED` ham qo'shiladi: hisobotda bekor qilingan savdo
-   * asossiz ravishda chiqarib tashlanadi (u aylanmaga kirmaydi), lekin
-   * TARIXDA bu hodisa haqiqatan sodir bo'lgan — mijoz kelib xarid
-   * qilgan, keyin bekor qilingan, va ega buni ko'rishi kerak.
+   * `HISTORY_SALE_STATUSES` bilan cheklangan (to'liq mulohaza shu
+   * ro'yxat ustidagi izohda): `DRAFT` chiqarib tashlanadi (u hech
+   * narsaga ta'sir qilmagan, §7.7), `REVERSAL` esa QATNASHADI — asl
+   * savdoning teskari YOZUVI (§17.4, manfiy `total`) o'z `at`i bilan
+   * alohida qator sifatida chiqadi, chunki tarix hisobot emas: savdo va
+   * uning qaytarilishi ikki xil paytdagi ikki xil hodisa
+   * (§24.1 dagi "ikki marta sanash" xavfi faqat aylanma/foyda kabi
+   * YIG'INDILARGA tegishli, bitta xronologik ro'yxatga emas).
+   * `dashboard.service.ts`dagi `CONFIRMED_STATUSES`dan farqi — bu yerga
+   * `CANCELLED` ham qo'shiladi: hisobotda bekor qilingan savdo asossiz
+   * ravishda chiqarib tashlanadi (u aylanmaga kirmaydi), lekin TARIXDA
+   * bu hodisa haqiqatan sodir bo'lgan — mijoz kelib xarid qilgan, keyin
+   * bekor qilingan, va ega buni ko'rishi kerak.
    *
    * **To'lov manbai** — faqat nasiya shartnomasi orqali (`Payment →
    * contract → sale.customerId`), naqd savdoning to'g'ridan-to'g'ri
@@ -150,25 +166,41 @@ export class CustomersService {
    * kursori (`toPrismaCursor`) bu yerda ishlamaydi — u faqat bitta
    * jadval ustida `skip`/`cursor` bilan ishlaydi. Yondashuv: har ikki
    * manbadan ALOHIDA-ALOHIDA `limit + 1` ta qator olinadi (kursor
-   * bo'lsa `at < kursor.value` sharti bilan), xotirada birlashtirilib
-   * `at` bo'yicha saralanadi, so'ng `limit` tasi `toPage` bilan
-   * qaytariladi. Har manbadan `limit + 1` olish shart — jamlangan
-   * (masalan bitta so'rovda `limit + 1`) yetarli emas, chunki eng yangi
-   * `limit + 1` yozuvning HAMMASI bitta jadvaldan bo'lishi mumkin va bu
-   * holda boshqa jadvaldagi eskiroq yozuvlar butunlay ko'rinmay qolardi.
+   * bo'lsa `(at, id) < (kursor.value, kursor.id)` sharti bilan, pastga
+   * qarang), xotirada birlashtirilib `at` bo'yicha saralanadi, so'ng
+   * `limit` tasi `toPage` bilan qaytariladi. Har manbadan `limit + 1`
+   * olish shart — jamlangan (masalan bitta so'rovda `limit + 1`)
+   * yetarli emas, chunki eng yangi `limit + 1` yozuvning HAMMASI bitta
+   * jadvaldan bo'lishi mumkin va bu holda boshqa jadvaldagi eskiroq
+   * yozuvlar butunlay ko'rinmay qolardi.
    *
-   * **Cheklov:** kursor faqat `at` qiymatini saqlaydi, ikkinchi jadvalga
-   * tegishli bo'lmagan `id` bilan tie-break qilinmaydi (savdo va to'lov
-   * `id`lari solishtirish uchun mantiqiy asosga ega emas). Agar ikki xil
-   * yozuv — hatto ikki xil jadvaldan — ANIQ bir xil millisekundgacha
-   * `at`ga ega bo'lsa VA bu juftlik sahifa chegarasiga to'g'ri kelsa,
-   * ulardan biri keyingi sahifada qayta ko'rinishi (yoki, chegara aynan
-   * kursor qiymatiga to'g'ri kelsa, ko'rinmay qolishi) mumkin. Amalda bu
-   * deyarli yuz bermaydi: `soldAt`/`paidAt` foydalanuvchi tanlagan real
-   * sana, ikkalasi millisekundgacha tasodifan mos kelishi ehtimoli juda
-   * past. To'liq bartaraf etish ikkala jadvalni ham qamrab oladigan
-   * yagona kompozit (`at`, jadval, `id`) kursorni talab qilardi — bu
-   * murakkablik shu ehtimol uchun hozircha asossiz.
+   * **Kursorning `id` bandi ham ishlatiladi** — faqat `at`ga qarab
+   * kesish YETARLI EMAS. Sabab nazariy emas: NASIYA savdoda boshlang'ich
+   * to'lov savdoning o'zi bilan bir vaqtda yaratiladi —
+   * `sale-confirmation.service.ts`da `paidAt: soldAt` deb to'g'ridan-
+   * to'g'ri yoziladi. Ya'ni har bir nasiya savdosida `sales` va
+   * `payments`dan bittadan qator ANIQ bir xil `at`ga ega bo'ladi; agar
+   * shu juftlik sahifa chegarasiga to'g'ri kelib qolsa, faqat `at < before`
+   * predikati bilan ulardan biri keyingi sahifada TAKRORLANADI (yoki
+   * chegara aynan kursor qiymatiga to'g'ri kelsa, TUSHIB QOLADI). Bu
+   * `limit`ga bog'liq — kichik `limit`larda tez-tez, kattalarda kamdan-kam
+   * uchraydi, lekin hech qachon "deyarli yuz bermaydi" emas.
+   *
+   * Yechim — predikat `at`dan `(at, id)` juftlikka o'tkaziladi:
+   * `at < before.at OR (at = before.at AND id < before.id)`. Kursorda
+   * `id` ALLAQACHON bor edi — `toPage` (`common/pagination.ts`) uni
+   * `encodeCursor({ value, id: last.id })` bilan yozadi, faqat bu yerda
+   * o'qilmagan edi. `id` taqqoslash IKKALA jadval (`sale.id`,
+   * `payment.id`) bo'ylab bab-baravar ishlaydi — bu birinchi qarashda
+   * shubhali ko'rinishi mumkin ("boshqa jadvalning `id`si bilan
+   * solishtirish qanday to'g'ri bo'lsin"), lekin UUID GLOBAL YAGONA
+   * (Postgres `gen_random_uuid()`/Prisma `@default(uuid())` — bir xil
+   * qiymat ikki qatorda takrorlanmaydi), ya'ni `<` bu yerda "qaysi
+   * jadvaldan" degan ma'noga ega emas, faqat qatorlarga ANIQ, DETERMINISTIK
+   * tartib berish uchun ishlatiladi — xuddi ikkita manbadan kelgan
+   * sanalarni bittalab saralashga o'xshaydi. Predikat xotiradagi
+   * saralash (`byAtDesc`) bilan ANIQ bir xil tartibda bo'lishi SHART —
+   * bu shu funksiya ustidagi izohda tushuntirilgan.
    */
   async history(id: string, query: CustomerHistoryQuery): Promise<Page<CustomerHistoryItemDto>> {
     const customer = await this.prisma.customer.findUnique({
@@ -179,14 +211,24 @@ export class CustomersService {
 
     const limit = normalizeLimit(query.limit);
     const decoded = query.cursor ? decodeCursor(query.cursor) : null;
-    const before = decoded ? new Date(decoded.value) : null;
+    // `before` — {at, id} juftligi sifatida: ikkalasi birga bor yoki
+    // ikkalasi ham yo'q, alohida-alohida `null` tekshiruvi shart emas
+    // (Fix B — tie-break `id`).
+    const before = decoded ? { at: new Date(decoded.value), id: decoded.id } : null;
 
     const [sales, payments] = await Promise.all([
       this.prisma.sale.findMany({
         where: {
           customerId: id,
           status: { in: HISTORY_SALE_STATUSES },
-          ...(before ? { soldAt: { lt: before } } : {}),
+          // `(soldAt, id) < (before.at, before.id)` — faqat `soldAt < before.at`
+          // yetarli emas: nasiya savdoda `payment.paidAt = sale.soldAt`
+          // (`sale-confirmation.service.ts`), ya'ni bir xil millisekundda
+          // ikki jadvaldan bittadan qator to'g'ri kelishi qoida, tasodif
+          // emas (izoh — funksiya ustida).
+          ...(before
+            ? { OR: [{ soldAt: { lt: before.at } }, { soldAt: before.at, id: { lt: before.id } }] }
+            : {}),
         },
         select: {
           id: true,
@@ -195,6 +237,7 @@ export class CustomersService {
           currency: true,
           total: true,
           soldAt: true,
+          reversalKind: true,
         },
         orderBy: [{ soldAt: 'desc' }, { id: 'desc' }],
         take: limit + 1,
@@ -209,7 +252,10 @@ export class CustomersService {
       this.prisma.payment.findMany({
         where: {
           contract: { sale: { customerId: id } },
-          ...(before ? { paidAt: { lt: before } } : {}),
+          // Yuqoridagi izohning aynan o'zi, `paidAt` uchun.
+          ...(before
+            ? { OR: [{ paidAt: { lt: before.at } }, { paidAt: before.at, id: { lt: before.id } }] }
+            : {}),
         },
         select: {
           id: true,
@@ -605,6 +651,7 @@ function toHistorySaleDto(row: {
   currency: Currency;
   total: Prisma.Decimal;
   soldAt: Date;
+  reversalKind: ReversalKind | null;
 }): CustomerHistorySaleDto {
   return {
     kind: 'SALE',
@@ -616,8 +663,20 @@ function toHistorySaleDto(row: {
     // `?? ''` faqat TypeScript ustun turini (`String?`) qondirish uchun.
     number: row.number ?? '',
     status: row.status,
+    // §22.2 — teskari yozuvning `sales.total`i BAZADA allaqachon manfiy
+    // (`sale-reversal.service.ts`: `new Prisma.Decimal(returnedTotal).negated()`).
+    // Bu yerda ishorani qo'lda o'zgartirish (masalan `status === REVERSAL`
+    // bo'lsa qayta manfiylash) uni IKKI MARTA teskarilab, yana musbatga
+    // qaytarardi — shuning uchun qiymat qo'lga tegilmasdan ko'chiriladi.
     total: row.total.toString(),
     currency: row.currency,
+    // Fix A(3) — `status: REVERSAL` o'zi "Qaytarish" bilan "Bekor
+    // qilish"ni ajratmaydi (ikkalasi ham shu statusda), `reversalKind`
+    // ajratadi. Asl (teskarilanmagan) qatorlarda baza ustuni `null` —
+    // shart yozishning hojati yo'q, `row.reversalKind` to'g'ridan-to'g'ri
+    // ko'chiriladi (`sales.mappers.ts`dagi `toSummaryDto` bilan bir xil
+    // naqsh).
+    reversalKind: row.reversalKind,
   };
 }
 
@@ -645,14 +704,35 @@ function toHistoryPaymentDto(row: {
 }
 
 /**
- * `at` bo'yicha KAMAYISH (eng yangisi birinchi).
+ * `at` bo'yicha KAMAYISH (eng yangisi birinchi), teng bo'lganda `id`
+ * bo'yicha KAMAYISH.
  *
  * ISO 8601 (`toISOString()`) satrlari doim bir xil uzunlikda va UTC'da,
  * shuning uchun leksikografik solishtirish xronologik tartibga to'g'ri
- * keladi — `Date`ga aylantirish shart emas. Bir xil `at`da `id` bo'yicha
- * kamayish qo'shiladi: bu chinakam vaqt tartibiga aloqasi yo'q, faqat
- * sahifa ichida barqaror (deterministik) tartib uchun — sahifalash
- * cheklovi shu funksiya ustidagi izohda tushuntirilgan.
+ * keladi — `Date`ga aylantirish shart emas.
+ *
+ * Ikkinchi band (`id`) endi shunchaki "barqaror (deterministik) tartib"
+ * emas — u `history()` dagi kursor predikati bilan (`(at, id) <
+ * (before.at, before.id)`, Fix B) ANIQ mos kelishi SHART. Ikkala Prisma
+ * so'rovi ham xuddi shu ikki bosqichli tartibda saraladi (`orderBy:
+ * [{ soldAt/paidAt: 'desc' }, { id: 'desc' }]`); bu funksiya esa ikki
+ * manbadan kelgan qatorlarni xotirada birlashtirib saralaganda O'SHA BIR
+ * XIL tartibni saqlaydi. Agar ikkisi bir-biridan farq qilsa (masalan
+ * biri `asc`, ikkinchisi `desc` bo'lib qolsa), sahifalash JIMGINA
+ * buziladi — chegaradagi yozuv qayta chiqadi yoki butunlay tushib
+ * qoladi, va bu xato faqat bir xil `at`ga ega ikki qator sahifa
+ * chegarasiga to'g'ri kelganda ko'rinadi (masalan nasiya savdosida
+ * `payment.paidAt = sale.soldAt`, `sale-confirmation.service.ts`).
+ *
+ * **Bu yerda yana bir jim shart bor:** SQL `id` ni `uuid` tipi sifatida
+ * (bayt bo'yicha) taqqoslaydi, bu funksiya esa satr sifatida. Ikkalasi
+ * bir xil tartib berishi SHART, aks holda predikat bilan saralash
+ * ajralib qoladi va yuqoridagi xato baribir yuz beradi. Ular mos
+ * keladi, chunki kanonik UUID kichik harfli va tire'lar qat'iy
+ * o'rinlarda: ASCII'da `0`–`9` `a`–`f` dan oldin, ya'ni satr tartibi
+ * bayt tartibini takrorlaydi. (2000 tasodifiy juftlikda tekshirilgan:
+ * `(a < b) <> (a::text < b::text)` — nol marta.) Agar biror joyda UUID
+ * KATTA harfda saqlansa, bu shart buziladi.
  */
 function byAtDesc(a: CustomerHistoryItemDto, b: CustomerHistoryItemDto): number {
   if (a.at !== b.at) return a.at < b.at ? 1 : -1;

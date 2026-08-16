@@ -3,6 +3,7 @@ import {
   Currency,
   ErrorCode,
   PaymentStatus,
+  ReversalKind,
   SaleStatus,
   UserRole,
 } from '@hisobai/contracts';
@@ -101,12 +102,15 @@ interface SaleFixture {
   /** ISO — `soldAt`. */
   soldAt: string;
   number?: string | null;
+  /** Fix A — faqat `status: REVERSAL` qatorlarida to'ladi. */
+  reversalKind?: ReversalKind | null;
 }
 
 function sale(over: SaleFixture): Required<SaleFixture> {
   return {
     currency: Currency.UZS,
     number: `2026-${over.id}`,
+    reversalKind: null,
     ...over,
   };
 }
@@ -248,7 +252,9 @@ function makeService(
 
       return Promise.resolve(
         contracts
-          .filter((row) => (where.status ? (row.status ?? ContractStatus.ACTIVE) === where.status : true))
+          .filter((row) =>
+            where.status ? (row.status ?? ContractStatus.ACTIVE) === where.status : true,
+          )
           .filter((row) => customerIds.includes(row.customerId))
           .map((row) => ({
             currency: row.currency ?? Currency.UZS,
@@ -263,6 +269,31 @@ function makeService(
   };
 
   /**
+   * Fix B — kursor `OR` shakli: `[{ <field>: { lt } }, { <field>: at, id:
+   * { lt } }]`. `history()` bu ikki bandni har ikki so'rovda ham (sale
+   * `soldAt`, payment `paidAt`) bir xil qurilishda beradi — mock ham
+   * shu ikki bandni real Postgres kabi mustaqil ravishda "OR"laydi,
+   * qo'lda soddalashtirmasdan (aks holda mock aynan tuzatilayotgan
+   * bag'ni niqoblab qo'yishi mumkin edi).
+   */
+  interface CursorOr<F extends string> {
+    OR?: [{ [K in F]: { lt: Date } }, { [K in F]: Date } & { id: { lt: string } }];
+  }
+
+  function passesCursor<F extends string>(
+    field: F,
+    rowAt: Date,
+    rowId: string,
+    where: CursorOr<F>,
+  ): boolean {
+    if (!where.OR) return true;
+    const [ltBand, eqBand] = where.OR;
+    const ltAt = ltBand[field].lt;
+    const eqAt = eqBand[field] as Date;
+    return rowAt < ltAt || (rowAt.getTime() === eqAt.getTime() && rowId < eqBand.id.lt);
+  }
+
+  /**
    * T-12 — `history()` uchun soddalashtirilgan `sale`/`payment`
    * so'rovlari. Haqiqiy Prisma emas: faqat servis chaqiradigan
    * `where`/`orderBy`/`take` shaklini qondiradi va xotirada saralaydi —
@@ -274,14 +305,16 @@ function makeService(
       where,
       take,
     }: {
-      where: { customerId: string; status: { in: SaleStatus[] }; soldAt?: { lt: Date } };
+      where: { customerId: string; status: { in: SaleStatus[] } } & CursorOr<'soldAt'>;
       take: number;
     }) => {
       const filtered = sales
         .filter((row) => row.customerId === where.customerId)
         .filter((row) => where.status.in.includes(row.status))
-        .filter((row) => !where.soldAt || new Date(row.soldAt) < where.soldAt.lt)
-        .sort((a, b) => (a.soldAt === b.soldAt ? (a.id < b.id ? 1 : -1) : a.soldAt < b.soldAt ? 1 : -1))
+        .filter((row) => passesCursor('soldAt', new Date(row.soldAt), row.id, where))
+        .sort((a, b) =>
+          a.soldAt === b.soldAt ? (a.id < b.id ? 1 : -1) : a.soldAt < b.soldAt ? 1 : -1,
+        )
         .slice(0, take);
 
       return Promise.resolve(
@@ -292,6 +325,7 @@ function makeService(
           currency: row.currency,
           total: new Prisma.Decimal(row.total),
           soldAt: new Date(row.soldAt),
+          reversalKind: row.reversalKind ?? null,
         })),
       );
     },
@@ -302,13 +336,15 @@ function makeService(
       where,
       take,
     }: {
-      where: { contract: { sale: { customerId: string } }; paidAt?: { lt: Date } };
+      where: { contract: { sale: { customerId: string } } } & CursorOr<'paidAt'>;
       take: number;
     }) => {
       const filtered = payments
         .filter((row) => row.customerId === where.contract.sale.customerId)
-        .filter((row) => !where.paidAt || new Date(row.paidAt) < where.paidAt.lt)
-        .sort((a, b) => (a.paidAt === b.paidAt ? (a.id < b.id ? 1 : -1) : a.paidAt < b.paidAt ? 1 : -1))
+        .filter((row) => passesCursor('paidAt', new Date(row.paidAt), row.id, where))
+        .sort((a, b) =>
+          a.paidAt === b.paidAt ? (a.id < b.id ? 1 : -1) : a.paidAt < b.paidAt ? 1 : -1,
+        )
         .slice(0, take);
 
       return Promise.resolve(
@@ -687,7 +723,11 @@ describe('CustomersService', () => {
         ],
         [
           contract({ customerId: 'c-1', schedules: [{ amountDue: '1000000' }] }),
-          contract({ customerId: 'c-2', currency: Currency.USD, schedules: [{ amountDue: '200' }] }),
+          contract({
+            customerId: 'c-2',
+            currency: Currency.USD,
+            schedules: [{ amountDue: '200' }],
+          }),
         ],
       );
 
@@ -751,6 +791,7 @@ describe('CustomersService', () => {
           status: SaleStatus.CONFIRMED,
           total: '1500000',
           currency: Currency.UZS,
+          reversalKind: null,
         },
       ]);
       expect(page.hasMore).toBe(false);
@@ -803,6 +844,67 @@ describe('CustomersService', () => {
       expect(page.data.map((row) => (row.kind === 'SALE' ? row.status : null))).toEqual([
         SaleStatus.CANCELLED,
         SaleStatus.RETURNED,
+      ]);
+    });
+
+    /**
+     * Fix A — avval `HISTORY_SALE_STATUSES` `REVERSAL`ni chiqarib
+     * tashlar edi (noto'g'ri sabab bilan, konstanta ustidagi izohda
+     * tushuntirilgan). Endi teskari yozuv ASL savdodan ALOHIDA qator
+     * sifatida, o'z `at`i (qaytarish sanasi, §8.7) bilan chiqadi —
+     * "qachon qaytarilgani" faqat shu qatordan ko'rinadi.
+     */
+    it('teskari yozuv (REVERSAL) tarixda alohida qator sifatida, manfiy `total` va `reversalKind` bilan chiqadi', async () => {
+      const { service } = makeService(
+        [customer({ id: 'c-1', fullName: 'Alisher Karimov', phonePrimary: '+998901234567' })],
+        [],
+        [
+          sale({
+            id: 's-1',
+            customerId: 'c-1',
+            status: SaleStatus.RETURNED,
+            total: '2000000',
+            soldAt: '2026-01-10T10:00:00.000Z',
+          }),
+          sale({
+            id: 's-1-r1',
+            customerId: 'c-1',
+            status: SaleStatus.REVERSAL,
+            // §22.2 — baza ustunida ALLAQACHON manfiy (`negated()`), fixture
+            // haqiqiy qatorni aks ettiradi — DTO buni qo'lda teskarilamaydi
+            total: '-2000000',
+            soldAt: '2026-03-15T10:00:00.000Z',
+            number: '2026-s-1-R1',
+            reversalKind: ReversalKind.RETURN,
+          }),
+        ],
+      );
+
+      const page = await service.history('c-1', {});
+
+      // Martdagi qaytarish tepada, yanvardagi asl savdo pastda — ikkalasi
+      // ham ko'rinadi, ikkalasi ham ALOHIDA voqea sifatida (§6.9)
+      expect(page.data).toEqual([
+        {
+          kind: 'SALE',
+          id: 's-1-r1',
+          at: '2026-03-15T10:00:00.000Z',
+          number: '2026-s-1-R1',
+          status: SaleStatus.REVERSAL,
+          total: '-2000000',
+          currency: Currency.UZS,
+          reversalKind: ReversalKind.RETURN,
+        },
+        {
+          kind: 'SALE',
+          id: 's-1',
+          at: '2026-01-10T10:00:00.000Z',
+          number: '2026-s-1',
+          status: SaleStatus.RETURNED,
+          total: '2000000',
+          currency: Currency.UZS,
+          reversalKind: null,
+        },
       ]);
     });
 
@@ -882,6 +984,88 @@ describe('CustomersService', () => {
       expect(nextPage.data).toHaveLength(1);
       expect(nextPage.data[0]?.id).toBe('s-1');
       expect(nextPage.hasMore).toBe(false);
+    });
+
+    /**
+     * Fix B — kursor endi `(at, id)` juftligiga qarab kesadi, faqat
+     * `at`ga emas.
+     *
+     * `sale-confirmation.service.ts:443` — nasiya savdosining boshlang'ich
+     * to'lovi `paidAt: soldAt` bilan yoziladi, ya'ni savdo va to'lov
+     * qatorlari AYNAN bir xil `at`ga ega bo'lishi qoida, tasodif emas.
+     * Bu test aynan shu holatni sahifa chegarasiga qo'yadi: `limit: 1`
+     * bilan birinchi sahifa ikkita bir xil `at`li yozuvdan FAQAT
+     * kattaroq `id`lisini qaytaradi (`byAtDesc` — teng `at`da `id`
+     * kamayish), ikkinchisi ikkinchi sahifada chiqishi SHART.
+     *
+     * Faqat `at < before` predikati bilan (tuzatishdan OLDINGI kod)
+     * ikkinchi sahifa `aa-payment`ni butunlay TUSHIRIB YUBORARDI: uning
+     * `paidAt`i kursordagi `at`ga TENG (KICHIK emas), ya'ni `paidAt < at`
+     * yolg'on va yozuv filtrga tushmay qolardi — natijada bevosita undan
+     * eskiroq `c-earlier` chiqib ketardi.
+     */
+    it('kursor: bir xil `at`ga ega savdo va to‘lov sahifa chegarasida — hech biri tushib qolmaydi, takrorlanmaydi', async () => {
+      const SAME_AT = '2026-08-05T10:00:00.000Z';
+      const { service } = makeService(
+        [customer({ id: 'c-1', fullName: 'Alisher Karimov', phonePrimary: '+998901234567' })],
+        [],
+        [
+          // `id` ataylab 'zz-...' — leksikografik jihatdan 'aa-payment'
+          // dan KATTA, ya'ni `byAtDesc` bo'yicha bir xil `at`da BIRINCHI
+          // chiqishi kerak
+          sale({
+            id: 'zz-sale',
+            customerId: 'c-1',
+            status: SaleStatus.CONFIRMED,
+            total: '1000000',
+            soldAt: SAME_AT,
+          }),
+          sale({
+            id: 'c-earlier',
+            customerId: 'c-1',
+            status: SaleStatus.CONFIRMED,
+            total: '300000',
+            soldAt: '2026-08-01T10:00:00.000Z',
+          }),
+        ],
+        [
+          payment({
+            id: 'aa-payment',
+            customerId: 'c-1',
+            contractId: 'contract-1',
+            status: PaymentStatus.CONFIRMED,
+            paidAmount: '1000000',
+            paidAt: SAME_AT,
+          }),
+        ],
+      );
+
+      const page1 = await service.history('c-1', { limit: 1 });
+      expect(page1.data).toHaveLength(1);
+      expect(page1.data[0]?.id).toBe('zz-sale');
+      expect(page1.hasMore).toBe(true);
+      expect(page1.nextCursor).not.toBeNull();
+
+      const page2 = await service.history('c-1', {
+        limit: 1,
+        cursor: page1.nextCursor ?? undefined,
+      });
+      expect(page2.data).toHaveLength(1);
+      expect(page2.data[0]?.id).toBe('aa-payment');
+      expect(page2.hasMore).toBe(true);
+
+      const page3 = await service.history('c-1', {
+        limit: 1,
+        cursor: page2.nextCursor ?? undefined,
+      });
+      expect(page3.data).toHaveLength(1);
+      expect(page3.data[0]?.id).toBe('c-earlier');
+      expect(page3.hasMore).toBe(false);
+
+      // Uchala sahifa yig'indisida hech bir yozuv TAKRORLANMAYDI va
+      // hech biri TUSHIB QOLMAYDI
+      const allIds = [...page1.data, ...page2.data, ...page3.data].map((row) => row.id);
+      expect(allIds).toEqual(['zz-sale', 'aa-payment', 'c-earlier']);
     });
 
     it('mijoz topilmasa NOT_FOUND', async () => {

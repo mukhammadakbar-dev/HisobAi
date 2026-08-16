@@ -10,6 +10,7 @@ import { formatDateTime } from '../../../lib/format';
 import {
   PAYMENT_STATUS_LABEL,
   PAYMENT_STATUS_TONE,
+  REVERSAL_KIND_LABEL,
   SALE_STATUS_LABEL,
   SALE_STATUS_TONE,
 } from '../../../lib/labels';
@@ -25,7 +26,9 @@ import { useCustomerHistory } from '../queries';
  *
  * Naqd savdoning to'lovi alohida qator sifatida chiqmaydi (§25.4) —
  * unda to'lov savdoning o'zi, ikki marta ko'rsatish bitta voqeani ikki
- * marta sanardi.
+ * marta sanardi. Qaytarish va bekor qilish esa CHIQADI (§25.3): ular
+ * savdodan keyingi alohida hodisa va aynan ularning SANASI asl qatorda
+ * ko'rinmaydi — "yanvarda oldi, martda qaytardi" naqshi §6.9 uchun kerak.
  */
 export function HistoryCard({ customerId }: { customerId: string }) {
   const history = useCustomerHistory(customerId);
@@ -101,13 +104,24 @@ export function HistoryCard({ customerId }: { customerId: string }) {
 function HistoryRow({ item }: { item: CustomerHistoryItemDto }) {
   const isSale = item.kind === 'SALE';
 
+  /*
+    Teskari yozuv qatori "Savdo 2026-00042-R1" deb ko'rinsa chalg'itadi —
+    u yangi savdo emas. `status: REVERSAL` ning o'zi esa "Qaytarish" bilan
+    "Bekor qilish" ni ajratmaydi, shuning uchun `reversalKind` ishlatiladi
+    (`DECISIONS.md` §25.3). Summasi manfiy — ishorani server yozadi (§22.2).
+  */
+  const saleLabel =
+    isSale && item.reversalKind
+      ? (REVERSAL_KIND_LABEL[item.reversalKind] ?? 'Teskari yozuv')
+      : 'Savdo';
+
   return (
     <tr className="border-b border-border-default last:border-0">
       <td className="tabular p-3 text-text-secondary">{formatDateTime(item.at)}</td>
       <td className="p-3">
         {isSale ? (
           <Link href={`/sales/${item.id}`} className="font-medium text-link hover:underline">
-            Savdo {item.number}
+            {saleLabel} {item.number}
           </Link>
         ) : (
           <Link
@@ -131,10 +145,7 @@ function HistoryRow({ item }: { item: CustomerHistoryItemDto }) {
         )}
       </td>
       <td className="tabular p-3 font-medium">
-        <Money
-          amount={isSale ? item.total : item.amount}
-          currency={item.currency}
-        />
+        <Money amount={isSale ? item.total : item.amount} currency={item.currency} />
       </td>
     </tr>
   );

@@ -8,6 +8,7 @@ import {
   PaymentStatus,
   ContractStatus,
   ProductType,
+  ReversalKind,
   ReversalReason,
   SaleKind,
   SaleStatus,
@@ -98,6 +99,16 @@ export const SALE_STATUS_TONE: Record<string, 'success' | 'muted' | 'warning' | 
   };
 
 /** §8.6 — sabab majburiy va audit'ga yoziladi. */
+/**
+ * §22 — teskari yozuvning turi. Faqat `status: REVERSAL` qatorlarida
+ * ma'noga ega; `status` ning o'zi bu ikkisini ajratmaydi, shuning uchun
+ * `reversalKind` alohida uzatiladi (`DECISIONS.md` §25.3).
+ */
+export const REVERSAL_KIND_LABEL: Record<string, string> = {
+  [ReversalKind.RETURN]: 'Qaytarish',
+  [ReversalKind.CANCEL]: 'Bekor qilish',
+};
+
 export const REVERSAL_REASON_LABEL: Record<string, string> = {
   [ReversalReason.DEFECTIVE]: 'Nuqsonli',
   [ReversalReason.CUSTOMER_CHANGED_MIND]: 'Mijoz fikri o‘zgardi',

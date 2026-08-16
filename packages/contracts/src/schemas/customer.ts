@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { Currency, PaymentStatus, SaleStatus } from '../enums';
+import type { Currency, PaymentStatus, ReversalKind, SaleStatus } from '../enums';
 import { normalizePhone } from '../phone';
 import { activeFilter, pageQueryFields } from './common';
 
@@ -228,6 +228,18 @@ export interface CustomerHistorySaleDto {
   status: SaleStatus;
   total: string;
   currency: Currency;
+  /**
+   * Fix A(3) (T-12) — teskari yozuv turi, **faqat** `status: REVERSAL`
+   * qatorlarida to'ladi, aks holda `null`.
+   *
+   * `ReversalKind` ikki qiymatli (`RETURN` / `CANCEL`, `sale.ts`dagi
+   * `SaleSummaryDto.reversalKind` bilan bir xil maydon-nomi va ma'no):
+   * "mahsulot qaytdi" bilan "savdo xato kiritilgan edi" ekranda
+   * boshqa-boshqa matn va ma'noga ega (§8), lekin ikkalasi ham xuddi
+   * shu `SaleStatus.REVERSAL`ga ega — `status`ning o'zi ularni
+   * ajratmaydi, shu maydon ajratadi.
+   */
+  reversalKind: ReversalKind | null;
 }
 
 export interface CustomerHistoryPaymentDto {
