@@ -1,4 +1,4 @@
-import { ErrorCode, UserRole } from '@hisobai/contracts';
+import { ContractStatus, Currency, ErrorCode, UserRole } from '@hisobai/contracts';
 import { Prisma } from '@prisma/client';
 import type { Request } from 'express';
 import { describe, expect, it, vi } from 'vitest';
@@ -19,7 +19,10 @@ import { CustomersService } from './customers.service';
  *  - telefon bo'yicha qidiruvda ajratgichlar tozalanmasa, u **hech
  *    qachon** ishlamaydi (bazada E.164, formada "90 123 45 67");
  *  - audit'ga passport raqamlari tushsa, jurnal shaxsga doir
- *    ma'lumotning ikkinchi nusxasiga aylanadi.
+ *    ma'lumotning ikkinchi nusxasiga aylanadi;
+ *  - §6.11, §6.12 qarzi: ikki mijozning qarzi guruhlashda aralashib
+ *    ketsa yoki `CLOSED`/`CANCELLED` shartnoma hisobga qo'shilib qolsa,
+ *    ega noto'g'ri mijozga qo'ng'iroq qiladi.
  */
 
 const ACTOR = { id: 'user-1', role: UserRole.SHOP_ADMIN } as RequestUser;
@@ -65,13 +68,31 @@ function customer(
   };
 }
 
-function makeService(rows: Row[] = []) {
+/** §6.11 qarz testlari uchun — soddalashtirilgan nasiya shartnomasi fixture. */
+interface ContractFixture {
+  customerId: string;
+  currency?: Currency;
+  status?: ContractStatus;
+  schedules: { amountDue: string; amountPaid?: string }[];
+}
+
+function contract(over: ContractFixture): Required<ContractFixture> {
+  return {
+    currency: Currency.UZS,
+    status: ContractStatus.ACTIVE,
+    ...over,
+  };
+}
+
+function makeService(rows: Row[] = [], contracts: ContractFixture[] = []) {
   const store = new Map(rows.map((row) => [row.id, row]));
   const audit = {
     record: vi.fn((_tx: unknown, _shopId: string | null, _entry: AuditEntry) => Promise.resolve()),
     recordDetached: vi.fn((_shopId: string | null, _entry: AuditEntry) => Promise.resolve()),
   };
   const queries: Prisma.CustomerWhereInput[] = [];
+  /** §6.11 — N+1 nazorati: ro'yxat sahifasiga aniq nechta so'rov qo'shilgani. */
+  const debtQueries: { status?: string; customerIds: string[] }[] = [];
 
   const delegate = {
     findMany: ({ where, take }: { where?: Prisma.CustomerWhereInput; take?: number }) => {
@@ -159,14 +180,40 @@ function makeService(rows: Row[] = []) {
     },
   };
 
+  const installmentContract = {
+    findMany: ({
+      where,
+    }: {
+      where: { status?: ContractStatus; sale?: { customerId?: { in?: string[] } } };
+    }) => {
+      const customerIds = where.sale?.customerId?.in ?? [];
+      debtQueries.push({ status: where.status, customerIds });
+
+      return Promise.resolve(
+        contracts
+          .filter((row) => (where.status ? (row.status ?? ContractStatus.ACTIVE) === where.status : true))
+          .filter((row) => customerIds.includes(row.customerId))
+          .map((row) => ({
+            currency: row.currency ?? Currency.UZS,
+            sale: { customerId: row.customerId },
+            schedules: row.schedules.map((schedule) => ({
+              amountDue: new Prisma.Decimal(schedule.amountDue),
+              amountPaid: new Prisma.Decimal(schedule.amountPaid ?? '0'),
+            })),
+          })),
+      );
+    },
+  };
+
   const prisma = {
     customer: delegate,
+    installmentContract,
     $transaction: <T>(fn: (tx: { customer: typeof delegate }) => Promise<T>) =>
       fn({ customer: delegate }),
   };
 
   const service = new CustomersService(prisma as never, audit as never);
-  return { service, store, audit, queries };
+  return { service, store, audit, queries, debtQueries };
 }
 
 function precondition(expected: Date = UPDATED_AT) {
@@ -421,6 +468,118 @@ describe('CustomersService', () => {
       await service.list({ isActive: 'archived', sort: 'fullName' });
 
       expect(queries[0]).toMatchObject({ isActive: false });
+    });
+  });
+
+  describe('qarz (§6.11, §6.12)', () => {
+    it('ikkita valyutadagi qarz alohida qatorlarda, Currency tartibida (UZS, USD)', async () => {
+      const { service } = makeService(
+        [customer({ id: 'c-1', fullName: 'Alisher Karimov', phonePrimary: '+998901234567' })],
+        [
+          contract({
+            customerId: 'c-1',
+            currency: Currency.USD,
+            schedules: [{ amountDue: '500' }],
+          }),
+          contract({
+            customerId: 'c-1',
+            currency: Currency.UZS,
+            schedules: [{ amountDue: '1000000' }],
+          }),
+        ],
+      );
+
+      const seen = await service.requireById('c-1', ACTOR);
+
+      // Tartib ATAYLAB tekshiriladi: UZS avval, USD keyin — shartnomalar
+      // teskari tartibda kiritilgan bo'lsa ham
+      expect(seen.debt).toEqual([
+        { currency: Currency.UZS, amount: '1000000' },
+        { currency: Currency.USD, amount: '500.00' },
+      ]);
+    });
+
+    it('qarzi yo‘q mijozda `debt` bo‘sh massiv — nol qiymatli qator yo‘q', async () => {
+      const { service } = makeService(
+        [customer({ id: 'c-1', fullName: 'Alisher Karimov', phonePrimary: '+998901234567' })],
+        [
+          contract({
+            customerId: 'c-1',
+            schedules: [{ amountDue: '1000000', amountPaid: '1000000' }],
+          }),
+        ],
+      );
+
+      const seen = await service.requireById('c-1', ACTOR);
+
+      expect(seen.debt).toEqual([]);
+    });
+
+    it('§17.18 — CLOSED/CANCELLED shartnoma qarzga qo‘shilmaydi', async () => {
+      const { service } = makeService(
+        [customer({ id: 'c-1', fullName: 'Alisher Karimov', phonePrimary: '+998901234567' })],
+        [
+          contract({
+            customerId: 'c-1',
+            status: ContractStatus.CLOSED,
+            schedules: [{ amountDue: '500000' }],
+          }),
+          contract({
+            customerId: 'c-1',
+            status: ContractStatus.CANCELLED,
+            schedules: [{ amountDue: '300000' }],
+          }),
+        ],
+      );
+
+      const seen = await service.requireById('c-1', ACTOR);
+
+      expect(seen.debt).toEqual([]);
+    });
+
+    it('qisman to‘langan jadval qatori qolgan summa bilan hisoblanadi', async () => {
+      const { service } = makeService(
+        [customer({ id: 'c-1', fullName: 'Alisher Karimov', phonePrimary: '+998901234567' })],
+        [
+          contract({
+            customerId: 'c-1',
+            schedules: [
+              // Butunlay to'langan qator qoldiqqa hech narsa qo'shmaydi
+              { amountDue: '500000', amountPaid: '500000' },
+              // Qisman to'langan qator — faqat QOLGAN qism
+              { amountDue: '500000', amountPaid: '200000' },
+            ],
+          }),
+        ],
+      );
+
+      const seen = await service.requireById('c-1', ACTOR);
+
+      expect(seen.debt).toEqual([{ currency: Currency.UZS, amount: '300000' }]);
+    });
+
+    it('ro‘yxatda bir nechta mijoz uchun qarz to‘g‘ri taqsimlanadi — bitta qo‘shimcha so‘rov bilan', async () => {
+      const { service, debtQueries } = makeService(
+        [
+          customer({ id: 'c-1', fullName: 'Ali', phonePrimary: '+998901111111' }),
+          customer({ id: 'c-2', fullName: 'Vali', phonePrimary: '+998902222222' }),
+        ],
+        [
+          contract({ customerId: 'c-1', schedules: [{ amountDue: '1000000' }] }),
+          contract({ customerId: 'c-2', currency: Currency.USD, schedules: [{ amountDue: '200' }] }),
+        ],
+      );
+
+      const page = await service.list({ isActive: 'active', sort: 'fullName' });
+
+      const debtById = new Map(page.data.map((row) => [row.id, row.debt]));
+      // Birinikini ikkinchisiga o'tib ketmagani — guruhlash mijoz bo'yicha to'g'ri
+      expect(debtById.get('c-1')).toEqual([{ currency: Currency.UZS, amount: '1000000' }]);
+      expect(debtById.get('c-2')).toEqual([{ currency: Currency.USD, amount: '200.00' }]);
+
+      // N+1 EMAS: 2 mijozli sahifaga qarz uchun aniq BITTA qo'shimcha so'rov
+      expect(debtQueries).toHaveLength(1);
+      expect(debtQueries[0]?.customerIds.slice().sort()).toEqual(['c-1', 'c-2']);
     });
   });
 });

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { Currency } from '../enums';
 import { normalizePhone } from '../phone';
 import { activeFilter, pageQueryFields } from './common';
 
@@ -11,9 +12,10 @@ import { activeFilter, pageQueryFields } from './common';
  * `phone_primary` ustunidagi `@unique` haqiqatan dublikatni to'sadi
  * (§6.2). Formada foydalanuvchi xohlagan ko'rinishda yozaveradi.
  *
- * Qarz maydoni **yo'q va bo'lmaydi** (§6.12): u tranzaksiyalardan
- * hisoblanadi. Kirish sxemasida bo'lsa, uni qo'lda yozish yo'li
- * ochilardi.
+ * Qarz maydoni **kirish sxemalarida yo'q va bo'lmaydi** (§6.12): u
+ * tranzaksiyalardan hisoblanadi. Kirish sxemasida bo'lsa, uni qo'lda
+ * yozish yo'li ochilardi. Chiqish DTO'sida esa (`CustomerSummaryDto.debt`)
+ * bor — u hisoblangan qiymat, saqlanmagan.
  */
 
 const fullName = z
@@ -153,6 +155,20 @@ export const customerQuerySchema = z
   .strict();
 export type CustomerQuery = z.infer<typeof customerQuerySchema>;
 
+/**
+ * §6.11 — qarz valyuta bo'yicha alohida (§1.3: savdo valyutasida qoladi).
+ *
+ * `Record<Currency, string>` emas, **massiv**: bo'sh massiv "qarz yo'q"
+ * ni aniq bildiradi, UI hech narsa chizmaydi. `Record` bo'lganda "0"
+ * qiymatli USD qatorini "yo'q" dan ajratib bo'lmasdi — bo'sh "0 so'm"
+ * ustuni haqiqiy nolni haqiqatdek ko'rsatardi. Shu sabab faqat NOLDAN
+ * KATTA qiymatlar kiritiladi.
+ */
+export interface CustomerDebtDto {
+  currency: Currency;
+  amount: string;
+}
+
 /** Ro'yxat uchun — passport ma'lumoti **ataylab yo'q** (`PERMISSIONS.md` P5). */
 export interface CustomerSummaryDto {
   id: string;
@@ -164,6 +180,13 @@ export interface CustomerSummaryDto {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  /**
+   * §6.11, §6.12 — hisoblangan qiymat, saqlanmagan. Manbai: `ACTIVE`
+   * nasiya shartnomalarining to'lanmagan jadval qoldig'i
+   * (`AllocationService.outstandingOfRows`). Tartib — `Currency` enum
+   * tartibida (UZS, USD), barqaror bo'lishi uchun.
+   */
+  debt: CustomerDebtDto[];
 }
 
 export interface CustomerDto extends CustomerSummaryDto {

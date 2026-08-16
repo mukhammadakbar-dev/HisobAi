@@ -1,8 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import {
+  ContractStatus,
+  Currency,
   ErrorCode,
   UserRole,
+  sumMoney,
   type CreateCustomerInput,
+  type CustomerDebtDto,
   type CustomerDto,
   type CustomerQuery,
   type CustomerSummaryDto,
@@ -20,25 +24,30 @@ import { isRecordNotFound, isUniqueViolation } from '../common/prisma-errors';
 import type { RequestUser } from '../common/request-user';
 import { containsInsensitive } from '../common/search';
 import { PrismaService } from '../database/prisma.service';
+import { outstandingOfRows } from '../payments/allocation.service';
 
 /**
  * Mijozlar (§6).
  *
- * Ikkita narsa bu servisda **ataylab yo'q**:
+ * **Passport rasmi** (§6.6, §6.7) bu servisda **ataylab yo'q** —
+ * `Storage` moduli bilan birga 9-bosqichda, §18.1 dagi mahsulot rasmi
+ * bilan bir xil sabab. `passport_file_id` ustuni schema'da allaqachon
+ * bor.
  *
- *  - **Qarz** (§6.11, §6.12) — u savdo va to'lovlardan hisoblanadi,
- *    saqlanmaydi; ustun ham, maydon ham qo'shilmaydi, aks holda qo'lda
- *    yozish yo'li ochilardi. ULANMAGAN UCH: manba modullar (5, 7, 8)
- *    endi tayyor va qarzdorlar hisoboti uni hisoblaydi, lekin `CustomerDto`
- *    hali ham qarzsiz — ya'ni §6.11 ("joriy qarz USD va UZS alohida")
- *    bajarilmagan. Hisoblangan qiymat sifatida DTO'ga qo'shilishi kerak.
- *  - **Passport rasmi** (§6.6, §6.7) — `Storage` moduli bilan birga
- *    9-bosqichda, §18.1 dagi mahsulot rasmi bilan bir xil sabab.
- *    `passport_file_id` ustuni schema'da allaqachon bor.
+ * **Qarz** (§6.11, §6.12) — ustunda ham, kirish maydonida ham **yo'q va
+ * bo'lmaydi**: u savdo va to'lovlardan hisoblanadi, qo'lda yozish yo'li
+ * ochilmasin. Lekin DTO'da bor: `toSummaryDto`/`toDto` `debt` maydonini
+ * `debtByCustomer()` natijasidan oladi — bu ULANMAGAN UCH endi bog'landi
+ * (T-09). Formula qayta yozilmagan: `AllocationService.outstandingOfRows`
+ * qayta ishlatiladi (`ReportsService.debtors()`, `DashboardService.credit()`
+ * bilan bir xil manba).
  */
 
 /** Telefon bo'yicha qidiruv uchun eng kam raqam soni. */
 const MIN_PHONE_DIGITS = 3;
+
+/** §6.11 — barqaror tartib uchun: `Currency` enum tartibida (UZS, USD). */
+const CURRENCY_ORDER = Object.values(Currency);
 
 @Injectable()
 export class CustomersService {
@@ -49,7 +58,13 @@ export class CustomersService {
 
   // ──────────────────────────── O'qish ────────────────────────────
 
-  /** §6.4 — qidiruv ism va **ikkala** telefon bo'yicha ishlaydi. */
+  /**
+   * §6.4 — qidiruv ism va **ikkala** telefon bo'yicha ishlaydi.
+   *
+   * Qarz **sahifadagi barcha mijozlar uchun bitta qo'shimcha so'rov**
+   * bilan olinadi (`debtByCustomer`), har qator uchun alohida emas —
+   * aks holda 50 mijozli sahifa 50 ta qo'shimcha so'rov qilardi (N+1).
+   */
   async list(query: CustomerQuery): Promise<Page<CustomerSummaryDto>> {
     const limit = normalizeLimit(query.limit);
     const [column, direction] = parseSort(query.sort);
@@ -62,15 +77,20 @@ export class CustomersService {
       ...toPrismaCursor(query.cursor, limit),
     });
 
-    return toPage(rows.map(toSummaryDto), limit, (dto) =>
-      column === 'fullName' ? dto.fullName : dto.createdAt,
+    const debts = await this.debtByCustomer(rows.map((row) => row.id));
+
+    return toPage(
+      rows.map((row) => toSummaryDto(row, debts.get(row.id) ?? [])),
+      limit,
+      (dto) => (column === 'fullName' ? dto.fullName : dto.createdAt),
     );
   }
 
   async requireById(id: string, actor: RequestUser): Promise<CustomerDto> {
     const row = await this.prisma.customer.findUnique({ where: { id } });
     if (!row) throw AppException.notFound(ErrorCode.NOT_FOUND, 'Mijoz topilmadi.');
-    return toDto(row, canSeePassport(actor));
+    const debts = await this.debtByCustomer([id]);
+    return toDto(row, canSeePassport(actor), debts.get(id) ?? []);
   }
 
   // ──────────────────────────── Yozish ────────────────────────────
@@ -104,7 +124,11 @@ export class CustomersService {
       ip,
     });
 
-    return toDto(created, canSeePassport(actor));
+    // Qo'shimcha so'rov shart emas: yangi mijozning `id`si shu zahotgacha
+    // mavjud emas edi, ya'ni unga bog'langan savdo/shartnoma bo'lishi
+    // FIZIK JIHATDAN mumkin emas (FK yangi qatorni oldindan bila olmaydi) —
+    // qarz har doim bo'sh massiv
+    return toDto(created, canSeePassport(actor), []);
   }
 
   /**
@@ -139,7 +163,13 @@ export class CustomersService {
      * bu yerda boyitiladi.
      */
     try {
-      return await this.updateInTransaction(id, input, precondition, actor, ip);
+      const after = await this.updateInTransaction(id, input, precondition, actor, ip);
+      // Qarz tahrirlash tranzaksiyasi bilan bog'liq EMAS (boshqa jadval),
+      // shuning uchun tranzaksiya tugagach, oddiy o'qish bilan olinadi —
+      // aks holda tahrirlangan mijoz javobida eskirgan (masalan bo'sh)
+      // qarz qaytardi
+      const debts = await this.debtByCustomer([id]);
+      return toDto(after, canSeePassport(actor), debts.get(id) ?? []);
     } catch (error) {
       if (isUniqueViolation(error) && input.phonePrimary) {
         throw await this.phoneTaken(input.phonePrimary);
@@ -154,7 +184,7 @@ export class CustomersService {
     precondition: Precondition,
     actor: RequestUser,
     ip: string | null,
-  ): Promise<CustomerDto> {
+  ): Promise<Customer> {
     return this.prisma.$transaction(async (tx) => {
       const before = await tx.customer.findUnique({ where: { id } });
       if (!before) throw AppException.notFound(ErrorCode.NOT_FOUND, 'Mijoz topilmadi.');
@@ -186,7 +216,7 @@ export class CustomersService {
         });
       }
 
-      return toDto(after, canSeePassport(actor));
+      return after;
     });
   }
 
@@ -216,6 +246,67 @@ export class CustomersService {
         ? { existingId: existing.id, fullName: existing.fullName, isActive: existing.isActive }
         : undefined,
     );
+  }
+
+  /**
+   * §6.11, §6.12 — bir nechta mijozning joriy qarzi, **bitta so'rov**da.
+   *
+   * `customerId → CustomerDebtDto[]` xaritasi qaytariladi: chaqiruvchi
+   * (`list`, `requireById`, `update`) uni xotirada guruhlaydi, har mijoz
+   * uchun alohida so'rov qilmaydi — N+1 shu yerda oldi olinadi.
+   *
+   * Manba — `ReportsService.debtors()` va `DashboardService.credit()`
+   * bilan **bir xil**: faqat `ACTIVE` nasiya shartnomalari (`CLOSED`/
+   * `CANCELLED` qarz bermaydi, §17.18), ularning `schedules` qatorlari,
+   * formula esa `outstandingOfRows` (`AllocationService`) — takrorlanmaydi.
+   */
+  private async debtByCustomer(customerIds: string[]): Promise<Map<string, CustomerDebtDto[]>> {
+    const map = new Map<string, CustomerDebtDto[]>();
+    if (customerIds.length === 0) return map;
+
+    const contracts = await this.prisma.installmentContract.findMany({
+      where: { status: ContractStatus.ACTIVE, sale: { customerId: { in: customerIds } } },
+      select: {
+        currency: true,
+        sale: { select: { customerId: true } },
+        schedules: { select: { amountDue: true, amountPaid: true } },
+      },
+    });
+
+    // customerId → valyuta → shartnomalarning qoldiqlari (`sumMoney`ga
+    // kiritish uchun) — har shartnoma o'z valyutasida qoladi (§1.3)
+    const amountsByCustomer = new Map<string, Map<Currency, string[]>>();
+
+    for (const contract of contracts) {
+      // §9.1 — nasiya savdo mijozsiz tasdiqlanmaydi, ya'ni amalda bu
+      // holat bo'lmaydi; tekshiruv faqat tip xavfsizligi uchun
+      // (`Sale.customerId` nullable — naqd savdoda mijoz ixtiyoriy)
+      const customerId = contract.sale.customerId;
+      if (!customerId) continue;
+
+      const outstanding = outstandingOfRows(contract.schedules);
+      // §16.11 — ifodalab bo'lmaydigan qoldiq yopilmagan shartnomada
+      // ham qolishi mumkin, lekin u ro'yxatda "qarz" sifatida chiqmaydi
+      if (Number(outstanding) <= 0) continue;
+
+      const byCurrency = amountsByCustomer.get(customerId) ?? new Map<Currency, string[]>();
+      const amounts = byCurrency.get(contract.currency) ?? [];
+      amounts.push(outstanding);
+      byCurrency.set(contract.currency, amounts);
+      amountsByCustomer.set(customerId, byCurrency);
+    }
+
+    for (const [customerId, byCurrency] of amountsByCustomer) {
+      const debt: CustomerDebtDto[] = CURRENCY_ORDER.filter((currency) =>
+        byCurrency.has(currency),
+      ).map((currency) => ({
+        currency,
+        amount: sumMoney(byCurrency.get(currency) ?? [], currency),
+      }));
+      map.set(customerId, debt);
+    }
+
+    return map;
   }
 }
 
@@ -339,7 +430,7 @@ function auditView(row: Customer): Record<string, unknown> {
   };
 }
 
-function toSummaryDto(row: Customer): CustomerSummaryDto {
+function toSummaryDto(row: Customer, debt: CustomerDebtDto[]): CustomerSummaryDto {
   return {
     id: row.id,
     fullName: row.fullName,
@@ -350,12 +441,13 @@ function toSummaryDto(row: Customer): CustomerSummaryDto {
     isActive: row.isActive,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    debt,
   };
 }
 
-function toDto(row: Customer, withPassport: boolean): CustomerDto {
+function toDto(row: Customer, withPassport: boolean, debt: CustomerDebtDto[]): CustomerDto {
   return {
-    ...toSummaryDto(row),
+    ...toSummaryDto(row, debt),
     address: row.address,
     note: row.note,
     passportSeries: withPassport ? row.passportSeries : null,

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
+import { Money } from '../../../components/money/money';
 import { EmptyState, ErrorState, TableSkeleton } from '../../../components/states';
 import { Badge, Card, Input, Select } from '../../../components/ui';
 import { useCustomers } from '../../../features/customers/queries';
@@ -18,9 +19,9 @@ import { EMPTY_MESSAGES } from '../../../lib/messages';
  * telefon esa raqamlar bo'yicha — ajratgichlar server tomonida
  * tozalanadi, ya'ni "90 123" ham, "901234567" ham topadi.
  *
- * Qarz ustuni yo'q (§6.11, §6.12): u savdo va to'lovlardan
- * hisoblanadi va 5-bosqichda qo'shiladi. Bo'sh "0 so'm" ustuni
- * bo'lmagan raqamni haqiqatdek ko'rsatardi.
+ * Qarz ustuni (§6.11, §6.12) — server har valyutani alohida qaytaradi
+ * va qarzi yo'q mijozda bo'sh massiv beradi, ya'ni katak bo'sh qoladi.
+ * "0 so'm" yozilsa u bor qarzdek o'qilardi.
  */
 export default function CustomersPage() {
   const router = useRouter();
@@ -145,6 +146,7 @@ export default function CustomersPage() {
               <tr className="border-b border-border-default text-left text-text-secondary">
                 <th className="p-3 font-medium">Ism</th>
                 <th className="p-3 font-medium">Telefon</th>
+                <th className="p-3 font-medium">Qarz</th>
                 <th className="p-3 font-medium">Holat</th>
               </tr>
             </thead>
@@ -166,6 +168,18 @@ export default function CustomersPage() {
                         {formatPhone(customer.phoneSecondary)}
                       </div>
                     )}
+                  </td>
+                  {/*
+                    §6.11 — har valyuta alohida qatorda (§1.3: qarz savdo
+                    valyutasida qoladi). Qarzi yo'q mijozda katak BO'SH
+                    qoladi, "0 so'm" emas: nol raqam bor qarzdek o'qilardi.
+                  */}
+                  <td className="tabular p-3">
+                    {customer.debt.map((row) => (
+                      <div key={row.currency}>
+                        <Money amount={row.amount} currency={row.currency} />
+                      </div>
+                    ))}
                   </td>
                   <td className="p-3">
                     <div className="flex flex-wrap gap-2">

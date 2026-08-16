@@ -17,8 +17,10 @@ import type { ApiError } from '../../lib/api-error';
 /**
  * Mijoz so'rovlari (§6).
  *
- * Qarz so'rovi yo'q: u savdo va to'lovlardan hisoblanadi (§6.12) va
- * mijoz kartasiga 5-bosqichda qo'shiladi.
+ * Qarz uchun alohida so'rov YO'Q va bo'lmaydi: u `CustomerDto` ichida
+ * keladi (§6.11). Alohida endpoint bo'lsa ro'yxatdagi har qator uchun
+ * bitta so'rov ketardi; server esa sahifadagi hamma mijoz uchun uni
+ * bitta so'rovda hisoblaydi (`customers.service.ts` — `debtByCustomer`).
  */
 
 export interface CustomerFilters {

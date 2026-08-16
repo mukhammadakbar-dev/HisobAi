@@ -5,6 +5,7 @@ import { ArchiveRestore, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 
+import { Money } from '../../../../components/money/money';
 import { ErrorState, TableSkeleton } from '../../../../components/states';
 import { Badge, Button, Card } from '../../../../components/ui';
 import { useCurrentUser } from '../../../../features/auth/queries';
@@ -17,9 +18,13 @@ import { can } from '../../../../lib/permissions';
 /**
  * Mijoz kartasi (§6).
  *
- * Savdo tarixi va qarz (§6.11) bu yerda **hali yo'q**: ular savdo va
- * to'lov modullaridan chiqadi (5- va 7-bosqich). Bo'sh "0 so'm qarz"
- * bloki bo'lmagan raqamni haqiqatdek ko'rsatardi (`FRONTEND.md` §9).
+ * **Qarz** (§6.11) valyuta bo'yicha alohida ko'rsatiladi — §1.3 bo'yicha
+ * qarz savdo valyutasida qoladi, ya'ni bitta yig'indiga qo'shib bo'lmaydi.
+ * Qarzi yo'q mijozda blok umuman chizilmaydi: server bo'sh massiv
+ * qaytaradi va "0 so'm" bo'lmagan raqamni haqiqatdek ko'rsatardi
+ * (`FRONTEND.md` §9).
+ *
+ * Savdo tarixi hali yo'q — `GET /customers/:id/history` yozilmagan.
  */
 export default function CustomerPage() {
   const params = useParams<{ id: string }>();
@@ -86,6 +91,22 @@ export default function CustomerPage() {
               }
             />
           )}
+          {/*
+            §6.11 — har valyuta alohida qator (§1.3: qarz savdo valyutasida
+            qoladi). Bo'sh massiv bo'lsa hech narsa chizilmaydi: "0 so'm
+            qarz" yozuvi mijozda qarz bor degan taassurot qoldirardi.
+
+            Rang bilan ajratilmaydi (§20) — "Qarz" yorlig'ining o'zi ma'noni
+            to'liq beradi, qarz esa xato emas, oddiy holat.
+          */}
+          {data.debt.map((row) => (
+            <div key={row.currency}>
+              <div className="text-sm text-text-secondary">Qarz ({row.currency})</div>
+              <div className="tabular font-medium">
+                <Money amount={row.amount} currency={row.currency} />
+              </div>
+            </div>
+          ))}
         </div>
 
         {can(user.data, 'customer.archive') && (

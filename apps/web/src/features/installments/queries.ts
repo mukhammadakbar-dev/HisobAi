@@ -179,6 +179,17 @@ export function useRebuildSchedule(
     onSuccess: (contract) => {
       queryClient.setQueryData(installmentKeys.detail(id), contract);
       void queryClient.invalidateQueries({ queryKey: installmentKeys.all });
+      /*
+        Dashboard ham eskiradi: qayta tuzish jami qoldiqni SAQLAYDI
+        (server `replacedTotal !== nextTotal` bo'lsa rad etadi), lekin
+        SANALARNI suradi — ya'ni §14.3 dagi "bugun/ertaga to'lovi
+        keladiganlar" ro'yxati o'zgaradi.
+
+        `invalidateMoney` chaqirilmaydi: pul harakati bo'lmagani uchun
+        kassa, savdo va mijoz qarzi o'zgarmaydi — ularni eskirtirish
+        ortiqcha so'rov bo'lardi.
+      */
+      void queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
     },
   });
 }
