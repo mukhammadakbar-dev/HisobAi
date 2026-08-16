@@ -238,9 +238,15 @@ describe("SHOP_SCOPE_EXEMPT_MODELS — ro'yxat eskirmasligi", () => {
  */
 describe('withShopScope — haqiqiy $extends zanjiri (DB’siz)', () => {
   function makeBase(): PrismaService {
-    // Konstruktor faqat `DATABASE_URL` borligini tekshiradi va adapterni
+    // Konstruktor faqat `DATABASE_URL_APP` borligini tekshiradi va adapterni
     // yaratadi — hech qanday tarmoq ulanishi qilmaydi ($connect() alohida).
-    process.env.DATABASE_URL ??= 'postgresql://fake:fake@127.0.0.1:1/fake';
+    //
+    // Nomi ATAYLAB `DATABASE_URL_APP`: §21.16 dan keyin ishlash vaqtida
+    // faqat shu o'zgaruvchi o'qiladi. Bu qator ilgari `DATABASE_URL` ni
+    // qo'yardi, ya'ni zaxira umuman ishlamasdi va test dasturchining lokal
+    // `.env` fayliga jimgina bog'lanib qolgan edi — `.env` bo'lmagan
+    // muhitda (CI) beshta test yiqilardi.
+    process.env.DATABASE_URL_APP ??= 'postgresql://fake:fake@127.0.0.1:1/fake';
     return new PrismaService();
   }
 

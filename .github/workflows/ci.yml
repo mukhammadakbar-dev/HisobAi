@@ -1,0 +1,126 @@
+# Sifat darvozasi.
+#
+# Nega kerak: `a65a77e` kontraktlarda `UserRole.OWNER -> SHOP_ADMIN` va
+# `settings -> shop` qayta nomlashni qildi, `apps/web` esa ergashmadi.
+# Buzilgan build IKKI COMMIT davomida sezilmasdan `main` ga tushdi va
+# faqat auditda topildi. Bu alohida xato emas — xatoni ushlab qoladigan
+# mexanizmning yo'qligi edi.
+#
+# Ikkita ish ATAYLAB ajratilgan:
+#  - `tekshiruv` hech qanday tashqi bog'liqlikka ega emas va har doim
+#    ishlaydi. Asosiy darvoza shu;
+#  - `izolyatsiya` PostgreSQL talab qiladi. Baza ko'tarilmasa, u yiqiladi,
+#    lekin asosiy darvoza baribir haqiqatni aytadi.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Bir tarmoqqa ketma-ket push bo'lsa, eskirgan ishni davom ettirish
+# shart emas — faqat oxirgisi ahamiyatga ega.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tekshiruv:
+    name: Typecheck, lint va testlar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # pnpm `setup-node` DAN OLDIN o'rnatiladi: `cache: pnpm` ishlashi
+      # uchun `setup-node` pnpm binarini topa olishi kerak.
+      # Versiya ko'rsatilmagan — `action-setup` uni `package.json` dagi
+      # `packageManager` maydonidan oladi, ya'ni bu yerda takrorlanmaydi
+      # va ikkalasi bir-biridan ajralib qolmaydi.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # `package.json` -> `engines.node: >=22`
+          node-version: 22
+          cache: pnpm
+
+      - name: Bog'liqliklar
+        run: pnpm install --frozen-lockfile
+
+      # `typecheck` dan OLDIN: `apps/api` generatsiya qilingan Prisma
+      # klient tiplariga tayanadi, usiz tsc yuzlab xato beradi.
+      - name: Prisma klienti
+        run: pnpm db:generate
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      - name: Lint
+        run: pnpm -r lint
+
+      # `.env` CI'da YO'Q va bu ataylab: testlar dasturchining lokal
+      # sozlamasiga bog'lanib qolmasligi kerak. `*.integration.spec.ts`
+      # `DATABASE_URL_TEST` berilmagani uchun o'zini o'tkazib yuboradi —
+      # ular pastdagi alohida ishda ishlaydi.
+      - name: Testlar
+        run: pnpm -r test
+
+  izolyatsiya:
+    name: Tenant izolyatsiyasi (haqiqiy PostgreSQL)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      PGPASSWORD: postgres
+      # `hisobai_app`: NOSUPERUSER, NOBYPASSRLS (§21.16). Parol faqat shu
+      # bir martalik CI bazasi uchun — hech qayerda qayta ishlatilmaydi.
+      DATABASE_URL_TEST: postgresql://hisobai_app:ci-parol@localhost:5432/hisob_ai_test?schema=public
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Bog'liqliklar
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma klienti
+        run: pnpm db:generate
+
+      - name: Test bazasi
+        run: psql -h localhost -U postgres -c 'CREATE DATABASE hisob_ai_test'
+
+      # `migrate deploy`, `migrate dev` EMAS: `dev` shadow-baza yaratadi va
+      # RLS migratsiyasi u yerda yiqiladi (`prisma/README-test-db.md` dagi
+      # ma'lum cheklov). Superuser bilan bajariladi — aynan shu migratsiya
+      # `hisobai_app` va `hisobai_migrate` rollarini yaratadi.
+      - name: Migratsiyalar
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/hisob_ai_test?schema=public
+        run: pnpm --filter @hisobai/api exec prisma migrate deploy
+
+      # Migratsiya rollarni PAROLSIZ yaratadi (`.env.example` §21.16) —
+      # parolni operator qo'yadi, CI'da bu qadam shu.
+      - name: hisobai_app roliga parol
+        run: psql -h localhost -U postgres -c "ALTER ROLE hisobai_app WITH PASSWORD 'ci-parol'"
+
+      # Testning o'zi `rolbypassrls = false` ni tekshiradi, ya'ni bu yerda
+      # ulanish tasodifan superuser'ga yo'naltirilsa, to'plam yashil bo'lib
+      # yolg'on xotirjamlik bermaydi — yiqiladi.
+      - name: Izolyatsiya testlari
+        run: pnpm --filter @hisobai/api exec vitest run src/database/tenant-isolation.integration.spec.ts
