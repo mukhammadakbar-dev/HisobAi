@@ -128,14 +128,25 @@ export function useDeleteSaleDraft(): UseMutationResult<void, ApiError, string> 
  * himoyasiz qolardi: ombordan yana bitta telefon yechilib ketardi.
  */
 export function useConfirmSale(
-  id: string,
-): UseMutationResult<SaleDto, ApiError, { input: ConfirmSaleInput; idempotencyKey: string }> {
+  id?: string,
+): UseMutationResult<
+  SaleDto,
+  ApiError,
+  { id?: string; input: ConfirmSaleInput; idempotencyKey: string }
+> {
   const queryClient = useQueryClient();
 
-  return useMutation<SaleDto, ApiError, { input: ConfirmSaleInput; idempotencyKey: string }>({
-    mutationFn: ({ input, idempotencyKey }) => salesApi.confirm(id, input, idempotencyKey),
+  return useMutation<
+    SaleDto,
+    ApiError,
+    { id?: string; input: ConfirmSaleInput; idempotencyKey: string }
+  >({
+    mutationFn: ({ id: overrideId, input, idempotencyKey }) => {
+      const targetId = overrideId || id || '';
+      return salesApi.confirm(targetId, input, idempotencyKey);
+    },
     onSuccess: (sale) => {
-      queryClient.setQueryData(saleKeys.detail(id), sale);
+      queryClient.setQueryData(saleKeys.detail(sale.id), sale);
       void queryClient.invalidateQueries({ queryKey: saleKeys.all });
       // Bitta tranzaksiyada o'zgargan hamma narsa (§7): ombor holati,
       // mahsulot qoldig'i, kassa qoldig'i va bugungi ko'rsatkichlar

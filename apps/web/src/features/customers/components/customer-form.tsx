@@ -64,7 +64,8 @@ function toFormValues(customer: CustomerDto | undefined): CustomerFormValues {
 }
 
 /** Bo'sh maydon — "yo'q", bo'sh satr emas. */
-const optionalText = (value: string): string | null => (value.trim() === '' ? null : value);
+const optionalText = (value: string | null | undefined): string | null =>
+  value == null || value.trim() === '' ? null : value;
 
 export function CustomerForm({ customer }: { customer?: CustomerDto }) {
   const router = useRouter();

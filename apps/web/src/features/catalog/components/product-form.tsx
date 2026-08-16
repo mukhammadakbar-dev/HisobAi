@@ -83,8 +83,10 @@ function toFormValues(product: ProductDto | undefined): ProductFormValues {
 }
 
 /** Bo'sh maydon — "yo'q", nol yoki bo'sh satr emas. */
-const optionalText = (value: string): string | null => (value.trim() === '' ? null : value);
-const optionalNumber = (value: string): number | null => (value === '' ? null : Number(value));
+const optionalText = (value: string | null | undefined): string | null =>
+  value == null || value.trim() === '' ? null : value;
+const optionalNumber = (value: string | number | null | undefined): number | null =>
+  value == null || String(value).trim() === '' ? null : Number(value);
 
 export function ProductForm({ product }: { product?: ProductDto }) {
   const router = useRouter();

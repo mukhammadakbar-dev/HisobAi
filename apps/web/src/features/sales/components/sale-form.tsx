@@ -304,7 +304,7 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
       if (!saved) return;
 
       confirmSale.mutate(
-        { input: parsed.data satisfies ConfirmSaleInput, idempotencyKey: idempotency.key },
+        { id: saved.id, input: parsed.data satisfies ConfirmSaleInput, idempotencyKey: idempotency.key },
         {
           onSuccess: (confirmed) => {
             setDirty(false);
