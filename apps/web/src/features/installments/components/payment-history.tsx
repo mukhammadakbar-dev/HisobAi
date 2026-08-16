@@ -2,11 +2,12 @@
 
 import { PaymentStatus } from '@hisobai/contracts';
 import type { PaymentDto } from '@hisobai/contracts';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import { Money } from '../../../components/money/money';
 import { ErrorState, TableSkeleton } from '../../../components/states';
 import { Badge, Button, Card, Input } from '../../../components/ui';
+import { useIdempotencyKey } from '../../../hooks/use-idempotency-key';
 import { formatDateTime } from '../../../lib/format';
 import {
   PAYMENT_METHOD_LABEL,
@@ -31,7 +32,11 @@ export function PaymentHistory({ contractId }: { contractId: string }) {
   const action = usePaymentAction(contractId);
   const [reasonFor, setReasonFor] = useState<string | null>(null);
   const [reason, setReason] = useState('');
-  const idempotencyKey = useMemo(() => crypto.randomUUID(), [reasonFor]);
+  // Kalit har nishon uchun alohida: `onOpenReason` boshqa to'lovga
+  // o'tganda yangilanadi (ilgari buni `useMemo` ning `[reasonFor]`
+  // bog'liqligi qilardi), muvaffaqiyatdan keyin ham — aks holda ikkinchi
+  // amal birinchisining saqlangan javobini olardi.
+  const idempotency = useIdempotencyKey();
 
   if (payments.isPending) {
     return (
@@ -118,15 +123,23 @@ export function PaymentHistory({ contractId }: { contractId: string }) {
                 onOpenReason={(open) => {
                   setReasonFor(open ? payment.id : null);
                   setReason('');
+                  idempotency.renew();
                 }}
                 onAct={(kind) => {
                   action.mutate(
-                    { id: payment.id, action: kind, reason: reason.trim(), idempotencyKey },
+                    {
+                      id: payment.id,
+                      action: kind,
+                      reason: reason.trim(),
+                      idempotencyKey: idempotency.key,
+                    },
                     {
                       onSuccess: () => {
                         setReasonFor(null);
                         setReason('');
+                        idempotency.renew();
                       },
+                      onError: idempotency.renewAfterError,
                     },
                   );
                 }}

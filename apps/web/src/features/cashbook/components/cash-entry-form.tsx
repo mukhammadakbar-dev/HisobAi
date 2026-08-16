@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { MoneyInput } from '../../../components/money/money-input';
 import { ErrorState, TableSkeleton } from '../../../components/states';
 import { Button, Card, Field, Input, Select } from '../../../components/ui';
+import { useIdempotencyKey } from '../../../hooks/use-idempotency-key';
 import { ApiError } from '../../../lib/api-error';
 import { CASH_DIRECTION_LABEL } from '../../../lib/labels';
 import { errorMessage } from '../../../lib/messages';
@@ -38,7 +39,7 @@ export function CashEntryForm() {
   const [note, setNote] = useState('');
   const [issues, setIssues] = useState<Record<string, string>>({});
   // `API.md` §4.2 — kalit forma ochilganda yaratiladi
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const idempotency = useIdempotencyKey();
 
   if (accounts.isPending) {
     return (
@@ -86,7 +87,7 @@ export function CashEntryForm() {
 
         setIssues({});
         create.mutate(
-          { input: parsed.data, idempotencyKey },
+          { input: parsed.data, idempotencyKey: idempotency.key },
           {
             onSuccess: () => {
               router.push('/cashbook');
@@ -95,6 +96,9 @@ export function CashEntryForm() {
               if (error instanceof ApiError && error.field) {
                 setIssues({ [error.field]: errorMessage(error) });
               }
+              // Forma ochiq qoladi va ega summani tuzatib qayta yuboradi —
+              // eski kalit boshqa mazmun bilan `IDEMPOTENCY_KEY_REUSED` berardi
+              idempotency.renewAfterError(error);
             },
           },
         );

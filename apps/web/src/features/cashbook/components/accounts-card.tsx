@@ -9,6 +9,7 @@ import { Money } from '../../../components/money/money';
 import { MoneyInput } from '../../../components/money/money-input';
 import { ErrorState, TableSkeleton } from '../../../components/states';
 import { Badge, Button, Card, Field, Input, Select } from '../../../components/ui';
+import { useIdempotencyKey } from '../../../hooks/use-idempotency-key';
 import { CASH_ACCOUNT_KIND_LABEL } from '../../../lib/labels';
 import { errorMessage } from '../../../lib/messages';
 import { useCashBalances, useCreateCashAccount, useOpeningBalance } from '../queries';
@@ -225,7 +226,7 @@ function OpeningBalanceForm({ account, onDone }: { account: CashBalanceDto; onDo
   const opening = useOpeningBalance();
   const [amount, setAmount] = useState('');
   // `API.md` §4.2 — kalit forma ochilganda; qayta bosish ikkinchi qoldiq yaratmaydi
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const idempotency = useIdempotencyKey();
 
   return (
     <form
@@ -235,8 +236,8 @@ function OpeningBalanceForm({ account, onDone }: { account: CashBalanceDto; onDo
         event.preventDefault();
         if (amount === '') return;
         opening.mutate(
-          { input: { accountId: account.id, amount }, idempotencyKey },
-          { onSuccess: onDone },
+          { input: { accountId: account.id, amount }, idempotencyKey: idempotency.key },
+          { onSuccess: onDone, onError: idempotency.renewAfterError },
         );
       }}
     >

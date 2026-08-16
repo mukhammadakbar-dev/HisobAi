@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { Money } from '../../../components/money/money';
 import { MoneyInput } from '../../../components/money/money-input';
 import { Badge, Button, Field, Input, Select } from '../../../components/ui';
+import { randomId } from '../../../lib/random-id';
 import { useBatches, useInventoryItems } from '../../inventory/queries';
 import { Calculator } from './calculator';
 
@@ -38,7 +39,10 @@ export interface CartRow {
 
 export function emptyCartRow(): CartRow {
   return {
-    key: crypto.randomUUID(),
+    // Bu React ro'yxat kaliti, idempotency kaliti EMAS — hech qayerga
+    // yuborilmaydi (`lib/random-id.ts`). `randomId()` LAN'dagi `http://`
+    // da ham ishlaydi, `crypto.randomUUID` esa u yerda mavjud emas.
+    key: randomId(),
     productId: '',
     inventoryItemId: '',
     batchId: '',

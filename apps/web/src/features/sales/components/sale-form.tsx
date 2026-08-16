@@ -23,6 +23,7 @@ import { useEffect, useState } from 'react';
 import { Money } from '../../../components/money/money';
 import { ErrorState, TableSkeleton } from '../../../components/states';
 import { Button, Card, Field, Input, Select } from '../../../components/ui';
+import { useIdempotencyKey } from '../../../hooks/use-idempotency-key';
 import { ApiError } from '../../../lib/api-error';
 import { SHOP_TIME_ZONE, todayInShopZone } from '../../../lib/format';
 import { errorMessage } from '../../../lib/messages';
@@ -59,7 +60,9 @@ import type { PaymentRow } from './payments-panel';
  *  - **tasdiqlash** — bitta tranzaksiya: ombor band qilinadi, raqam
  *    ajratiladi, to'lov va kassa yoziladi (`ARCHITECTURE.md` §6).
  *    Shuning uchun u `Idempotency-Key` bilan yuboriladi (§17.6) va
- *    kalit **forma ochilganda** bir marta yaratiladi.
+ *    kalit **forma ochilganda** bir marta yaratiladi. Tasdiqlash
+ *    tugagandan keyin — muvaffaqiyatda ham, server rad etgan holatda
+ *    ham — kalit yangilanadi (`hooks/use-idempotency-key.ts`).
  *
  * Tasdiqlash uchun savdo serverda mavjud bo'lishi kerak (`POST
  * /sales/:id/confirm`), shuning uchun yangi savdoda tugma avval
@@ -134,7 +137,7 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
   const [issues, setIssues] = useState<Record<string, string>>({});
   const [dirty, setDirty] = useState(false);
   // `API.md` §4.2 — kalit forma ochilganda yaratiladi, qayta bosishda o'zgarmaydi
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const idempotency = useIdempotencyKey();
 
   const activeAccounts = (accounts.data ?? []).filter((account) => account.isActive);
   const storeRate = todayRate.data?.rate?.storeRate ?? null;
@@ -301,14 +304,38 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
       if (!saved) return;
 
       confirmSale.mutate(
-        { input: parsed.data satisfies ConfirmSaleInput, idempotencyKey },
+        { input: parsed.data satisfies ConfirmSaleInput, idempotencyKey: idempotency.key },
         {
           onSuccess: (confirmed) => {
             setDirty(false);
+            // Tasdiqlangan savdo sahifasiga o'tiladi, lekin forma shu
+            // zahoti yo'qolishiga tayanib bo'lmaydi (navigatsiya sekin
+            // bo'lishi yoki bekor qilinishi mumkin). Ishlatilgan kalit
+            // qolib ketsa, keyingi tasdiqlash serverdan **shu savdoning
+            // saqlangan javobini** olardi va ega ikkinchi savdo
+            // yozilgan deb o'ylardi
+            idempotency.renew();
             router.push(`/sales/${confirmed.id}`);
           },
           onError: (error) => {
             setIssues(serverIssues(error));
+            /**
+             * T-07 — xatodan keyin ham kalit yangilanishi kerak.
+             *
+             * §5.5 bo'yicha "birinchi tasdiqlagan oladi": ega tasdiqlaganda
+             * savatdagi IMEI allaqachon boshqa savdoda ketgan bo'lishi
+             * mumkin (`SALE_ITEM_NOT_AVAILABLE`). Ega o'sha qatorni
+             * almashtirib qayta bosadi — mazmun o'zgargan, kalit esa eski.
+             * Server bunday juftlikni `IDEMPOTENCY_KEY_REUSED` bilan rad
+             * etadi va yagona chiqish sahifani yangilash, ya'ni butun
+             * savatni yo'qotish bo'lardi.
+             *
+             * Yangilash **shartli** — qaysi xatoda xavfsiz ekani va nega
+             * bu ikkinchi savdo yaratmasligi `use-idempotency-key.ts` da
+             * batafsil yozilgan. Qisqasi: kalit faqat server amalni
+             * bajarmagani ANIQ bo'lgan holatda almashadi.
+             */
+            idempotency.renewAfterError(error);
           },
         },
       );

@@ -21,6 +21,7 @@ import { Money } from '../../../components/money/money';
 import { MoneyInput } from '../../../components/money/money-input';
 import { ErrorState, TableSkeleton } from '../../../components/states';
 import { Badge, Button, Card, Field, Input, Select } from '../../../components/ui';
+import { useIdempotencyKey } from '../../../hooks/use-idempotency-key';
 import { ApiError } from '../../../lib/api-error';
 import { INVENTORY_STATUS_LABEL } from '../../../lib/labels';
 import { errorMessage } from '../../../lib/messages';
@@ -107,7 +108,7 @@ export function ReceiveForm({ initialProductId }: { initialProductId?: string })
   const [issues, setIssues] = useState<Record<string, string>>({});
   const [result, setResult] = useState<ReceiveResultDto | null>(null);
   // `API.md` §4.2 — kalit forma ochilganda yaratiladi, qayta yuborishda o'zgarmaydi
-  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
+  const idempotency = useIdempotencyKey();
 
   const product = products.data?.data.find((candidate) => candidate.id === productId);
   const currency: Currency = product?.currency ?? 'UZS';
@@ -177,7 +178,7 @@ export function ReceiveForm({ initialProductId }: { initialProductId?: string })
 
     setIssues({});
     receive.mutate(
-      { input: parsed.data, idempotencyKey },
+      { input: parsed.data, idempotencyKey: idempotency.key },
       {
         onSuccess: (received) => {
           setResult(received);
@@ -186,10 +187,14 @@ export function ReceiveForm({ initialProductId }: { initialProductId?: string })
           setNote('');
           // Yangi qabul — yangi kalit; aks holda ikkinchi qabul
           // birinchisining saqlangan javobini olardi
-          setIdempotencyKey(crypto.randomUUID());
+          idempotency.renew();
         },
         onError: (error) => {
           setIssues(serverIssues(error));
+          // Forma ochiq qoladi va ega qatorni tuzatib qayta yuboradi —
+          // o'sha kalit boshqa mazmun bilan ketsa `IDEMPOTENCY_KEY_REUSED`.
+          // Qaysi xatoda almashtirish xavfsizligi `use-idempotency-key.ts` da.
+          idempotency.renewAfterError(error);
         },
       },
     );

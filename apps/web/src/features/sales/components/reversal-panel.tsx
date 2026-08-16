@@ -8,10 +8,10 @@ import {
   sumMoney,
 } from '@hisobai/contracts';
 import type { SaleDto } from '@hisobai/contracts';
-import { useMemo, useState } from 'react';
-
+import { useState } from 'react';
 import { Money } from '../../../components/money/money';
 import { Button, Card, Field, Input, Select } from '../../../components/ui';
+import { useIdempotencyKey } from '../../../hooks/use-idempotency-key';
 import { FormError } from '../../auth/components/form-error';
 import { REVERSAL_REASON_LABEL } from '../../../lib/labels';
 import { useCancelSale, useReturnSale } from '../queries';
@@ -124,7 +124,7 @@ function ActionChoice({
  */
 function ReturnForm({ sale, onClose }: { sale: SaleDto; onClose: () => void }) {
   const returnSale = useReturnSale(sale.id);
-  const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
+  const idempotency = useIdempotencyKey();
 
   const returnable = sale.items
     .map((item) => ({ item, remaining: item.quantity - item.returnedQuantity }))
@@ -157,14 +157,14 @@ function ReturnForm({ sale, onClose }: { sale: SaleDto; onClose: () => void }) {
   const onSubmit = (): void => {
     returnSale.mutate(
       {
-        idempotencyKey,
+        idempotencyKey: idempotency.key,
         input: {
           items: selected.map((row) => ({ saleItemId: row.item.id, quantity: row.quantity })),
           reason,
           note: note.trim() === '' ? null : note.trim(),
         },
       },
-      { onSuccess: onClose },
+      { onSuccess: onClose, onError: idempotency.renewAfterError },
     );
   };
 
@@ -241,7 +241,7 @@ function ReturnForm({ sale, onClose }: { sale: SaleDto; onClose: () => void }) {
  */
 function CancelForm({ sale, onClose }: { sale: SaleDto; onClose: () => void }) {
   const cancelSale = useCancelSale(sale.id);
-  const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
+  const idempotency = useIdempotencyKey();
 
   const [reason, setReason] = useState<ReversalReason>(ReversalReason.ENTRY_ERROR);
   const [note, setNote] = useState('');
@@ -251,10 +251,10 @@ function CancelForm({ sale, onClose }: { sale: SaleDto; onClose: () => void }) {
   const onSubmit = (): void => {
     cancelSale.mutate(
       {
-        idempotencyKey,
+        idempotencyKey: idempotency.key,
         input: { reason, note: note.trim() === '' ? null : note.trim() },
       },
-      { onSuccess: onClose },
+      { onSuccess: onClose, onError: idempotency.renewAfterError },
     );
   };
 

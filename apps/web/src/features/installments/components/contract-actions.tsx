@@ -2,11 +2,11 @@
 
 import { PaymentMethod, ScheduleStatus, convertMoney, sumMoney } from '@hisobai/contracts';
 import type { InstallmentContractDto, ScheduleRow } from '@hisobai/contracts';
-import { useMemo, useState } from 'react';
-
+import { useState } from 'react';
 import { Money } from '../../../components/money/money';
 import { MoneyInput } from '../../../components/money/money-input';
 import { Button, Card, Field, Input, Select } from '../../../components/ui';
+import { useIdempotencyKey } from '../../../hooks/use-idempotency-key';
 import { FormError } from '../../auth/components/form-error';
 import { useCashAccounts } from '../../cashbook/queries';
 import { useTodayRate } from '../../exchange-rates/queries';
@@ -128,7 +128,7 @@ function PaymentForm({
   const accounts = useCashAccounts();
   const todayRate = useTodayRate();
   const createPayment = useCreatePayment(contract.id);
-  const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
+  const idempotency = useIdempotencyKey();
 
   const active = (accounts.data ?? []).filter((account) => account.isActive);
   const [accountId, setAccountId] = useState(() => active[0]?.id ?? '');
@@ -155,7 +155,7 @@ function PaymentForm({
     if (!account) return;
     createPayment.mutate(
       {
-        idempotencyKey,
+        idempotencyKey: idempotency.key,
         input: {
           contractId: contract.id,
           amount,
@@ -165,7 +165,7 @@ function PaymentForm({
           note: null,
         },
       },
-      { onSuccess: onClose },
+      { onSuccess: onClose, onError: idempotency.renewAfterError },
     );
   };
 
@@ -270,7 +270,7 @@ function RebuildForm({
   onClose: () => void;
 }) {
   const rebuild = useRebuildSchedule(contract.id);
-  const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
+  const idempotency = useIdempotencyKey();
 
   const replaceable = contract.schedules.filter(
     (schedule) => schedule.status === ScheduleStatus.UNPAID,
@@ -350,8 +350,8 @@ function RebuildForm({
             disabled={disabled}
             onClick={() => {
               rebuild.mutate(
-                { idempotencyKey, input: { schedule: rows, reason: reason.trim() } },
-                { onSuccess: onClose },
+                { idempotencyKey: idempotency.key, input: { schedule: rows, reason: reason.trim() } },
+                { onSuccess: onClose, onError: idempotency.renewAfterError },
               );
             }}
           >
@@ -380,7 +380,7 @@ function CloseForm({
 }) {
   const accounts = useCashAccounts();
   const close = useCloseContract(contract.id);
-  const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
+  const idempotency = useIdempotencyKey();
 
   const active = (accounts.data ?? []).filter((account) => account.isActive);
   const [accountId, setAccountId] = useState(() => active[0]?.id ?? '');
@@ -441,7 +441,7 @@ function CloseForm({
           onClick={() => {
             close.mutate(
               {
-                idempotencyKey,
+                idempotencyKey: idempotency.key,
                 input: {
                   expectedOutstanding: contract.outstanding,
                   method,
@@ -449,7 +449,7 @@ function CloseForm({
                   note: null,
                 },
               },
-              { onSuccess: onClose },
+              { onSuccess: onClose, onError: idempotency.renewAfterError },
             );
           }}
         >
