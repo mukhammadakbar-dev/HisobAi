@@ -3,14 +3,21 @@ import {
   ContractStatus,
   Currency,
   ErrorCode,
+  SaleStatus,
   UserRole,
+  decodeCursor,
   sumMoney,
   type CreateCustomerInput,
   type CustomerDebtDto,
   type CustomerDto,
+  type CustomerHistoryItemDto,
+  type CustomerHistoryPaymentDto,
+  type CustomerHistoryQuery,
+  type CustomerHistorySaleDto,
   type CustomerQuery,
   type CustomerSummaryDto,
   type Page,
+  type PaymentStatus,
   type UpdateCustomerInput,
 } from '@hisobai/contracts';
 import type { Customer, Prisma } from '@prisma/client';
@@ -48,6 +55,26 @@ const MIN_PHONE_DIGITS = 3;
 
 /** §6.11 — barqaror tartib uchun: `Currency` enum tartibida (UZS, USD). */
 const CURRENCY_ORDER = Object.values(Currency);
+
+/**
+ * T-12 — `history()` da ko'rinadigan savdo holatlari.
+ *
+ * `dashboard.service.ts`dagi `CONFIRMED_STATUSES` (`CONFIRMED`,
+ * `PARTIALLY_RETURNED`, `RETURNED`) ga `CANCELLED` qo'shilgan: u yerda
+ * bekor qilingan savdo aylanmaga kirmagani uchun chiqarib tashlanadi,
+ * lekin mijoz TARIXIDA bu hodisa haqiqatan sodir bo'lgan va ko'rinishi
+ * kerak. `DRAFT` — hech narsaga ta'sir qilmagan (§7.7), `REVERSAL` esa
+ * alohida "savdo" emas, asl qatorning teskari YOZUVI (§17.4); uning
+ * fakti asl qatorning shu ro'yxatdagi `status`i orqali allaqachon
+ * ko'rinadi — ikkalasini ham qo'shish bitta voqeani ikki marta
+ * ko'rsatardi.
+ */
+const HISTORY_SALE_STATUSES: SaleStatus[] = [
+  SaleStatus.CONFIRMED,
+  SaleStatus.PARTIALLY_RETURNED,
+  SaleStatus.RETURNED,
+  SaleStatus.CANCELLED,
+];
 
 @Injectable()
 export class CustomersService {
@@ -91,6 +118,118 @@ export class CustomersService {
     if (!row) throw AppException.notFound(ErrorCode.NOT_FOUND, 'Mijoz topilmadi.');
     const debts = await this.debtByCustomer([id]);
     return toDto(row, canSeePassport(actor), debts.get(id) ?? []);
+  }
+
+  /**
+   * T-12 (`DECISIONS.md` §19.5, endi yopilgan) — savdo va to'lov
+   * **bitta** xronologik oqimda, `at` bo'yicha KAMAYISH tartibida (eng
+   * yangisi tepada). `ARCHITECTURE.md` §8: `/customers/:id/history`.
+   *
+   * **Savdo manbai** — shu mijozning `sales` qatorlari,
+   * `HISTORY_SALE_STATUSES` bilan cheklangan: `DRAFT` chiqarib
+   * tashlanadi (u hech narsaga ta'sir qilmagan, §7.7), `REVERSAL` ham
+   * chiqarib tashlanadi — bu alohida "savdo" emas, balki asl savdoning
+   * teskari YOZUVI (§17.4, manfiy `total`); uning fakti asl qatorning
+   * `status`i orqali (`RETURNED`/`PARTIALLY_RETURNED`/`CANCELLED`) allaqachon
+   * ko'rinadi. `dashboard.service.ts`dagi `CONFIRMED_STATUSES`dan farqi —
+   * bu yerga `CANCELLED` ham qo'shiladi: hisobotda bekor qilingan savdo
+   * asossiz ravishda chiqarib tashlanadi (u aylanmaga kirmaydi), lekin
+   * TARIXDA bu hodisa haqiqatan sodir bo'lgan — mijoz kelib xarid
+   * qilgan, keyin bekor qilingan, va ega buni ko'rishi kerak.
+   *
+   * **To'lov manbai** — faqat nasiya shartnomasi orqali (`Payment →
+   * contract → sale.customerId`), naqd savdoning to'g'ridan-to'g'ri
+   * `Payment.saleId` yozuvlari EMAS: naqd savdoda to'lov = savdoning
+   * o'zi (bir zumda to'liq to'lanadi, §17.10), ya'ni uni yana alohida
+   * "to'lov" qatori sifatida ko'rsatish bitta haqiqiy voqeani ikki marta
+   * hisoblardi. `status` o'zgartirilmasdan qaytadi — `PENDING_VERIFICATION`
+   * va `REJECTED`/`REVERSED` ham tarixda ko'rinadi, chunki bular ham
+   * "mijoz bilan nima bo'ldi" degan savolning bir qismi.
+   *
+   * **Pagination:** ikkita jadvaldan o'qilgani uchun bitta Prisma
+   * kursori (`toPrismaCursor`) bu yerda ishlamaydi — u faqat bitta
+   * jadval ustida `skip`/`cursor` bilan ishlaydi. Yondashuv: har ikki
+   * manbadan ALOHIDA-ALOHIDA `limit + 1` ta qator olinadi (kursor
+   * bo'lsa `at < kursor.value` sharti bilan), xotirada birlashtirilib
+   * `at` bo'yicha saralanadi, so'ng `limit` tasi `toPage` bilan
+   * qaytariladi. Har manbadan `limit + 1` olish shart — jamlangan
+   * (masalan bitta so'rovda `limit + 1`) yetarli emas, chunki eng yangi
+   * `limit + 1` yozuvning HAMMASI bitta jadvaldan bo'lishi mumkin va bu
+   * holda boshqa jadvaldagi eskiroq yozuvlar butunlay ko'rinmay qolardi.
+   *
+   * **Cheklov:** kursor faqat `at` qiymatini saqlaydi, ikkinchi jadvalga
+   * tegishli bo'lmagan `id` bilan tie-break qilinmaydi (savdo va to'lov
+   * `id`lari solishtirish uchun mantiqiy asosga ega emas). Agar ikki xil
+   * yozuv — hatto ikki xil jadvaldan — ANIQ bir xil millisekundgacha
+   * `at`ga ega bo'lsa VA bu juftlik sahifa chegarasiga to'g'ri kelsa,
+   * ulardan biri keyingi sahifada qayta ko'rinishi (yoki, chegara aynan
+   * kursor qiymatiga to'g'ri kelsa, ko'rinmay qolishi) mumkin. Amalda bu
+   * deyarli yuz bermaydi: `soldAt`/`paidAt` foydalanuvchi tanlagan real
+   * sana, ikkalasi millisekundgacha tasodifan mos kelishi ehtimoli juda
+   * past. To'liq bartaraf etish ikkala jadvalni ham qamrab oladigan
+   * yagona kompozit (`at`, jadval, `id`) kursorni talab qilardi — bu
+   * murakkablik shu ehtimol uchun hozircha asossiz.
+   */
+  async history(id: string, query: CustomerHistoryQuery): Promise<Page<CustomerHistoryItemDto>> {
+    const customer = await this.prisma.customer.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!customer) throw AppException.notFound(ErrorCode.NOT_FOUND, 'Mijoz topilmadi.');
+
+    const limit = normalizeLimit(query.limit);
+    const decoded = query.cursor ? decodeCursor(query.cursor) : null;
+    const before = decoded ? new Date(decoded.value) : null;
+
+    const [sales, payments] = await Promise.all([
+      this.prisma.sale.findMany({
+        where: {
+          customerId: id,
+          status: { in: HISTORY_SALE_STATUSES },
+          ...(before ? { soldAt: { lt: before } } : {}),
+        },
+        select: {
+          id: true,
+          number: true,
+          status: true,
+          currency: true,
+          total: true,
+          soldAt: true,
+        },
+        orderBy: [{ soldAt: 'desc' }, { id: 'desc' }],
+        take: limit + 1,
+      }),
+      // `contract: { sale: { customerId } }` — `payments.service.ts`dagi
+      // `list()` bilan bir xil naqsh: to'lovda mijoz ustuni yo'q, u
+      // shartnoma → savdo orqali topiladi. Ichma-ich shart `Payment.contract`
+      // munosabati mavjud bo'lishini ham talab qiladi (Prisma `EXISTS`ga
+      // aylantiradi), ya'ni naqd savdoning `contractId = null` yozuvlari
+      // avtomatik chiqarib tashlanadi — alohida `contractId: { not: null }`
+      // sharti ortiqcha
+      this.prisma.payment.findMany({
+        where: {
+          contract: { sale: { customerId: id } },
+          ...(before ? { paidAt: { lt: before } } : {}),
+        },
+        select: {
+          id: true,
+          contractId: true,
+          status: true,
+          paidAmount: true,
+          paidCurrency: true,
+          paidAt: true,
+        },
+        orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
+        take: limit + 1,
+      }),
+    ]);
+
+    const items: CustomerHistoryItemDto[] = [
+      ...sales.map(toHistorySaleDto),
+      ...payments.map(toHistoryPaymentDto),
+    ].sort(byAtDesc);
+
+    return toPage(items, limit, (item) => item.at);
   }
 
   // ──────────────────────────── Yozish ────────────────────────────
@@ -455,4 +594,67 @@ function toDto(row: Customer, withPassport: boolean, debt: CustomerDebtDto[]): C
     pinfl: withPassport ? row.pinfl : null,
     hasPassportFile: row.passportFileId !== null,
   };
+}
+
+// ──────────────────────── T-12: mijoz tarixi ────────────────────────
+
+function toHistorySaleDto(row: {
+  id: string;
+  number: string | null;
+  status: SaleStatus;
+  currency: Currency;
+  total: Prisma.Decimal;
+  soldAt: Date;
+}): CustomerHistorySaleDto {
+  return {
+    kind: 'SALE',
+    id: row.id,
+    at: row.soldAt.toISOString(),
+    // §17.1 — raqam savdo DRAFT holatidan chiqqan tranzaksiyaning o'zida
+    // ajratiladi; `HISTORY_SALE_STATUSES` DRAFT'ni chiqarib tashlagani
+    // uchun bu yerda `row.number` amalda hech qachon `null` bo'lmaydi.
+    // `?? ''` faqat TypeScript ustun turini (`String?`) qondirish uchun.
+    number: row.number ?? '',
+    status: row.status,
+    total: row.total.toString(),
+    currency: row.currency,
+  };
+}
+
+function toHistoryPaymentDto(row: {
+  id: string;
+  contractId: string | null;
+  status: PaymentStatus;
+  paidAmount: Prisma.Decimal;
+  paidCurrency: Currency;
+  paidAt: Date;
+}): CustomerHistoryPaymentDto {
+  return {
+    kind: 'PAYMENT',
+    id: row.id,
+    at: row.paidAt.toISOString(),
+    // So'rovdagi `where: { contract: { sale: { customerId } } }` shartning
+    // o'zi `contractId`ni mavjud qiladi (Prisma ichma-ich filtr mavjud
+    // bo'lmagan munosabatga mos kelolmaydi) — `?? ''` shu yerda ham faqat
+    // tur xavfsizligi uchun, amalda ishlamaydi.
+    contractId: row.contractId ?? '',
+    status: row.status,
+    amount: row.paidAmount.toString(),
+    currency: row.paidCurrency,
+  };
+}
+
+/**
+ * `at` bo'yicha KAMAYISH (eng yangisi birinchi).
+ *
+ * ISO 8601 (`toISOString()`) satrlari doim bir xil uzunlikda va UTC'da,
+ * shuning uchun leksikografik solishtirish xronologik tartibga to'g'ri
+ * keladi — `Date`ga aylantirish shart emas. Bir xil `at`da `id` bo'yicha
+ * kamayish qo'shiladi: bu chinakam vaqt tartibiga aloqasi yo'q, faqat
+ * sahifa ichida barqaror (deterministik) tartib uchun — sahifalash
+ * cheklovi shu funksiya ustidagi izohda tushuntirilgan.
+ */
+function byAtDesc(a: CustomerHistoryItemDto, b: CustomerHistoryItemDto): number {
+  if (a.at !== b.at) return a.at < b.at ? 1 : -1;
+  return a.id < b.id ? 1 : -1;
 }

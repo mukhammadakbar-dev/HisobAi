@@ -4,6 +4,7 @@ import { normalizePhone } from '@hisobai/contracts';
 import type {
   CreateCustomerInput,
   CustomerDto,
+  CustomerHistoryItemDto,
   CustomerSummaryDto,
   Page,
   UpdateCustomerInput,
@@ -34,12 +35,15 @@ export const customerKeys = {
   list: (filters: CustomerFilters) => [...customerKeys.all, 'list', filters] as const,
   detail: (id: string) => [...customerKeys.all, 'detail', id] as const,
   duplicate: (phone: string) => [...customerKeys.all, 'duplicate', phone] as const,
+  history: (id: string) => [...customerKeys.all, 'history', id] as const,
 };
 
 export const customersApi = {
   list: (filters: CustomerFilters): Promise<Page<CustomerSummaryDto>> =>
     api.get('/customers', { query: { ...filters, limit: 50 } }),
   detail: (id: string): Promise<CustomerDto> => api.get(`/customers/${id}`),
+  history: (id: string): Promise<Page<CustomerHistoryItemDto>> =>
+    api.get(`/customers/${id}/history`),
   create: (input: CreateCustomerInput): Promise<CustomerDto> => api.post('/customers', input),
   update: (id: string, input: UpdateCustomerInput): Promise<CustomerDto> =>
     api.patch(`/customers/${id}`, input),
@@ -113,5 +117,22 @@ export function useUpdateCustomer(
       queryClient.setQueryData(customerKeys.detail(id), customer);
       void queryClient.invalidateQueries({ queryKey: customerKeys.all });
     },
+  });
+}
+
+/**
+ * §6 — mijoz tarixi: savdo va nasiya to'lovlari bitta xronologik oqimda
+ * (`DECISIONS.md` §25.2).
+ *
+ * Kalit `customerKeys.all` ostida: to'lov qilinganda nasiya moduli
+ * `customerKeys.all` ni eskirtiradi (`installments/queries.ts`), ya'ni
+ * tarix ham qarz bilan birga yangilanadi va alohida ulanish kerak emas.
+ */
+export function useCustomerHistory(
+  id: string,
+): UseQueryResult<Page<CustomerHistoryItemDto>, ApiError> {
+  return useQuery({
+    queryKey: customerKeys.history(id),
+    queryFn: () => customersApi.history(id),
   });
 }

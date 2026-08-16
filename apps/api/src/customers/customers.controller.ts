@@ -13,12 +13,15 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   UserRole,
   createCustomerSchema,
+  customerHistoryQuerySchema,
   customerQuerySchema,
   updateCustomerSchema,
 } from '@hisobai/contracts';
 import type {
   CreateCustomerInput,
   CustomerDto,
+  CustomerHistoryItemDto,
+  CustomerHistoryQuery,
   CustomerQuery,
   CustomerSummaryDto,
   Page,
@@ -35,10 +38,11 @@ import { CustomersService } from './customers.service';
 /**
  * Mijozlar (§6).
  *
- * ULANMAGAN UCH — `GET /customers/:id/history` hamon **yo'q**. Ilgari
- * sabab asosli edi: savdo va to'lov modullari yozilmagan, bo'sh tarix
- * "savdo yo'q" degan yolg'on xulosaga asos berardi. Endi 5, 7 va
- * 8-bosqichlar tayyor, ya'ni tarixning manbasi bor va sabab tugadi.
+ * T-12 (audit) — `GET /customers/:id/history` endi yozilgan
+ * (`DECISIONS.md` §19.5 endi yopilgan; `CustomersService.history()` ga
+ * qarang). Ilgari sabab asosli edi: savdo va to'lov modullari
+ * yozilmagan, bo'sh tarix "savdo yo'q" degan yolg'on xulosaga asos
+ * berardi. Endi 5, 7 va 8-bosqichlar tayyor, ya'ni tarixning manbasi bor.
  */
 @ApiTags('customers')
 @Controller('customers')
@@ -66,6 +70,21 @@ export class CustomersController {
     @CurrentUser() user: RequestUser,
   ): Promise<CustomerDto> {
     return this.customers.requireById(id, user);
+  }
+
+  /**
+   * T-12 — savdo va to'lov bitta xronologik oqimda (`CustomersService.history()`).
+   * Ruxsat mijoz kartasi (`GET /customers/:id`) bilan bir xil — bu ham
+   * o'sha kartaning bir qismi, alohida ruxsat darajasi yo'q.
+   */
+  @Get(':id/history')
+  @Roles(UserRole.SHOP_ADMIN)
+  @ApiOperation({ summary: 'Mijoz tarixi — savdo va to‘lovlar xronologik tartibda (§6)' })
+  history(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodValidationPipe(customerHistoryQuerySchema)) query: CustomerHistoryQuery,
+  ): Promise<Page<CustomerHistoryItemDto>> {
+    return this.customers.history(id, query);
   }
 
   @Post()

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { Currency } from '../enums';
+import type { Currency, PaymentStatus, SaleStatus } from '../enums';
 import { normalizePhone } from '../phone';
 import { activeFilter, pageQueryFields } from './common';
 
@@ -198,6 +198,51 @@ export interface CustomerDto extends CustomerSummaryDto {
   /** §6.6 — rasm 9-bosqichda; hozir har doim `false`. */
   hasPassportFile: boolean;
 }
+
+/** T-12 — sahifalash uchun kursor va limit, boshqa filtr yo'q (§6, `API.md` §5.1). */
+export const customerHistoryQuerySchema = z.object(pageQueryFields).strict();
+export type CustomerHistoryQuery = z.infer<typeof customerHistoryQuerySchema>;
+
+/**
+ * §6 — mijoz tarixi: savdo va to'lovlar **bitta xronologik oqimda**
+ * (T-12, `DECISIONS.md` §19.5 endi yopilgan).
+ *
+ * Ikkita alohida massiv emas, birlashma: ega uchun savol "bu odam nima
+ * oldi va nima to'ladi" — xronologik javob talab qiladi. Ikkita massiv
+ * qaytarilsa, ularni ekranda baribir birlashtirish kerak bo'lardi va bu
+ * mantiq frontendga ko'chardi (`ARCHITECTURE.md` — biznes mantiq server
+ * qatlamida qoladi).
+ */
+export interface CustomerHistorySaleDto {
+  kind: 'SALE';
+  id: string;
+  /** ISO — savdo tasdiqlangan vaqt (`soldAt`). */
+  at: string;
+  /**
+   * §7.6 — mijozga ko'rinadigan hujjat raqami. §17.1 da ustun
+   * `nullable` (faqat qoralamada `null`), lekin tarix qoralamani hech
+   * qachon qamramaydi (pastga qarang) — shu holat bu yerda
+   * ifodalanmaydi.
+   */
+  number: string;
+  status: SaleStatus;
+  total: string;
+  currency: Currency;
+}
+
+export interface CustomerHistoryPaymentDto {
+  kind: 'PAYMENT';
+  id: string;
+  /** ISO — to'lov sanasi (`paidAt`, §10.4 orqaga qo'yilgan bo'lishi mumkin). */
+  at: string;
+  contractId: string;
+  status: PaymentStatus;
+  /** §10 — haqiqatda berilgan summa va uning valyutasi (`paidAmount`/`paidCurrency`). */
+  amount: string;
+  currency: Currency;
+}
+
+export type CustomerHistoryItemDto = CustomerHistorySaleDto | CustomerHistoryPaymentDto;
 
 /**
  * §6.3 — "Bu raqam Alisher Karimovda bor. O'shami?"

@@ -11,6 +11,7 @@ import { Badge, Button, Card } from '../../../../components/ui';
 import { useCurrentUser } from '../../../../features/auth/queries';
 import { CustomerForm } from '../../../../features/customers/components/customer-form';
 import { FlagCard } from '../../../../features/customers/components/flag-card';
+import { HistoryCard } from '../../../../features/customers/components/history-card';
 import { useCustomer, useUpdateCustomer } from '../../../../features/customers/queries';
 import { errorMessage } from '../../../../lib/messages';
 import { can } from '../../../../lib/permissions';
@@ -24,7 +25,7 @@ import { can } from '../../../../lib/permissions';
  * qaytaradi va "0 so'm" bo'lmagan raqamni haqiqatdek ko'rsatardi
  * (`FRONTEND.md` §9).
  *
- * Savdo tarixi hali yo'q — `GET /customers/:id/history` yozilmagan.
+ * Savdo tarixi — `HistoryCard` (§25.1: `GET /customers/:id/history`).
  */
 export default function CustomerPage() {
   const params = useParams<{ id: string }>();
@@ -124,6 +125,8 @@ export default function CustomerPage() {
       )}
 
       {can(user.data, 'customer.archive') && <FlagCard customer={data} />}
+
+      <HistoryCard customerId={data.id} />
 
       {/* `key` — server javobidan keyin forma yangi qulf tokeni bilan qayta quriladi */}
       <CustomerForm key={data.updatedAt} customer={data} />

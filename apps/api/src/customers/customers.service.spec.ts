@@ -1,4 +1,11 @@
-import { ContractStatus, Currency, ErrorCode, UserRole } from '@hisobai/contracts';
+import {
+  ContractStatus,
+  Currency,
+  ErrorCode,
+  PaymentStatus,
+  SaleStatus,
+  UserRole,
+} from '@hisobai/contracts';
 import { Prisma } from '@prisma/client';
 import type { Request } from 'express';
 import { describe, expect, it, vi } from 'vitest';
@@ -84,7 +91,57 @@ function contract(over: ContractFixture): Required<ContractFixture> {
   };
 }
 
-function makeService(rows: Row[] = [], contracts: ContractFixture[] = []) {
+/** T-12 — `history()` testlari uchun soddalashtirilgan savdo fixture. */
+interface SaleFixture {
+  id: string;
+  customerId: string | null;
+  status: SaleStatus;
+  currency?: Currency;
+  total: string;
+  /** ISO — `soldAt`. */
+  soldAt: string;
+  number?: string | null;
+}
+
+function sale(over: SaleFixture): Required<SaleFixture> {
+  return {
+    currency: Currency.UZS,
+    number: `2026-${over.id}`,
+    ...over,
+  };
+}
+
+/**
+ * T-12 — `history()` testlari uchun soddalashtirilgan to'lov fixture.
+ *
+ * `customerId` **haqiqiy ustun emas** (§10.1 — to'lovda mijoz yo'q):
+ * bu yerda faqat `Payment → contract → sale.customerId` bog'lanishini
+ * soddalashtirib simulyatsiya qilish uchun.
+ */
+interface PaymentFixture {
+  id: string;
+  customerId: string;
+  contractId: string;
+  status: PaymentStatus;
+  paidAmount: string;
+  paidCurrency?: Currency;
+  /** ISO — `paidAt`. */
+  paidAt: string;
+}
+
+function payment(over: PaymentFixture): Required<PaymentFixture> {
+  return {
+    paidCurrency: Currency.UZS,
+    ...over,
+  };
+}
+
+function makeService(
+  rows: Row[] = [],
+  contracts: ContractFixture[] = [],
+  sales: SaleFixture[] = [],
+  payments: PaymentFixture[] = [],
+) {
   const store = new Map(rows.map((row) => [row.id, row]));
   const audit = {
     record: vi.fn((_tx: unknown, _shopId: string | null, _entry: AuditEntry) => Promise.resolve()),
@@ -205,9 +262,73 @@ function makeService(rows: Row[] = [], contracts: ContractFixture[] = []) {
     },
   };
 
+  /**
+   * T-12 — `history()` uchun soddalashtirilgan `sale`/`payment`
+   * so'rovlari. Haqiqiy Prisma emas: faqat servis chaqiradigan
+   * `where`/`orderBy`/`take` shaklini qondiradi va xotirada saralaydi —
+   * `desc` bo'yicha, `soldAt`/`paidAt` teng bo'lsa `id` bo'yicha (servis
+   * o'zi ham xuddi shu ikkinchi tartibni ishlatadi).
+   */
+  const saleDelegate = {
+    findMany: ({
+      where,
+      take,
+    }: {
+      where: { customerId: string; status: { in: SaleStatus[] }; soldAt?: { lt: Date } };
+      take: number;
+    }) => {
+      const filtered = sales
+        .filter((row) => row.customerId === where.customerId)
+        .filter((row) => where.status.in.includes(row.status))
+        .filter((row) => !where.soldAt || new Date(row.soldAt) < where.soldAt.lt)
+        .sort((a, b) => (a.soldAt === b.soldAt ? (a.id < b.id ? 1 : -1) : a.soldAt < b.soldAt ? 1 : -1))
+        .slice(0, take);
+
+      return Promise.resolve(
+        filtered.map((row) => ({
+          id: row.id,
+          number: row.number,
+          status: row.status,
+          currency: row.currency,
+          total: new Prisma.Decimal(row.total),
+          soldAt: new Date(row.soldAt),
+        })),
+      );
+    },
+  };
+
+  const paymentDelegate = {
+    findMany: ({
+      where,
+      take,
+    }: {
+      where: { contract: { sale: { customerId: string } }; paidAt?: { lt: Date } };
+      take: number;
+    }) => {
+      const filtered = payments
+        .filter((row) => row.customerId === where.contract.sale.customerId)
+        .filter((row) => !where.paidAt || new Date(row.paidAt) < where.paidAt.lt)
+        .sort((a, b) => (a.paidAt === b.paidAt ? (a.id < b.id ? 1 : -1) : a.paidAt < b.paidAt ? 1 : -1))
+        .slice(0, take);
+
+      return Promise.resolve(
+        filtered.map((row) => ({
+          id: row.id,
+          contractId: row.contractId,
+          status: row.status,
+          paidAmount: new Prisma.Decimal(row.paidAmount),
+          paidCurrency: row.paidCurrency,
+          paidAt: new Date(row.paidAt),
+        })),
+      );
+    },
+  };
+
   const prisma = {
     customer: delegate,
     installmentContract,
+    sale: saleDelegate,
+    payment: paymentDelegate,
     $transaction: <T>(fn: (tx: { customer: typeof delegate }) => Promise<T>) =>
       fn({ customer: delegate }),
   };
@@ -580,6 +701,193 @@ describe('CustomersService', () => {
       // N+1 EMAS: 2 mijozli sahifaga qarz uchun aniq BITTA qo'shimcha so'rov
       expect(debtQueries).toHaveLength(1);
       expect(debtQueries[0]?.customerIds.slice().sort()).toEqual(['c-1', 'c-2']);
+    });
+  });
+
+  describe('tarix (§6, T-12)', () => {
+    it('savdo va to‘lov bitta oqimda, `at` bo‘yicha kamayish tartibida qaytadi', async () => {
+      const { service } = makeService(
+        [customer({ id: 'c-1', fullName: 'Alisher Karimov', phonePrimary: '+998901234567' })],
+        [],
+        [
+          sale({
+            id: 's-1',
+            customerId: 'c-1',
+            status: SaleStatus.CONFIRMED,
+            total: '1500000',
+            soldAt: '2026-08-01T10:00:00.000Z',
+          }),
+        ],
+        [
+          payment({
+            id: 'p-1',
+            customerId: 'c-1',
+            contractId: 'contract-1',
+            status: PaymentStatus.CONFIRMED,
+            paidAmount: '500000',
+            paidAt: '2026-08-05T10:00:00.000Z',
+          }),
+        ],
+      );
+
+      const page = await service.history('c-1', {});
+
+      // To'lov (5-avgust) savdodan (1-avgust) KEYIN, ya'ni tepada
+      expect(page.data).toEqual([
+        {
+          kind: 'PAYMENT',
+          id: 'p-1',
+          at: '2026-08-05T10:00:00.000Z',
+          contractId: 'contract-1',
+          status: PaymentStatus.CONFIRMED,
+          amount: '500000',
+          currency: Currency.UZS,
+        },
+        {
+          kind: 'SALE',
+          id: 's-1',
+          at: '2026-08-01T10:00:00.000Z',
+          number: '2026-s-1',
+          status: SaleStatus.CONFIRMED,
+          total: '1500000',
+          currency: Currency.UZS,
+        },
+      ]);
+      expect(page.hasMore).toBe(false);
+    });
+
+    it('qoralama savdo tarixga tushmaydi', async () => {
+      const { service } = makeService(
+        [customer({ id: 'c-1', fullName: 'Alisher Karimov', phonePrimary: '+998901234567' })],
+        [],
+        [
+          sale({
+            id: 's-draft',
+            customerId: 'c-1',
+            status: SaleStatus.DRAFT,
+            total: '1000000',
+            soldAt: '2026-08-01T10:00:00.000Z',
+          }),
+        ],
+      );
+
+      const page = await service.history('c-1', {});
+
+      expect(page.data).toEqual([]);
+    });
+
+    it('qaytarilgan savdo tarixda ko‘rinadi', async () => {
+      const { service } = makeService(
+        [customer({ id: 'c-1', fullName: 'Alisher Karimov', phonePrimary: '+998901234567' })],
+        [],
+        [
+          sale({
+            id: 's-returned',
+            customerId: 'c-1',
+            status: SaleStatus.RETURNED,
+            total: '2000000',
+            soldAt: '2026-08-01T10:00:00.000Z',
+          }),
+          sale({
+            id: 's-cancelled',
+            customerId: 'c-1',
+            status: SaleStatus.CANCELLED,
+            total: '900000',
+            soldAt: '2026-08-02T10:00:00.000Z',
+          }),
+        ],
+      );
+
+      const page = await service.history('c-1', {});
+
+      expect(page.data.map((row) => (row.kind === 'SALE' ? row.status : null))).toEqual([
+        SaleStatus.CANCELLED,
+        SaleStatus.RETURNED,
+      ]);
+    });
+
+    it('boshqa mijozning savdosi va to‘lovi tushmaydi', async () => {
+      const { service } = makeService(
+        [
+          customer({ id: 'c-1', fullName: 'Alisher Karimov', phonePrimary: '+998901234567' }),
+          customer({ id: 'c-2', fullName: 'Bobur Aliyev', phonePrimary: '+998911112233' }),
+        ],
+        [],
+        [
+          sale({
+            id: 's-other',
+            customerId: 'c-2',
+            status: SaleStatus.CONFIRMED,
+            total: '3000000',
+            soldAt: '2026-08-01T10:00:00.000Z',
+          }),
+        ],
+        [
+          payment({
+            id: 'p-other',
+            customerId: 'c-2',
+            contractId: 'contract-2',
+            status: PaymentStatus.CONFIRMED,
+            paidAmount: '100000',
+            paidAt: '2026-08-01T10:00:00.000Z',
+          }),
+        ],
+      );
+
+      const page = await service.history('c-1', {});
+
+      expect(page.data).toEqual([]);
+    });
+
+    it('sahifalash chegarasi — `limit` dan ko‘p yozuvda `hasMore` rost', async () => {
+      const { service } = makeService(
+        [customer({ id: 'c-1', fullName: 'Alisher Karimov', phonePrimary: '+998901234567' })],
+        [],
+        [
+          sale({
+            id: 's-1',
+            customerId: 'c-1',
+            status: SaleStatus.CONFIRMED,
+            total: '100000',
+            soldAt: '2026-08-01T10:00:00.000Z',
+          }),
+          sale({
+            id: 's-2',
+            customerId: 'c-1',
+            status: SaleStatus.CONFIRMED,
+            total: '200000',
+            soldAt: '2026-08-02T10:00:00.000Z',
+          }),
+          sale({
+            id: 's-3',
+            customerId: 'c-1',
+            status: SaleStatus.CONFIRMED,
+            total: '300000',
+            soldAt: '2026-08-03T10:00:00.000Z',
+          }),
+        ],
+      );
+
+      const page = await service.history('c-1', { limit: 2 });
+
+      expect(page.data).toHaveLength(2);
+      expect(page.hasMore).toBe(true);
+      expect(page.nextCursor).not.toBeNull();
+
+      // Keyingi sahifa qolgan yagona yozuvni beradi va tugaydi
+      const nextPage = await service.history('c-1', {
+        limit: 2,
+        cursor: page.nextCursor ?? undefined,
+      });
+      expect(nextPage.data).toHaveLength(1);
+      expect(nextPage.data[0]?.id).toBe('s-1');
+      expect(nextPage.hasMore).toBe(false);
+    });
+
+    it('mijoz topilmasa NOT_FOUND', async () => {
+      const { service } = makeService();
+
+      await expectAppException(service.history('missing', {}), ErrorCode.NOT_FOUND);
     });
   });
 });

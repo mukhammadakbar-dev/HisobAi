@@ -657,6 +657,32 @@ hujjat ziddiyatida ustun turadi (hujjat boshidagi qoida).
 
 ---
 
+## 25. Audit tuzatishlari (2026-08-16 — ulanmagan uchlar)
+
+2026-08-16 dagi to'liq audit 1–9 bosqichlarni "tugagan" deb topdi, lekin
+to'rtta modulning **iste'molchi tomoni ulanmagan** ekanini aniqladi: kod
+yozilgan, uni ishlatadigan joy esa hamon "modul keyin keladi" holatida
+turgan. Bular yangi funksiya emas — MVP-2 ning yopilmagan uchlari, va
+ular *jimgina noto'g'ri*, ya'ni umuman yo'q funksiyadan xavfliroq.
+
+| §    | Qaror | Sabab |
+| ---- | ----- | ----- |
+| 25.1 | **`GET /customers/:id/history` yoziladi — §19.5 yopiladi** | §19.5 uni ataylab qoldirmagan edi, shartga bog'lagan edi: "u savdo va to'lovlardan iborat", ular esa yo'q edi. 5, 7 va 8-bosqichlardan keyin shart tugadi. Qaror bekor qilinmayapti — u **bajarildi** |
+| 25.2 | **Tarix — savdo va to'lov BITTA xronologik oqimda**, ikkita alohida massiv emas | Bu tarix, ya'ni "bu odam nima oldi va nima to'ladi" degan savolga xronologik javob. Ikkita massiv bo'lsa, ularni ekranda baribir birlashtirish kerak bo'lardi va tartiblash mantiqi frontendga ko'chardi — server bilan ekran o'rtasida ikkinchi haqiqat manbai |
+| 25.3 | **Tarixda `DRAFT` yo'q, `REVERSAL` ham yo'q, bekor qilingan savdo esa BOR** | `DRAFT` hech narsaga ta'sir qilmagan (§7.7). `REVERSAL` alohida "savdo" emas, asl qatorning teskari yozuvi (§17.4) — uning fakti asl qatorning `status` i orqali allaqachon ko'rinadi, ikkalasini qo'shish bitta voqeani ikki marta ko'rsatardi. Bekor qilingan savdo esa aylanmaga kirmasa ham, mijoz tarixida haqiqatan sodir bo'lgan hodisa |
+| 25.4 | **Naqd savdoning to'lovi tarixda alohida qator sifatida ko'rinmaydi** | `CASH` savdoda to'lov — savdoning O'ZI (tasdiqlashda to'liq to'lanadi, §17.10). Uni ikkinchi qator qilib ko'rsatish bitta voqeani ikki marta sanardi. Tarixda faqat nasiya to'lovlari alohida turadi, chunki ular savdodan keyin, alohida vaqtda sodir bo'ladi |
+| 25.5 | **Mijoz qarzi DTO'da massiv, `Record` ham, yig'indi ham emas; faqat noldan katta qiymatlar** | §6.11 valyutalarni alohida talab qiladi, §1.3 esa qarz savdo valyutasida qolishini — ya'ni yig'indi mumkin emas. Bo'sh massiv "qarz yo'q" ni aniq bildiradi va UI hech narsa chizmaydi: "0 so'm" yozuvi bor qarzdek o'qilardi (buni `customers/page.tsx` dagi eski izoh oldindan ogohlantirgan) |
+| 25.6 | **Kassa yozuvining `reversible` bayrog'ini SERVER hisoblaydi**, UI emas | U `editable` ning to'ldiruvchisi (§11.8: o'sha kun → tahrir/o'chirish, ertasiga → teskari yozuv) va ikkalasi hech qachon bir vaqtda rost bo'lmaydi. UI'da hisoblansa, qoida uchinchi joyda takrorlanardi — servisdagi `assertReversible` ikkinchisi |
+| 25.7 | **O'sha kun ichida teskari yozuv RAD ETILADI** | §11.8 ikki yo'lni ataylab to'ldiruvchi qilib belgilagan. Ikkalasi bir vaqtda ochiq bo'lsa, bitta xatoni tuzatishning ikki xil yo'li paydo bo'ladi va o'sha kunning kassa hisoboti kim qaysi yo'lni tanlaganiga qarab ikki xil ko'rinardi |
+| 25.8 | **`cash_entries.reverses_entry_id` ustiga unique indeks** | Servisdagi tekshiruv "avval SELECT, keyin INSERT" — §17.5 aynan shuni kafolat sifatida rad etadi. Ikkinchi teskari yozuv kassani asl xatodan ikki barobar ko'p "tuzatib" qo'yardi, ya'ni jimgina moliyaviy nomuvofiqlik. Tekshiruv yaxshi xato xabari uchun qoladi, kafolat esa bazada — §17.8 falsafasi |
+| 25.9 | **`Customer` ga kompozit FK (`Sale`, `NotificationLog`)** | Auditning yagona KRITIK topilmasi. Bir ustunli FK'da PostgreSQL referensial butunlik tekshiruvini jadval EGASI nomidan bajaradi va RLS'ni chetlab o'tadi — ya'ni §21.7 (servisda qo'lda filtr yo'q) va §21.13 (RLS kafolat) ning ikkalasi ham bu yo'lda ishlamasdi. Naqsh loyihada allaqachon bor edi (`Payment`, `StocktakeLine`, `PaymentAllocation`), faqat `Customer` ga qo'llanmagan |
+
+> **Nima uchun bu bosqich raqamiga bog'lanmagan.** §18–§24 bosqichlar
+> bo'yicha yozilgan. Bu bo'lim esa auditdan chiqqan va bir nechta
+> bosqichning uchlarini yopadi, ya'ni bitta bosqichga tegishli emas.
+
+---
+
 ## Ochiq savollar
 
 | Mavzu | Savol |
