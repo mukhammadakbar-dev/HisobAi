@@ -101,6 +101,7 @@ export class SalesService {
     const rate = await this.rates.requireForDate(businessDay(soldAt, this.timeZone));
 
     return this.prisma.$transaction(async (tx) => {
+      if (input.customerId) await this.assertCustomerExists(tx, input.customerId);
       const items = await this.prepareItems(tx, input.items, input.currency);
 
       const sale = await tx.sale.create({
@@ -148,6 +149,7 @@ export class SalesService {
 
       const data: Prisma.SaleUpdateInput = { soldAt };
       if (input.customerId !== undefined) {
+        if (input.customerId) await this.assertCustomerExists(tx, input.customerId);
         data.customer = input.customerId
           ? { connect: { id: input.customerId } }
           : { disconnect: true };
@@ -216,6 +218,30 @@ export class SalesService {
   }
 
   // ──────────────────────────── Umumiy qismlar ────────────────────────────
+
+  /**
+   * §21, T-01 — `customerId` ATAYLAB kiritilgan input: foydalanuvchi
+   * mijozni UUID bilan tanlaydi (§6.1). Endi baza `sales.customer`ni
+   * kompozit FK bilan Shop chegarasiga bog'laydi (§21 — StocktakeLine
+   * naqshi), lekin FK buzilishi xom `Foreign key constraint failed`
+   * chiqarardi — foydalanuvchiga tushunarsiz. Shuning uchun mijoz
+   * mavjudligi bu yerda OLDINDAN, RLS orqali tekshiriladi: `tx`
+   * tranzaksiya ichida bo'lgani uchun boshqa Shop'ning mijozi RLS
+   * tomonidan ko'rinmaydi va `findUnique` `null` qaytaradi — xato
+   * `Mahsulot topilmadi`ning aynan bir xil shakli (`prepareItems`).
+   */
+  private async assertCustomerExists(
+    tx: Prisma.TransactionClient,
+    customerId: string,
+  ): Promise<void> {
+    const customer = await tx.customer.findUnique({
+      where: { id: customerId },
+      select: { id: true },
+    });
+    if (!customer) {
+      throw AppException.rule(ErrorCode.NOT_FOUND, 'Mijoz topilmadi.', 'customerId');
+    }
+  }
 
   /**
    * Savat qatorlarini tayyorlaydi: mahsulot bor-yo'qligi, tur mosligi,

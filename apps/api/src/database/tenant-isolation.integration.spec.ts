@@ -329,6 +329,42 @@ describe.skipIf(!TEST_URL)('tenant izolyatsiyasi (haqiqiy DB, hisobai_app)', () 
     await expect(attempt).rejects.toThrow(/row-level security/i);
   });
 
+  /**
+   * T-01 (audit, KRITIK) — `sales.customer` va `notification_logs.customer`
+   * bitta ustunli FK edi, ya'ni referensial butunlik faqat "mijoz shu
+   * id bilan mavjudmi"ni tekshirardi, "shu Shop'gami"ni emas. FK
+   * tekshiruvi jadval EGASI (`hisobai_migrate`) nomidan bajariladi —
+   * RLS esa `FORCE ROW LEVEL SECURITY` bilan ham faqat jadval
+   * EGASI'DAN BOSHQA rollarga qo'llanadi, ya'ni bu tekshiruv `hisobai_app`
+   * ostida ham RLS'dan mustaqil. Mock qilingan testlar buni umuman
+   * ko'rmasdi — ularda FK'ning o'zi yo'q.
+   *
+   * Endi kompozit FK (`customer_id, shop_id`) → `customers(id, shop_id)`
+   * Shop A nomidan Shop B mijoziga bog'lanishni BAZA darajasida rad
+   * etishi kerak.
+   */
+  it("savdoni boshqa Shop mijoziga bog'lash BAZA darajasida rad etiladi (kompozit FK, T-01)", async () => {
+    const { b: customerB } = rows.get('Customer')!;
+
+    const attempt = inShop(shopA, () =>
+      client.sale.create({
+        data: {
+          kind: SaleKind.CASH,
+          status: SaleStatus.DRAFT,
+          currency: Currency.UZS,
+          exchangeRate: new Prisma.Decimal('12500'),
+          total: new Prisma.Decimal('100000'),
+          soldAt: new Date(),
+          customerId: customerB,
+        },
+      }),
+    );
+
+    // Xato AYNAN FK'dan kelishi kerak — RLS emas: `customerId` odatiy
+    // yozuv, `shopId` esa Shop A'ning o'zi (RLS bunga qarshi emas).
+    await expect(attempt).rejects.toThrow(/foreign key constraint/i);
+  });
+
   it("`sale_counters` hisoblagichi Shop bo'yicha mustaqil (§21.9, audit C1)", async () => {
     // C1 ning haqiqiy testi: mock'siz, ikkita Shop, bitta yil.
     // Xato holatda B ning `UPDATE`i A ning qatorini ham oshirardi.

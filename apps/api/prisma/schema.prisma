@@ -797,6 +797,10 @@ model Customer {
   sales            Sale[]
   notificationLogs NotificationLog[]
 
+  /// §21, T-01 — kompozit FK nishoni: `sales.customer` va
+  /// `notification_logs.customer` shu ustiga quriladi (StocktakeLine
+  /// naqshi bilan bir xil, schema.prisma:754).
+  @@unique([id, shopId])
   @@unique([shopId, phonePrimary])
   @@index([shopId, fullName])
   @@index([shopId, phoneSecondary])
@@ -851,8 +855,14 @@ model Sale {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  shop         Shop                 @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  customer     Customer?            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Restrict)
+
+  /// §21, T-01 — kompozit FK: `customerId` ATAYLAB kiritilgan input
+  /// (foydalanuvchi mijozni UUID bilan tanlaydi), referensial butunlik
+  /// esa jadval EGASI nomidan bajariladi va RLS'ni chetlab o'tadi.
+  /// `shopId` `customer`nikidan farq qila olmaydi — boshqa Shop
+  /// mijozini bog'lash endi BAZA darajasida rad etiladi.
+  customer     Customer?            @relation(fields: [customerId, shopId], references: [id, shopId], onDelete: Restrict)
   createdBy    User?                @relation(fields: [createdById], references: [id], onDelete: SetNull)
   reversesSale Sale?                @relation("SaleReversal", fields: [reversesSaleId], references: [id], onDelete: Restrict)
   reversals    Sale[]               @relation("SaleReversal")
@@ -1281,7 +1291,20 @@ model NotificationLog {
 
   shop     Shop            @relation(fields: [shopId], references: [id], onDelete: Restrict)
   schedule PaymentSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-  customer Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  /// §21, T-01 — kompozit FK: `sales.customer` bilan bir xil shakl
+  /// (bitta ustunli FK RLS'ni referensial butunlik tekshiruvida
+  /// chetlab o'tadi). `shopId` `customer`nikidan farq qila olmaydi.
+  ///
+  /// `prisma validate` bu yerda ogohlantiradi: kompozit FK'ning bir
+  /// ustuni (`shopId`) `NOT NULL`, `SetNull` esa Prisma'ning odatiy
+  /// SQL generatsiyasida BARCHA FK ustunlarini NULL qilmoqchi bo'lardi
+  /// — bu xato edi. Migratsiya SQL'i ATAYLAB qo'lda yozilgan va
+  /// PostgreSQL 15+ ning ustun-ro'yxatli shakli bilan bu yerni to'g'ri
+  /// hal qiladi: `ON DELETE SET NULL ("customer_id")` — faqat
+  /// `customer_id` NULL bo'ladi, `shopId` tegilmaydi (§21, T-01
+  /// migratsiyasi: `20260816120000_customer_composite_fk`). Ogohlantirish
+  /// shu sabab QOLDIRILGAN — Prisma DSL bu nuansni ifodalay olmaydi.
+  customer Customer?       @relation(fields: [customerId, shopId], references: [id, shopId], onDelete: SetNull)
 
   /// §17.13 — `scheduledFor` kalitga KIRADI: jadval qatori qayta
   /// rejalashtirilganda (§9.10) yangi sana uchun eslatma yuborilsin.
