@@ -21,6 +21,7 @@ import {
   createCashCategorySchema,
   createCashEntrySchema,
   openingBalanceSchema,
+  reverseCashEntrySchema,
   updateCashAccountSchema,
   updateCashEntrySchema,
 } from '@hisobai/contracts';
@@ -37,6 +38,7 @@ import type {
   CreateCashEntryInput,
   OpeningBalanceInput,
   Page,
+  ReverseCashEntryInput,
   UpdateCashAccountInput,
   UpdateCashEntryInput,
 } from '@hisobai/contracts';
@@ -173,6 +175,24 @@ export class CashController {
     @Req() request: AuthedRequest,
   ): Promise<void> {
     await this.entries.remove(id, user, request.ip ?? null);
+  }
+
+  /**
+   * §11.8 — ertasiga tuzatish: `removeEntry` ning to'ldiruvchisi
+   * (o'sha kuni → tahrirlash/o'chirish, ertasiga → shu marshrut).
+   * Moliyaviy `POST` — `@Idempotent()` majburiy (§17.6).
+   */
+  @Post('cash-entries/:id/reverse')
+  @Roles(UserRole.SHOP_ADMIN)
+  @Idempotent()
+  @ApiOperation({ summary: "Qo'lda yozuvni teskari yozuv bilan tuzatish — ertasiga (§11.8)" })
+  reverseEntry(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(reverseCashEntrySchema)) body: ReverseCashEntryInput,
+    @CurrentUser() user: RequestUser,
+    @Req() request: AuthedRequest,
+  ): Promise<CashEntryDto> {
+    return this.entries.reverse(id, body, user, request.ip ?? null);
   }
 
   // ──────────────────────────── Kassa kitobi ────────────────────────────

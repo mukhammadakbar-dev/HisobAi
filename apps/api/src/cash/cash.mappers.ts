@@ -54,8 +54,10 @@ export function toEntryDto(entry: EntryWithRefs, timeZone: string, now: Date): C
     sourceType: entry.sourceType,
     sourceId: entry.sourceId,
     paymentId: entry.paymentId,
+    reversesEntryId: entry.reversesEntryId,
     note: entry.note,
     editable: isEditable(entry, timeZone, now),
+    reversible: isReversible(entry, timeZone, now),
     createdAt: entry.createdAt.toISOString(),
     updatedAt: entry.updatedAt.toISOString(),
   };
@@ -85,6 +87,17 @@ export function toExchangeDto(exchange: CashExchange): CashExchangeDto {
  * UI shu bayroqqa qarab tugmani ko'rsatadi; server baribir qaytadan
  * tekshiradi (`assertEditable`).
  */
+/**
+ * §11.8 — teskari yozuv `editable` ning to'ldiruvchisi: qo'lda kiritilgan
+ * yozuv o'sha kuni tahrirlanadi, ERTASIGA esa faqat teskari yozuv bilan
+ * tuzatiladi. Shart shu yerda hisoblanadi, UI'da emas — aks holda qoida
+ * uchinchi joyda takrorlanardi (servisdagi `assertReversible` ikkinchisi).
+ */
+function isReversible(entry: CashEntry, timeZone: string, now: Date): boolean {
+  if (entry.sourceType !== CashSourceType.MANUAL) return false;
+  return !isEditable(entry, timeZone, now);
+}
+
 function isEditable(entry: CashEntry, timeZone: string, now: Date): boolean {
   if (entry.sourceType !== CashSourceType.MANUAL) return false;
   return businessDay(entry.createdAt, timeZone) === businessDay(now, timeZone);

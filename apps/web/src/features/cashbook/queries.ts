@@ -12,6 +12,7 @@ import type {
   CreateCashEntryInput,
   OpeningBalanceInput,
   Page,
+  ReverseCashEntryInput,
   UpdateCashAccountInput,
   UpdateCashEntryInput,
 } from '@hisobai/contracts';
@@ -66,6 +67,12 @@ export const cashApi = {
   updateEntry: (id: string, input: UpdateCashEntryInput): Promise<CashEntryDto> =>
     api.patch(`/cash-entries/${id}`, input),
   removeEntry: (id: string): Promise<void> => api.delete(`/cash-entries/${id}`),
+  reverseEntry: (
+    id: string,
+    input: ReverseCashEntryInput,
+    idempotencyKey: string,
+  ): Promise<CashEntryDto> =>
+    api.post(`/cash-entries/${id}/reverse`, input, { idempotencyKey }),
   openingBalance: (input: OpeningBalanceInput, idempotencyKey: string): Promise<CashEntryDto> =>
     api.post('/cashbook/opening-balance', input, { idempotencyKey }),
 };
@@ -186,6 +193,29 @@ export function useDeleteCashEntry(): UseMutationResult<void, ApiError, string> 
 
   return useMutation<void, ApiError, string>({
     mutationFn: cashApi.removeEntry,
+    onSuccess: () => invalidateCash(queryClient),
+  });
+}
+
+/**
+ * §11.8 — ertangi kunda xato yozuvni teskari yozuv bilan tuzatish.
+ *
+ * `Idempotency-Key` majburiy (§17.6): bu moliyaviy `POST` va takroriy
+ * yuborilishi kassani ikki marta tuzatib qo'yardi.
+ */
+export function useReverseCashEntry(): UseMutationResult<
+  CashEntryDto,
+  ApiError,
+  { id: string; input: ReverseCashEntryInput; idempotencyKey: string }
+> {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    CashEntryDto,
+    ApiError,
+    { id: string; input: ReverseCashEntryInput; idempotencyKey: string }
+  >({
+    mutationFn: ({ id, input, idempotencyKey }) => cashApi.reverseEntry(id, input, idempotencyKey),
     onSuccess: () => invalidateCash(queryClient),
   });
 }

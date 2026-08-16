@@ -1166,7 +1166,12 @@ model CashEntry {
   createdById      String? @map("created_by_id") @db.Uuid
 
   /// §11.8 — ertasiga tuzatish faqat teskari yozuv bilan
-  reversesEntryId String? @map("reverses_entry_id") @db.Uuid
+  /// `@unique` — bitta yozuv ko'pi bilan BIR marta teskari qilinadi.
+  /// Servisdagi tekshiruv yaxshi xato xabari uchun, kafolat esa shu
+  /// yerda: "avval SELECT, keyin INSERT" §17.5 bo'yicha kafolat emas.
+  /// PostgreSQL'da `NULL` lar to'qnashmaydi, ya'ni teskari bo'lmagan
+  /// yozuvlar cheklovga umuman tushmaydi (`attachmentFileId` bilan bir xil naqsh).
+  reversesEntryId String? @unique @map("reverses_entry_id") @db.Uuid
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)

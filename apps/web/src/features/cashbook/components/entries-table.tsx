@@ -2,13 +2,14 @@
 
 import { CashDirection } from '@hisobai/contracts';
 import type { CashEntryDto } from '@hisobai/contracts';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, Undo2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { Money } from '../../../components/money/money';
 import { MoneyInput } from '../../../components/money/money-input';
 import { EmptyState, ErrorState, TableSkeleton } from '../../../components/states';
 import { Badge, Button, Card, Field, Input, Select } from '../../../components/ui';
+import { useIdempotencyKey } from '../../../hooks/use-idempotency-key';
 import { formatDateTime } from '../../../lib/format';
 import { CASH_DIRECTION_LABEL, CASH_SOURCE_LABEL } from '../../../lib/labels';
 import { errorMessage } from '../../../lib/messages';
@@ -16,6 +17,7 @@ import {
   useCashAccounts,
   useCashEntries,
   useDeleteCashEntry,
+  useReverseCashEntry,
   useUpdateCashEntry,
 } from '../queries';
 
@@ -194,7 +196,11 @@ export function EntriesTable() {
 function EntryRow({ entry }: { entry: CashEntryDto }) {
   const update = useUpdateCashEntry();
   const remove = useDeleteCashEntry();
+  const reverse = useReverseCashEntry();
+  const idempotency = useIdempotencyKey();
   const [editing, setEditing] = useState(false);
+  const [reversing, setReversing] = useState(false);
+  const [reason, setReason] = useState('');
   const [amount, setAmount] = useState(entry.amount);
   const [note, setNote] = useState(entry.note ?? '');
   const [confirming, setConfirming] = useState(false);
@@ -254,8 +260,94 @@ function EntryRow({ entry }: { entry: CashEntryDto }) {
               </Button>
             </div>
           )}
+
+          {/*
+            §11.8 — ertangi kunda tuzatishning YAGONA yo'li. `reversible`
+            ni ham server hisoblaydi va u `editable` bilan bir vaqtda
+            rost bo'lmaydi, ya'ni bu yerda ikkala amal birga chiqmaydi.
+          */}
+          {entry.reversible && (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                onClick={() => {
+                  setReversing((open) => !open);
+                }}
+                aria-expanded={reversing}
+              >
+                <Undo2 size={16} aria-hidden="true" />
+                <span className="sr-only">Teskari yozuv bilan tuzatish</span>
+              </Button>
+            </div>
+          )}
         </td>
       </tr>
+
+      {reversing && (
+        <tr className="border-b border-border-default">
+          <td colSpan={6} className="p-3">
+            <form
+              noValidate
+              className="flex flex-wrap items-end gap-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                reverse.mutate(
+                  {
+                    id: entry.id,
+                    input: { reason: reason.trim() },
+                    idempotencyKey: idempotency.key,
+                  },
+                  {
+                    onSuccess: () => {
+                      setReversing(false);
+                      setReason('');
+                      idempotency.renew();
+                    },
+                    onError: idempotency.renewAfterError,
+                  },
+                );
+              }}
+            >
+              <div className="min-w-64 flex-1">
+                <Field
+                  label="Tuzatish sababi"
+                  htmlFor={`reason-${entry.id}`}
+                  error={reverse.isError ? errorMessage(reverse.error) : undefined}
+                >
+                  <Input
+                    id={`reason-${entry.id}`}
+                    value={reason}
+                    onChange={(event) => {
+                      setReason(event.target.value);
+                    }}
+                    placeholder="Masalan: summa xato kiritilgan"
+                  />
+                </Field>
+              </div>
+              <Button type="submit" disabled={reason.trim().length < 3 || reverse.isPending}>
+                Teskari yozuv
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setReversing(false);
+                }}
+              >
+                Bekor qilish
+              </Button>
+            </form>
+            {/*
+              Asl yozuv o'z joyida qoladi — teskari yozuv uning ustiga
+              QO'SHILADI (§11.8, §21): o'tgan kunning kassa hisoboti bir
+              marta chiqarilgandan keyin o'zgarmasligi kerak.
+            */}
+            <p className="m-0 mt-2 text-sm text-text-secondary">
+              Asl yozuv o‘chmaydi — kassaga qarama-qarshi yo‘nalishdagi yangi yozuv qo‘shiladi.
+            </p>
+          </td>
+        </tr>
+      )}
 
       {editing && (
         <tr className="border-b border-border-default">

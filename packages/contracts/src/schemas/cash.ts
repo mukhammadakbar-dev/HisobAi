@@ -119,6 +119,22 @@ export const updateCashEntrySchema = z
   });
 export type UpdateCashEntryInput = z.infer<typeof updateCashEntrySchema>;
 
+/**
+ * §11.8 — ertasiga tuzatish faqat teskari yozuv bilan.
+ *
+ * `reason` erkin matn (`rebuildScheduleSchema` bilan bir naqsh, §9.11):
+ * bu yerda ham keyinroq "nega tuzatilgan" degan savolga audit'dan
+ * tashqari javob berish kerak — sabab tekshiruv (audit) uchun, oldindan
+ * belgilangan ro'yxat emas, chunki qo'lda kiritilgan xato juda xilma-xil
+ * bo'lishi mumkin (noto'g'ri summa, noto'g'ri hisob, umuman xato yozuv).
+ */
+export const reverseCashEntrySchema = z
+  .object({
+    reason: z.string().trim().min(3, 'Sababni yozing').max(300),
+  })
+  .strict();
+export type ReverseCashEntryInput = z.infer<typeof reverseCashEntrySchema>;
+
 /** §11.4 — har hisob uchun bir marta; daromad deb sanalmaydi. */
 export const openingBalanceSchema = z
   .object({
@@ -209,9 +225,21 @@ export interface CashEntryDto {
   sourceType: CashSourceTypeValue;
   sourceId: string | null;
   paymentId: string | null;
+  /** §11.8 — bu yozuv qaysi asl yozuvni tuzatgani (faqat `REVERSAL` da). */
+  reversesEntryId: string | null;
   note: string | null;
   /** §11.7, §11.8 — UI tahrirlash tugmasini shu bo'yicha ko'rsatadi. */
   editable: boolean;
+  /**
+   * §11.8 — teskari yozuv bilan tuzatish mumkinmi (UI tugmani shu
+   * bo'yicha ko'rsatadi). `editable` bilan BIR VAQTDA rost bo'lmaydi:
+   * o'sha kuni tahrir/o'chirish, ertasiga teskari yozuv.
+   *
+   * "Allaqachon teskari qilingan" holati bu yerda YO'Q — uni bilish
+   * har qator uchun qo'shimcha so'rov talab qilardi. Bunday yozuvni
+   * tuzatishga urinilsa server tushunarli xato qaytaradi.
+   */
+  reversible: boolean;
   createdAt: string;
   updatedAt: string;
 }

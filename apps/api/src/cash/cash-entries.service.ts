@@ -13,6 +13,7 @@ import {
   type OpeningBalanceInput,
   type Currency,
   type Page,
+  type ReverseCashEntryInput,
   type UpdateCashEntryInput,
 } from '@hisobai/contracts';
 import { Prisma } from '@prisma/client';
@@ -22,7 +23,7 @@ import { AppException } from '../common/app.exception';
 import { businessDay, dayRangeFilter } from '../common/dates';
 import { staleResource, type Precondition } from '../common/optimistic-lock';
 import { normalizeLimit, toPage, toPrismaCursor } from '../common/pagination';
-import { isRecordNotFound } from '../common/prisma-errors';
+import { isRecordNotFound, isUniqueViolation } from '../common/prisma-errors';
 import type { RequestUser } from '../common/request-user';
 import type { Env } from '../config/env';
 import { PrismaService } from '../database/prisma.service';
@@ -188,15 +189,9 @@ export class CashEntriesService {
   /**
    * §11.8 — o'sha kuni ichida o'chirish.
    *
-   * Ertasiga yozuv **teskari yozuv** bilan tuzatilishi kerak: o'tgan
-   * kunning kassa hisoboti bir marta chiqarilgandan keyin o'zgarmasligi
-   * kerak.
-   *
-   * ULANMAGAN UCH: `createReversal()` mavjud, lekin uni faqat
-   * `sale-reversal.service.ts` va `payments.service.ts` chaqiradi —
-   * QO'LDA kiritilgan kassa yozuvi uchun teskari yozuv marshruti yo'q
-   * (`cash.controller.ts` da faqat `DELETE /cash-entries/:id`). Ya'ni
-   * ertangi kunda qo'lda kiritilgan xato yozuvni tuzatib bo'lmaydi.
+   * Ertasiga yozuv **teskari yozuv** bilan tuzatilishi kerak (`reverse()`
+   * pastda): o'tgan kunning kassa hisoboti bir marta chiqarilgandan
+   * keyin o'zgarmasligi kerak.
    */
   async remove(id: string, actor: RequestUser, ip: string | null): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
@@ -220,6 +215,117 @@ export class CashEntriesService {
         },
         ip,
       });
+    });
+  }
+
+  /**
+   * §11.8 — ertasiga tuzatish faqat **teskari yozuv** bilan (T-11).
+   *
+   * `assertEditable` (yuqorida) ning aynan TESKARISI: o'sha metod "faqat
+   * bugun tahrirlanadi" deydi, bu yerda esa "bugun teskari qilib
+   * bo'lmaydi — tahrirlang yoki o'chiring" (`assertReversible`). Ikki
+   * yo'l ATAYLAB bir-birini to'ldiradi va hech qachon kesishmaydi: bitta
+   * xatoni tuzatishning ikki xil yo'li ochiq bo'lsa, kassa hisoboti kim
+   * qaysi yo'ldan borganiga qarab ikki xil ko'rinardi.
+   *
+   * Faqat `MANUAL` yozuv teskari qilinadi (§11.7): bu tekshiruv `REVERSAL`
+   * yozuvning O'ZINI teskari qilishni ham avtomatik to'sadi — u ham
+   * `MANUAL` emas, demak alohida "buni ikki marta teskari qilib
+   * bo'lmaydi" tekshiruvi shart emas, aksincha "bitta yozuv ikki marta
+   * teskari qilinmasin" tekshiruvi kerak (pastda, `reversesEntryId`
+   * bo'yicha) — bular ikki xil holat.
+   *
+   * `occurredAt` HOZIRGI vaqt, asl yozuvning sanasi EMAS: o'tgan
+   * kunning kassa hisoboti bir marta chiqarilgandan keyin o'zgarmasligi
+   * kerak — shu talab butun §11.8 ning maqsadi.
+   *
+   * `categoryId` ATAYLAB ko'chirilmaydi: yo'nalish teskari bo'ladi
+   * (`IN` ↔ `OUT`), asl kategoriya esa aynan asl yo'nalish uchun
+   * belgilangan (`assertCategoryFits`) — uni ko'chirish "Ijara" kabi
+   * chiqim kategoriyasini kirim yozuviga yopishtirib qo'yishi mumkin
+   * edi. Boshqa avtomatik yozuvlar ham (`createFromPayment`, `exchange`,
+   * `createReversal`) kategoriyasiz — shu bilan bir naqsh.
+   */
+  async reverse(
+    id: string,
+    input: ReverseCashEntryInput,
+    actor: RequestUser,
+    ip: string | null,
+  ): Promise<CashEntryDto> {
+    return this.prisma.$transaction(async (tx) => {
+      const original = await tx.cashEntry.findUnique({ where: { id } });
+      if (!original) throw entryNotFound();
+      this.assertReversible(original.sourceType, original.createdAt);
+
+      // Bitta yozuvni ikki marta teskari qilib bo'lmaydi — aks holda
+      // ikkinchi teskari yozuv kassani qayta kamaytirib/oshirib, asl
+      // xatoni haqiqiy summadan ikki barobar ko'p tuzatib qo'yardi.
+      //
+      // Bu tekshiruv KAFOLAT emas, faqat yaxshi xato xabari uchun: u
+      // "avval SELECT, keyin INSERT" naqshi va §17.5 aynan shuni rad
+      // etadi. Kafolatni `cash_entries.reverses_entry_id` ustidagi unique
+      // indeks beradi (pastdagi `catch`) — ikki qatlam, §17.8 falsafasi.
+      const existingReversal = await tx.cashEntry.findFirst({
+        where: { reversesEntryId: id },
+        select: { id: true },
+      });
+      if (existingReversal) throw alreadyReversed(existingReversal.id);
+
+      const direction =
+        original.direction === CashDirection.IN ? CashDirection.OUT : CashDirection.IN;
+      const occurredAt = new Date();
+
+      const entry = await tx.cashEntry.create({
+        data: {
+          accountId: original.accountId,
+          direction,
+          amount: original.amount,
+          currency: original.currency,
+          occurredAt,
+          sourceType: CashSourceType.REVERSAL,
+          reversesEntryId: original.id,
+          // Sabab audit'ga tushadi (§9.11 bilan bir naqsh); shu yerga ham
+          // yozamiz — hisobotni ko'rgan ega audit jurnaliga kirmasdan ham
+          // "nega" ni ko'rsin
+          note: input.reason,
+          createdById: actor.id,
+        },
+        include: ENTRY_INCLUDE,
+      })
+        // Yuqoridagi `findFirst` bilan `create` orasidagi oraliqda
+        // ikkinchi so'rov ulgurishi mumkin (§17.5 dagi TOCTOU). Unique
+        // indeks uni to'sadi; bu yerda xato o'sha tushunarli xabarga
+        // aylantiriladi, ya'ni ega ikki xil javob ko'rmaydi.
+        .catch((error: unknown) => {
+          if (isUniqueViolation(error)) throw alreadyReversed(null);
+          throw error;
+        });
+
+      await this.audit.record(tx, actor.shopId, {
+        actorId: actor.id,
+        action: 'CASH_ENTRY_REVERSED',
+        entityType: 'CashEntry',
+        entityId: entry.id,
+        before: {
+          reversesEntryId: original.id,
+          accountId: original.accountId,
+          direction: original.direction,
+          amount: original.amount,
+          currency: original.currency,
+          occurredAt: original.occurredAt.toISOString(),
+        },
+        after: {
+          accountId: entry.accountId,
+          direction: entry.direction,
+          amount: entry.amount,
+          currency: entry.currency,
+          occurredAt: entry.occurredAt.toISOString(),
+          reason: input.reason,
+        },
+        ip,
+      });
+
+      return toEntryDto(entry, this.timeZone, new Date());
     });
   }
 
@@ -511,6 +617,31 @@ export class CashEntriesService {
   }
 
   /**
+   * §11.8 — `reverse()` uchun, `assertEditable` ning TESKARISI.
+   *
+   * Bu yerda maxsus xato kodi yo'q (`errors.ts` da mos kod topilmadi —
+   * hisobotda alohida qayd etilgan): `VALIDATION_FAILED` ishlatiladi,
+   * xuddi shu faylning o'zida `resolveOccurredAt` va
+   * `assertCategoryFits` da bo'lgani kabi — bu qatorda allaqachon
+   * o'rnatilgan naqsh, `CASH_ENTRY_NOT_MANUAL` dan farqli o'ziga xos kod
+   * kiritish emas.
+   */
+  private assertReversible(sourceType: CashSourceType, createdAt: Date): void {
+    if (sourceType !== CashSourceType.MANUAL) {
+      throw AppException.rule(
+        ErrorCode.CASH_ENTRY_NOT_MANUAL,
+        "Bu yozuv qo'lda kiritilmagan — u savdo yoki to'lovni qaytarish orqali tuzatiladi.",
+      );
+    }
+    if (businessDay(createdAt, this.timeZone) === businessDay(new Date(), this.timeZone)) {
+      throw AppException.rule(
+        ErrorCode.VALIDATION_FAILED,
+        "Bugungi yozuv teskari yozuv bilan emas — uni tahrirlang yoki o'chiring.",
+      );
+    }
+  }
+
+  /**
    * Kategoriya yo'nalishga mos kelishi (§11.10).
    *
    * "Ijara" — chiqim kategoriyasi; uni kirimga qo'yish hisobotda
@@ -538,6 +669,21 @@ export class CashEntriesService {
       );
     }
   }
+}
+
+/**
+ * §11.8 — bitta yozuv ko'pi bilan bir marta teskari qilinadi.
+ *
+ * Ikki joydan chaqiriladi: oldindan tekshiruvdan (`reversalId` bilan) va
+ * unique indeks buzilganda (`null` bilan — o'sha paytda ikkinchi qatorning
+ * `id` si bizda yo'q). Xabar bir xil: ega uchun farqi yo'q.
+ */
+function alreadyReversed(reversalId: string | null): AppException {
+  return AppException.conflict(
+    ErrorCode.VALIDATION_FAILED,
+    'Bu yozuv allaqachon teskari yozuv bilan tuzatilgan.',
+    reversalId ? { reversalId } : undefined,
+  );
 }
 
 function entryNotFound(): AppException {
