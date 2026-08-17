@@ -2,18 +2,23 @@
 
 Telefon do'konlari uchun ombor, savdo, nasiya, kassa va AI tahlil CRM'i.
 
-**Holat:** v0.2.1 — **5-bosqich tugadi, MVP-1 yakunlandi**. Kesuvchi
+**Holat:** v0.2.1 — **9-bosqich tugadi; MVP-2 shartnoma PDF'idan
+tashqari yakunlandi** (§16.10, §17.17). Kesuvchi
 poydevor (xato formati, validatsiya, idempotency, pul serializatsiyasi,
 pagination, ruxsat, rate limiting), auth va sozlamalar, valyuta kursi,
-**katalog va ombor** (kategoriya/brend birlashtirish bilan, mahsulot
-shabloni, seriyali birlik va partiya, qabul qilish), **mijozlar** (E.164
-normalizatsiyasi, dublikat tekshiruvi, belgilash va arxivlash), so'ngra
-**naqd savdo va kassa** (qoralama, tasdiqlash tranzaksiyasi, aralash
-to'lov, kassa hisoblari va yozuvlari, boshlang'ich qoldiq, dashboard)
-ishlaydi. Ekranlar: `/dashboard`, `/sales`, `/sales/new`, `/cashbook`,
-`/products`, `/inventory`, qabul formasi, `/customers`,
-`/settings/catalog`. Biznes modullari `docs/TZ.md` §22 dagi tartibda
-davom etadi (keyingi bosqich — **qaytarish va bekor qilish**, MVP-2).
+katalog va ombor (kategoriya/brend birlashtirish bilan, mahsulot
+shabloni, seriyali birlik va partiya, qabul qilish), mijozlar (E.164
+normalizatsiyasi, dublikat tekshiruvi, belgilash va arxivlash), naqd
+savdo va kassa (qoralama, tasdiqlash tranzaksiyasi, aralash to'lov,
+kassa hisoblari va yozuvlari, boshlang'ich qoldiq, dashboard), platforma
+va tenant izolyatsiya (RLS siyosatlari), qaytarish va bekor qilish,
+nasiya va to'lovlar (muddatli jadval, maksimal qarz limit), hisobot va
+audit ko'rinishi. Ekranlar: `/dashboard`, `/sales`, `/sales/new`,
+`/sales/[id]`, `/installments`, `/installments/[id]`, `/cashbook`,
+`/cashbook/new`, `/products`, `/inventory`, `/inventory/receive`,
+`/customers`, `/reports`, `/reports/debts`, `/settings/catalog`,
+`/settings/audit`, `/settings/security`, `/superadmin`. Keyingi bosqich
+(10) — **shartnoma PDF va Storage (MinIO)**.
 
 ## Hujjatlar
 
@@ -95,6 +100,11 @@ pnpm format
 - **Moliyaviy `POST` idempotent** — `Idempotency-Key` majburiy (§17.6).
 - **Ruxsat: default DENY** — `@Roles()` yoki `@Public()` yo'q endpoint
   hech kimga ochilmaydi.
+- **Tenant chegarasi ikki qatlamda** — Prisma extension `shop_id` ni
+  avtomatik qo'yadi, PostgreSQL RLS esa (`FORCE`, `USING` va `WITH CHECK`)
+  uni mustaqil ravishda majburlaydi (§21.7, §21.13).
+- **Tranzaksiya ichidan boshqa servisning `PrismaService`'iga so'rov yo'q** —
+  `tx` ni uzat yoki qiymatni oldindan o'qi (§23.13).
 - **UI'da faqat semantik rang tokenlari** — `bg-neutral-900` emas,
   `bg-surface-page`. Aks holda element bir mavzuda o'qilmas bo'ladi.
 - Build artifaktlari (`.js`, `.d.ts`, `*.tsbuildinfo`) git'ga kirmaydi.
