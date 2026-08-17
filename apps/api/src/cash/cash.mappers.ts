@@ -55,6 +55,7 @@ export function toEntryDto(entry: EntryWithRefs, timeZone: string, now: Date): C
     sourceId: entry.sourceId,
     paymentId: entry.paymentId,
     note: entry.note,
+    attachmentFileId: entry.attachmentFileId,
     editable: isEditable(entry, timeZone, now),
     createdAt: entry.createdAt.toISOString(),
     updatedAt: entry.updatedAt.toISOString(),

@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { Currency, ProductType } from '../enums';
 import { activeFilter, pageQueryFields, positiveDecimal, uuidString } from './common';
+import { fileIdField } from './file';
 
 /**
  * Katalog: kategoriya, brend va mahsulot shabloni (§4).
@@ -107,6 +108,8 @@ const productFields = {
   /** §3.8 — `null` bo'lsa sozlamalardagi umumiy chegara ishlatiladi. */
   lowStockThreshold: z.number().int().min(0, "Chegara manfiy bo'lmaydi").nullable(),
   description: z.string().trim().max(1000).nullable(),
+  /** §18.1 — mahsulot rasmi, oldindan yuklangan `PRODUCT_IMAGE`ga havola. */
+  imageFileId: fileIdField,
 };
 
 export const createProductSchema = z.object(productFields).strict();
@@ -169,6 +172,8 @@ export interface ProductDto {
   lastCostPrice: string | null;
   lowStockThreshold: number | null;
   description: string | null;
+  /** §18.1 — `GET /files/:id` orqali vaqtinchalik havola olinadi. */
+  imageFileId: string | null;
   isActive: boolean;
   stock: ProductStockDto;
   createdAt: string;

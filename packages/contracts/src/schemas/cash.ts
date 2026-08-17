@@ -11,6 +11,7 @@ import {
   positiveDecimal,
   uuidString,
 } from './common';
+import { fileIdField } from './file';
 
 /**
  * Kassa (§11).
@@ -96,6 +97,8 @@ export const createCashEntrySchema = z
     occurredAt: isoDateTime.optional(),
     categoryId: uuidString.nullable().optional(),
     note,
+    /** §20.9 — chek surati, oldindan yuklangan `CASH_ATTACHMENT`ga havola. */
+    attachmentFileId: fileIdField,
   })
   .strict();
 export type CreateCashEntryInput = z.infer<typeof createCashEntrySchema>;
@@ -210,6 +213,8 @@ export interface CashEntryDto {
   sourceId: string | null;
   paymentId: string | null;
   note: string | null;
+  /** §20.9 — `GET /files/:id` orqali vaqtinchalik havola olinadi. */
+  attachmentFileId: string | null;
   /** §11.7, §11.8 — UI tahrirlash tugmasini shu bo'yicha ko'rsatadi. */
   editable: boolean;
   createdAt: string;

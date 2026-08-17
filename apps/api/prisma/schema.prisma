@@ -311,6 +311,14 @@ model Shop {
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  /// §21 — bu YAGONA fayl havolasi kompozit FK'siz qoldi. `(logo_file_id, id)
+  /// -> files(id, shop_id)` sxema darajasida to'g'ri, lekin `shops.id` ni
+  /// relation-skalyariga aylantiradi: Prisma bunday maydonni `create` kirish
+  /// tipidan olib tashlaydi va `@default(uuid())` ni qo'llamay `id = NULL`
+  /// yuboradi (`shop.create()` "Null constraint violation" bilan yiqiladi).
+  /// Shuning uchun bir-ustunli FK qoldi; logotip tenantligi hozircha faqat
+  /// servis kodida tekshiriladi (keyingi qadam: `shops` ga BEFORE INSERT/UPDATE
+  /// trigger, §18.3 IMEI triggeri namunasida).
   logo      FileAsset? @relation("ShopLogo", fields: [logoFileId], references: [id], onDelete: SetNull)
   updatedBy User?      @relation("ShopSettingsUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
@@ -584,7 +592,8 @@ model Product {
   shop           Shop             @relation(fields: [shopId], references: [id], onDelete: Restrict)
   category       Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   brand          Brand            @relation(fields: [brandId], references: [id], onDelete: Restrict)
-  image          FileAsset?       @relation(fields: [imageFileId], references: [id], onDelete: SetNull)
+  /// §21 — kompozit FK: rasm boshqa Shop'ning fayliga ko'rsata olmaydi.
+  image          FileAsset?       @relation(fields: [imageFileId, shopId], references: [id, shopId], onDelete: Restrict)
   inventoryItems InventoryItem[]
   batches        InventoryBatch[]
   stockMovements StockMovement[]
@@ -793,7 +802,8 @@ model Customer {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   shop             Shop              @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  passportFile     FileAsset?        @relation(fields: [passportFileId], references: [id], onDelete: SetNull)
+  /// §21 — kompozit FK: pasport fayli boshqa Shop'niki bo'la olmaydi.
+  passportFile     FileAsset?        @relation(fields: [passportFileId, shopId], references: [id, shopId], onDelete: Restrict)
   sales            Sale[]
   notificationLogs NotificationLog[]
 
@@ -1048,7 +1058,8 @@ model Payment {
   shop            Shop                 @relation(fields: [shopId], references: [id], onDelete: Restrict)
   sale            Sale?                @relation(fields: [saleId], references: [id], onDelete: Restrict)
   contract        InstallmentContract? @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  receiptFile     FileAsset?           @relation(fields: [receiptFileId], references: [id], onDelete: SetNull)
+  /// §21 — kompozit FK: kvitansiya fayli boshqa Shop'niki bo'la olmaydi.
+  receiptFile     FileAsset?           @relation(fields: [receiptFileId, shopId], references: [id, shopId], onDelete: Restrict)
   cashAccount     CashAccount?         @relation(fields: [cashAccountId], references: [id], onDelete: Restrict)
   createdBy       User?                @relation(fields: [createdById], references: [id], onDelete: SetNull)
   reversesPayment Payment?             @relation("PaymentReversal", fields: [reversesPaymentId], references: [id], onDelete: Restrict)
@@ -1165,7 +1176,8 @@ model CashEntry {
   account       CashAccount   @relation(fields: [accountId], references: [id], onDelete: Restrict)
   category      CashCategory? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   payment       Payment?      @relation(fields: [paymentId], references: [id], onDelete: Restrict)
-  attachment    FileAsset?    @relation(fields: [attachmentFileId], references: [id], onDelete: SetNull)
+  /// §21 — kompozit FK: ilova fayli boshqa Shop'niki bo'la olmaydi.
+  attachment    FileAsset?    @relation(fields: [attachmentFileId, shopId], references: [id, shopId], onDelete: Restrict)
   createdBy     User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
   reversesEntry CashEntry?    @relation("CashEntryReversal", fields: [reversesEntryId], references: [id], onDelete: Restrict)
   reversals     CashEntry[]   @relation("CashEntryReversal")
@@ -1230,6 +1242,10 @@ model FileAsset {
   cashEntries   CashEntry[]
   documents     Document[]
 
+  /// §21 — fayl havolalari uchun kompozit FK kaliti: `(id, shop_id)`.
+  /// RI triggerlari RLS'ni chetlab o'tadi, shuning uchun "fayl shu Shop'niki"
+  /// sharti DB darajasida shu unique ustiga qurilgan FK bilan ta'minlanadi.
+  @@unique([id, shopId])
   @@index([shopId])
   @@map("files")
 }
@@ -1249,7 +1265,8 @@ model Document {
 
   shop     Shop                @relation(fields: [shopId], references: [id], onDelete: Restrict)
   contract InstallmentContract @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  file     FileAsset           @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  /// §21 — kompozit FK: hujjat fayli boshqa Shop'niki bo'la olmaydi.
+  file     FileAsset           @relation(fields: [fileId, shopId], references: [id, shopId], onDelete: Restrict)
 
   @@unique([contractId, version])
   @@index([shopId])

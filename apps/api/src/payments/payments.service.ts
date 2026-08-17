@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   ContractStatus,
   ErrorCode,
+  FileKind,
   PaymentMethod,
   PaymentStatus,
   convertMoney,
@@ -20,6 +21,7 @@ import { AuditService } from '../audit/audit.service';
 import { CashEntriesService } from '../cash/cash-entries.service';
 import { AppException } from '../common/app.exception';
 import { businessDay, dayRangeFilter } from '../common/dates';
+import { requireFileRef } from '../common/file-ref';
 import { normalizeLimit, toPage, toPrismaCursor } from '../common/pagination';
 import type { RequestUser } from '../common/request-user';
 import type { Env } from '../config/env';
@@ -143,6 +145,11 @@ export class PaymentsService {
         );
       }
 
+      // §15.6, §10.3 — chek surati ixtiyoriy
+      if (input.receiptFileId) {
+        await requireFileRef(tx, input.receiptFileId, FileKind.RECEIPT, 'Chek fayli topilmadi.');
+      }
+
       const account = await this.requireAccount(tx, input);
 
       const paidAmount = roundMoney(input.amount, input.currency);
@@ -186,6 +193,7 @@ export class PaymentsService {
           confirmedById: confirmedNow ? actor.id : null,
           cashAccountId: account.id,
           createdById: actor.id,
+          receiptFileId: input.receiptFileId ?? undefined,
         },
       });
 

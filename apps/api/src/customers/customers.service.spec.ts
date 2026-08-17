@@ -1,4 +1,4 @@
-import { ErrorCode, UserRole } from '@hisobai/contracts';
+import { ErrorCode, FileKind, UserRole } from '@hisobai/contracts';
 import { Prisma } from '@prisma/client';
 import type { Request } from 'express';
 import { describe, expect, it, vi } from 'vitest';
@@ -65,7 +65,7 @@ function customer(
   };
 }
 
-function makeService(rows: Row[] = []) {
+function makeService(rows: Row[] = [], files: Record<string, { kind: string }> = {}) {
   const store = new Map(rows.map((row) => [row.id, row]));
   const audit = {
     record: vi.fn((_tx: unknown, _shopId: string | null, _entry: AuditEntry) => Promise.resolve()),
@@ -159,10 +159,19 @@ function makeService(rows: Row[] = []) {
     },
   };
 
+  // §19.2 — boshqa Shop'ning fayli xaritada yo'q, xuddi RLS uni
+  // filtrlab tashlagandek (`common/file-ref.spec.ts` asosiy tekshiruv).
+  const fileAsset = {
+    findFirst: ({ where }: { where: { id: string } }) =>
+      Promise.resolve(files[where.id] ?? null),
+  };
+
   const prisma = {
     customer: delegate,
-    $transaction: <T>(fn: (tx: { customer: typeof delegate }) => Promise<T>) =>
-      fn({ customer: delegate }),
+    fileAsset,
+    $transaction: <T>(
+      fn: (tx: { customer: typeof delegate; fileAsset: typeof fileAsset }) => Promise<T>,
+    ) => fn({ customer: delegate, fileAsset }),
   };
 
   const service = new CustomersService(prisma as never, audit as never);
@@ -392,6 +401,58 @@ describe('CustomersService', () => {
 
       expect(store.get('customer-1')?.passportNumber).toBe('7654321');
       expect(store.get('customer-1')?.address).toBe('Chilonzor');
+    });
+
+    // §19.2 — IDOR: boshqa Shop'ning yoki noto'g'ri `kind`dagi faylni
+    // pasport sifatida biriktirib bo'lmaydi.
+    it('boshqa Shop’ning faylini pasport sifatida biriktirib bo‘lmaydi', async () => {
+      const { service } = makeService();
+
+      await expectAppException(
+        service.create({ ...CREATE_INPUT, passportFileId: 'boshqa-shop-fayli' }, ACTOR, null),
+        ErrorCode.NOT_FOUND,
+      );
+    });
+
+    it('noto‘g‘ri `kind`dagi faylni pasport sifatida biriktirib bo‘lmaydi', async () => {
+      const { service } = makeService([], { 'file-1': { kind: FileKind.PRODUCT_IMAGE } });
+
+      const error = await expectAppException(
+        service.create({ ...CREATE_INPUT, passportFileId: 'file-1' }, ACTOR, null),
+        ErrorCode.VALIDATION_FAILED,
+      );
+      expect(error.field).toBe('fileId');
+    });
+
+    it('to‘g‘ri `kind`dagi fayl pasport sifatida biriktiriladi va faqat ko‘ra oladigan rolga ko‘rinadi', async () => {
+      const { service } = makeService([], { 'file-1': { kind: FileKind.PASSPORT } });
+
+      const created = await service.create(
+        { ...CREATE_INPUT, passportFileId: 'file-1' },
+        ACTOR,
+        null,
+      );
+      expect(created.passportFileId).toBe('file-1');
+
+      const seen = await service.requireById('customer-1', SELLER);
+      expect(seen.passportFileId).toBeNull();
+    });
+
+    it('ko‘ra olmaydigan rol pasport faylini ham biriktira olmaydi', async () => {
+      const { service, store } = makeService();
+      await service.create(WITH_PASSPORT, ACTOR, null);
+      const saved = store.get('customer-1');
+
+      await service.update(
+        'customer-1',
+        { passportFileId: 'boshqa-shop-fayli' },
+        precondition(saved?.updatedAt),
+        SELLER,
+        null,
+      );
+
+      // Tekshiruv umuman chaqirilmagan: yozuv jimgina e'tiborsiz qoldirildi
+      expect(store.get('customer-1')?.passportFileId).not.toBe('boshqa-shop-fayli');
     });
   });
 

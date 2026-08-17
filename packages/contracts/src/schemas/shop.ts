@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { decimalInRange, expectedUpdatedAt, timeOfDay } from './common';
+import { fileIdField } from './file';
 
 /**
  * Do'kon (§3.6–§3.9, §21.4).
@@ -65,13 +66,18 @@ export type CreateShopInput = z.infer<typeof createShopSchema>;
 
 /**
  * `PATCH /shops/me` — `PERMISSIONS.md` P2 (mass assignment) himoyasi
- * `.strict()` bilan: `id`, `logoFileId`, `updatedById`, va endi (§21.4,
- * §21.6, §21.10) tenant-modelga xos `shopId`/`status` kabi maydonlar ham
- * `shopFields`da YO'Q — noma'lum kalit `.strict()` tomonidan rad etiladi,
- * jimgina e'tiborsiz qoldirilmaydi.
+ * `.strict()` bilan: `id`, `updatedById`, va endi (§21.4, §21.6, §21.10)
+ * tenant-modelga xos `shopId`/`status` kabi maydonlar `shopFields`da
+ * YO'Q — noma'lum kalit `.strict()` tomonidan rad etiladi, jimgina
+ * e'tiborsiz qoldirilmaydi.
+ *
+ * `logoFileId` — §19.7, 10-bosqich C qismida ochildi (avval ataylab
+ * to'silgan edi, `Storage` moduli hali yo'q edi). Egalik va `kind`
+ * (`SHOP_LOGO`) tekshiruvi bu yerda emas, `ShopsService`da.
  */
 export const updateShopSchema = shopFields
   .extend({
+    logoFileId: fileIdField,
     /**
      * Optimistik qulf (`API.md` §8) — client o'qigan `updatedAt`.
      * `If-Unmodified-Since` sarlavhasi bilan almashtirilishi mumkin,
@@ -98,9 +104,9 @@ export type UpdateShopInput = z.infer<typeof updateShopSchema>;
 /**
  * `GET /shops/me` javobi.
  *
- * `id` va `logoFileId` mavjud, lekin `PATCH` ularni **qabul qilmaydi**
- * (`PERMISSIONS.md` P2 — mass assignment). Logo alohida fayl yuklash
- * oqimi bilan o'rnatiladi.
+ * `id` — `PATCH` **qabul qilmaydi** (`PERMISSIONS.md` P2 — mass
+ * assignment). `logoFileId` esa qabul qilinadi (§19.7): logo avval
+ * `POST /files` bilan yuklanadi, keyin shu maydon orqali biriktiriladi.
  */
 export interface ShopDto {
   id: string;

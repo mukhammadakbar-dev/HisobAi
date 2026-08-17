@@ -1,4 +1,4 @@
-import { ErrorCode, UserRole } from '@hisobai/contracts';
+import { ErrorCode, FileKind, UserRole } from '@hisobai/contracts';
 import { Prisma, type Shop } from '@prisma/client';
 import type { Request } from 'express';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -72,10 +72,20 @@ interface CreateWorld {
   userShopId: string | null;
 }
 
-function makeService(initial: Shop = baseRow()) {
+function makeService(
+  initial: Shop = baseRow(),
+  files: Record<string, { kind: string }> = {},
+) {
   let row = initial;
   // Argumentlar tiplanadi: test audit yozuvining MAZMUNINI tekshiradi
   const audit = { record: vi.fn((_tx: unknown, _shopId: string | null, _entry: AuditEntry) => Promise.resolve()) };
+
+  // §19.7 — boshqa Shop'ning fayli xaritada yo'q, xuddi RLS uni
+  // filtrlab tashlagandek (`common/file-ref.spec.ts` asosiy tekshiruv).
+  const fileAsset = {
+    findFirst: ({ where }: { where: { id: string } }) =>
+      Promise.resolve(files[where.id] ?? null),
+  };
 
   const model = {
     findUniqueOrThrow: () => Promise.resolve(row),
@@ -110,7 +120,8 @@ function makeService(initial: Shop = baseRow()) {
 
   const prisma = {
     shop: model,
-    $transaction: (fn: (tx: unknown) => Promise<unknown>) => fn({ shop: model }),
+    fileAsset,
+    $transaction: (fn: (tx: unknown) => Promise<unknown>) => fn({ shop: model, fileAsset }),
   };
 
   const service = new ShopsService(prisma as never, audit as never);
@@ -264,6 +275,44 @@ describe('ShopsService', () => {
     await expect(
       withShop(() => service.update(ACTOR, { name: 'Ikkinchi' }, precondition, null)),
     ).rejects.toThrow(AppException);
+  });
+
+  // §19.7 — IDOR: boshqa Shop'ning yoki noto'g'ri `kind`dagi faylni
+  // logotip sifatida biriktirib bo'lmaydi. Bu, schema izohida aytilgan,
+  // kompozit FK'siz qolgan YAGONA havola — himoya faqat shu yerda.
+  it('boshqa Shop’ning faylini logotip sifatida biriktirib bo‘lmaydi', async () => {
+    const { service } = makeService();
+
+    await expect(
+      withShop(() =>
+        service.update(
+          ACTOR,
+          { logoFileId: 'boshqa-shop-fayli' },
+          preconditionFor(UPDATED_AT),
+          null,
+        ),
+      ),
+    ).rejects.toMatchObject({ code: ErrorCode.NOT_FOUND });
+  });
+
+  it('noto‘g‘ri `kind`dagi faylni logotip sifatida biriktirib bo‘lmaydi', async () => {
+    const { service } = makeService(baseRow(), { 'file-1': { kind: FileKind.PRODUCT_IMAGE } });
+
+    await expect(
+      withShop(() =>
+        service.update(ACTOR, { logoFileId: 'file-1' }, preconditionFor(UPDATED_AT), null),
+      ),
+    ).rejects.toMatchObject({ code: ErrorCode.VALIDATION_FAILED });
+  });
+
+  it('to‘g‘ri `kind`dagi fayl logotip sifatida biriktiriladi', async () => {
+    const { service } = makeService(baseRow(), { 'file-1': { kind: FileKind.SHOP_LOGO } });
+
+    const saved = await withShop(() =>
+      service.update(ACTOR, { logoFileId: 'file-1' }, preconditionFor(UPDATED_AT), null),
+    );
+
+    expect(saved.logoFileId).toBe('file-1');
   });
 });
 

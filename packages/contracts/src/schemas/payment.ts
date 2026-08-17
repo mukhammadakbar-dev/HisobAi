@@ -9,6 +9,7 @@ import {
   positiveDecimal,
   uuidString,
 } from './common';
+import { fileIdField } from './file';
 
 /**
  * To'lovlar (§10, §12).
@@ -50,6 +51,8 @@ export const createPaymentSchema = z
     /** §10.4 — 7 kungacha orqaga qo'yish mumkin; chegara serverda. */
     paidAt: isoDateTime.optional(),
     note,
+    /** §15.6, §10.3 — chek surati ixtiyoriy, oldindan yuklangan `RECEIPT`ga havola. */
+    receiptFileId: fileIdField,
   })
   .strict();
 export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;
@@ -131,6 +134,8 @@ export interface PaymentDto {
   paidAt: string;
   confirmedAt: string | null;
   rejectedReason: string | null;
+  /** §15.6 — `GET /files/:id` orqali vaqtinchalik havola olinadi. */
+  receiptFileId: string | null;
   /** §10.6 — bu to'lov qaysi to'lovni qaytargan (teskari yozuvda). */
   reversesPaymentId: string | null;
   allocations: PaymentAllocationDto[];

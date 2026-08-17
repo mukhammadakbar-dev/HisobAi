@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
   ErrorCode,
+  FileKind,
   UserRole,
   type CreateCustomerInput,
   type CustomerDto,
@@ -14,6 +15,7 @@ import type { Customer, Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AppException } from '../common/app.exception';
 import { auditDiff, hasChanges } from '../common/audit-diff';
+import { requireFileRef } from '../common/file-ref';
 import { staleResource, type Precondition } from '../common/optimistic-lock';
 import { normalizeLimit, toPage, toPrismaCursor } from '../common/pagination';
 import { isRecordNotFound, isUniqueViolation } from '../common/prisma-errors';
@@ -24,14 +26,13 @@ import { PrismaService } from '../database/prisma.service';
 /**
  * Mijozlar (§6).
  *
- * Ikkita narsa bu servisda **ataylab yo'q**:
+ * **Qarz** (§6.11, §6.12) bu servisda **ataylab yo'q** — u savdo va
+ * to'lovlardan hisoblanadi, saqlanmaydi. Ustun ham, maydon ham
+ * qo'shilmaydi, aks holda qo'lda yozish yo'li ochilardi.
  *
- *  - **Qarz** (§6.11, §6.12) — u savdo va to'lovlardan hisoblanadi,
- *    saqlanmaydi. Modullar 5- va 7-bosqichda keladi; ustun ham,
- *    maydon ham qo'shilmaydi, aks holda qo'lda yozish yo'li ochilardi.
- *  - **Passport rasmi** (§6.6, §6.7) — `Storage` moduli bilan birga
- *    9-bosqichda, §18.1 dagi mahsulot rasmi bilan bir xil sabab.
- *    `passport_file_id` ustuni schema'da allaqachon bor.
+ * **Passport rasmi** (§6.6, §6.7, §19.2) — 10-bosqich C qismida
+ * ochildi: matn maydonlari kabi faqat `canSeePassport()` uchun
+ * to'ldiriladi/yoziladi, egalik va `kind` esa `requireFileRef` bilan.
  */
 
 /** Telefon bo'yicha qidiruv uchun eng kam raqam soni. */
@@ -85,6 +86,17 @@ export class CustomersService {
     actor: RequestUser,
     ip: string | null,
   ): Promise<CustomerDto> {
+    // §19.2 — rasm ixtiyoriy; tranzaksiyasiz tekshiriladi, chunki
+    // `create()` o'zi tranzaksiyasiz (unique buzilishi pastda ushlanadi).
+    if (input.passportFileId) {
+      await requireFileRef(
+        this.prisma,
+        input.passportFileId,
+        FileKind.PASSPORT,
+        'Pasport fayli topilmadi.',
+      );
+    }
+
     const created = await this.prisma.customer
       .create({ data: toCreateData(input) })
       .catch(async (error: unknown) => {
@@ -155,6 +167,18 @@ export class CustomersService {
     return this.prisma.$transaction(async (tx) => {
       const before = await tx.customer.findUnique({ where: { id } });
       if (!before) throw AppException.notFound(ErrorCode.NOT_FOUND, 'Mijoz topilmadi.');
+
+      // §19.2 — passportSeries/pinfl bilan bir xil qoida: ko'ra olmaydigan
+      // rol yoza olmaydi, `toUpdateData` bu maydonni jimgina tashlab
+      // ketadi — shuning uchun tekshiruv ham shu shart bilan
+      if (canSeePassport(actor) && input.passportFileId) {
+        await requireFileRef(
+          tx,
+          input.passportFileId,
+          FileKind.PASSPORT,
+          'Pasport fayli topilmadi.',
+        );
+      }
 
       // `updatedAt` `WHERE` da — tekshiruv va yozuv bitta atomik amal (§17.5 naqshi)
       const after = await tx.customer
@@ -259,6 +283,7 @@ function toCreateData(input: CreateCustomerInput): Prisma.CustomerUncheckedCreat
     passportSeries: input.passportSeries,
     passportNumber: input.passportNumber,
     pinfl: input.pinfl,
+    passportFileId: input.passportFileId ?? undefined,
   };
 }
 
@@ -298,6 +323,7 @@ function toUpdateData(
     if (input.passportSeries !== undefined) data.passportSeries = input.passportSeries;
     if (input.passportNumber !== undefined) data.passportNumber = input.passportNumber;
     if (input.pinfl !== undefined) data.pinfl = input.pinfl;
+    if (input.passportFileId !== undefined) data.passportFileId = input.passportFileId;
   }
   if (input.isActive !== undefined) data.isActive = input.isActive;
 
@@ -329,7 +355,9 @@ function auditView(row: Customer): Record<string, unknown> {
     // Passport raqamlari audit'ga tushmaydi — jurnal shaxsga doir
     // ma'lumotning ikkinchi nusxasiga aylanmasin (§16.13). O'zgargani
     // fakt sifatida qoladi
-    hasPassport: Boolean(row.passportSeries ?? row.passportNumber ?? row.pinfl),
+    hasPassport: Boolean(
+      row.passportSeries ?? row.passportNumber ?? row.pinfl ?? row.passportFileId,
+    ),
     isFlagged: row.isFlagged,
     flagReason: row.flagReason,
     isActive: row.isActive,
@@ -358,6 +386,6 @@ function toDto(row: Customer, withPassport: boolean): CustomerDto {
     passportSeries: withPassport ? row.passportSeries : null,
     passportNumber: withPassport ? row.passportNumber : null,
     pinfl: withPassport ? row.pinfl : null,
-    hasPassportFile: row.passportFileId !== null,
+    passportFileId: withPassport ? row.passportFileId : null,
   };
 }

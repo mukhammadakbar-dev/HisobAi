@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { normalizePhone } from '../phone';
 import { activeFilter, pageQueryFields } from './common';
+import { fileIdField } from './file';
 
 /**
  * Mijoz (§6).
@@ -108,6 +109,8 @@ const customerFields = {
   passportSeries: passportSeries.nullable(),
   passportNumber: passportNumber.nullable(),
   pinfl: pinfl.nullable(),
+  /** §19.2 — passport rasmi, oldindan yuklangan `PASSPORT`ga havola. */
+  passportFileId: fileIdField,
 };
 
 export const createCustomerSchema = z.object(customerFields).strict();
@@ -172,8 +175,12 @@ export interface CustomerDto extends CustomerSummaryDto {
   passportSeries: string | null;
   passportNumber: string | null;
   pinfl: string | null;
-  /** §6.6 — rasm 9-bosqichda; hozir har doim `false`. */
-  hasPassportFile: boolean;
+  /**
+   * §6.6, §6.7, §19.2 — matn maydonlari kabi faqat `withPassport`
+   * (SHOP_ADMIN) uchun to'ldiriladi, aks holda `null`. Havolaning o'zi
+   * emas — yuklab olish `GET /files/:id` orqali (§15.5).
+   */
+  passportFileId: string | null;
 }
 
 /**

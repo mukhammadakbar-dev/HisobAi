@@ -44,6 +44,7 @@ export function toPaymentDto(row: PaymentRow): PaymentDto {
     paidAt: row.paidAt.toISOString(),
     confirmedAt: row.confirmedAt?.toISOString() ?? null,
     rejectedReason: row.rejectedReason,
+    receiptFileId: row.receiptFileId,
     reversesPaymentId: row.reversesPaymentId,
     allocations: row.allocations.map(toAllocationDto),
     createdAt: row.createdAt.toISOString(),

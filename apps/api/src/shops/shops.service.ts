@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
-import { CashAccountKind, Currency, ErrorCode, type CreateShopInput, type ShopDto, type UpdateShopInput } from '@hisobai/contracts';
+import { CashAccountKind, Currency, ErrorCode, FileKind, type CreateShopInput, type ShopDto, type UpdateShopInput } from '@hisobai/contracts';
 import { Prisma, type Shop } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 import { AppException } from '../common/app.exception';
 import { auditDiff, hasChanges, type AuditDiff } from '../common/audit-diff';
+import { requireFileRef } from '../common/file-ref';
 import { staleResource, type Precondition } from '../common/optimistic-lock';
 import { isRecordNotFound } from '../common/prisma-errors';
 import type { RequestUser } from '../common/request-user';
@@ -198,6 +199,15 @@ export class ShopsService {
     return this.prisma.$transaction(async (tx) => {
       const before = await tx.shop.findUniqueOrThrow({ where: { id: shopId } });
 
+      // §19.7 — logotip endi ochiq, lekin `Shop.logo` schema izohida
+      // aytilganidek YAGONA kompozit FK'siz havola: egalik va `kind`
+      // (`SHOP_LOGO`) shu yerda, servis darajasida tekshiriladi.
+      // `FileAsset` shop-scoped model — `tx.fileAsset.findFirst` boshqa
+      // Shop faylini RLS orqali avtomatik ko'rmaydi.
+      if (input.logoFileId) {
+        await requireFileRef(tx, input.logoFileId, FileKind.SHOP_LOGO, 'Logotip topilmadi.');
+      }
+
       const data = toPrismaData(input);
 
       /**
@@ -285,6 +295,7 @@ function toPrismaData(input: UpdateShopInput): Prisma.ShopUncheckedUpdateInput {
     data.storeRateMarkupPercent = new Prisma.Decimal(input.storeRateMarkupPercent);
   }
   if (input.reminderHour !== undefined) data.reminderHour = input.reminderHour;
+  if (input.logoFileId !== undefined) data.logoFileId = input.logoFileId;
 
   return data;
 }

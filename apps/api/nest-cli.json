@@ -11,6 +11,7 @@
         "stripLeadingPaths": true
       }
     },
-    "typeCheck": true
+    "typeCheck": true,
+    "assets": [{ "include": "documents/assets/**/*" }]
   }
 }

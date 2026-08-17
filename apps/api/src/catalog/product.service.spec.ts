@@ -1,4 +1,4 @@
-import { Currency, ErrorCode, ProductType } from '@hisobai/contracts';
+import { Currency, ErrorCode, FileKind, ProductType } from '@hisobai/contracts';
 import { Prisma } from '@prisma/client';
 import type { Request } from 'express';
 import { describe, expect, it, vi } from 'vitest';
@@ -46,6 +46,7 @@ interface ProductRecord {
   lastCostPrice: Prisma.Decimal | null;
   lowStockThreshold: number | null;
   description: string | null;
+  imageFileId: string | null;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -75,6 +76,7 @@ function product(over: Partial<ProductRecord> & { id: string }): ProductRecord {
     lastCostPrice: null,
     lowStockThreshold: null,
     description: null,
+    imageFileId: null,
     isActive: true,
     createdAt: new Date('2026-08-01T00:00:00.000Z'),
     updatedAt: UPDATED_AT,
@@ -88,6 +90,8 @@ function makeService(
     brands?: TaxonomyRecord[];
     categories?: TaxonomyRecord[];
     stock?: Record<string, StockFixture>;
+    /** §18.1 — joriy Shop'ga tegishli (RLS'dan o'tgan) fayllar. */
+    files?: Record<string, { kind: string }>;
   } = {},
 ) {
   const products = new Map((options.products ?? []).map((row) => [row.id, row]));
@@ -192,10 +196,17 @@ function makeService(
       Promise.resolve(store.get(where.id) ?? null),
   });
 
+  const files = options.files ?? {};
   const client = {
     product: productDelegate,
     category: taxonomyDelegate(categories),
     brand: taxonomyDelegate(brands),
+    // §18.1 — boshqa Shop'ning fayli xaritada yo'q, xuddi RLS uni
+    // filtrlab tashlagandek (`common/file-ref.spec.ts` asosiy tekshiruv).
+    fileAsset: {
+      findFirst: ({ where }: { where: { id: string } }) =>
+        Promise.resolve(files[where.id] ?? null),
+    },
     inventoryItem: {
       groupBy: ({ where }: { where: { productId: { in: string[] } } }) =>
         Promise.resolve(
@@ -376,6 +387,45 @@ describe('ProductService', () => {
       expect(created.suggestedPrice).toBe('12500000');
       expect(products.get(created.id)?.suggestedPrice).toBeInstanceOf(Prisma.Decimal);
     });
+
+    // §18.1 — IDOR: boshqa Shop'ning rasmini yoki noto'g'ri `kind`ni
+    // biriktirib bo'lmaydi.
+    it('boshqa Shop’ning rasmini biriktirib bo‘lmaydi — 404', async () => {
+      const { service } = makeService();
+
+      await expectAppException(
+        createScoped(service, { ...CREATE_INPUT, imageFileId: 'boshqa-shop-fayli' }, ACTOR, null),
+        ErrorCode.NOT_FOUND,
+      );
+    });
+
+    it('noto‘g‘ri `kind`dagi faylni biriktirib bo‘lmaydi — VALIDATION_FAILED', async () => {
+      const { service } = makeService({
+        files: { 'file-1': { kind: FileKind.PASSPORT } },
+      });
+
+      const error = await expectAppException(
+        createScoped(service, { ...CREATE_INPUT, imageFileId: 'file-1' }, ACTOR, null),
+        ErrorCode.VALIDATION_FAILED,
+      );
+      expect(error.field).toBe('fileId');
+    });
+
+    it('to‘g‘ri `kind`dagi rasm biriktiriladi', async () => {
+      const { service, products } = makeService({
+        files: { 'file-1': { kind: FileKind.PRODUCT_IMAGE } },
+      });
+
+      const created = await createScoped(
+        service,
+        { ...CREATE_INPUT, imageFileId: 'file-1' },
+        ACTOR,
+        null,
+      );
+
+      expect(created.imageFileId).toBe('file-1');
+      expect(products.get(created.id)?.imageFileId).toBe('file-1');
+    });
   });
 
   describe('tahrirlash', () => {
@@ -495,6 +545,32 @@ describe('ProductService', () => {
       await updateScoped(service, 'p-1', { description: 'Yangi' }, precondition(), ACTOR, null);
 
       expect(locks).toEqual([]);
+    });
+
+    it('§18.1 — boshqa Shop’ning rasmini tahrirlashda biriktirib bo‘lmaydi', async () => {
+      const { service } = makeService({ products: [product({ id: 'p-1' })] });
+
+      await expectAppException(
+        updateScoped(
+          service,
+          'p-1',
+          { imageFileId: 'boshqa-shop-fayli' },
+          precondition(),
+          ACTOR,
+          null,
+        ),
+        ErrorCode.NOT_FOUND,
+      );
+    });
+
+    it('§18.1 — `null` rasm biriktirishni uzadi', async () => {
+      const { service, products } = makeService({
+        products: [product({ id: 'p-1', imageFileId: 'file-1' })],
+      });
+
+      await updateScoped(service, 'p-1', { imageFileId: null }, precondition(), ACTOR, null);
+
+      expect(products.get('p-1')?.imageFileId).toBeNull();
     });
   });
 

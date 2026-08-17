@@ -4,6 +4,7 @@ import {
   CashDirection,
   CashSourceType,
   ErrorCode,
+  FileKind,
   roundMoney,
   type CashEntryDto,
   type CashEntryQuery,
@@ -20,6 +21,7 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AppException } from '../common/app.exception';
 import { businessDay, dayRangeFilter } from '../common/dates';
+import { requireFileRef } from '../common/file-ref';
 import { staleResource, type Precondition } from '../common/optimistic-lock';
 import { normalizeLimit, toPage, toPrismaCursor } from '../common/pagination';
 import { isRecordNotFound } from '../common/prisma-errors';
@@ -93,6 +95,16 @@ export class CashEntriesService {
       const account = await this.accounts.requireActiveAccount(tx, input.accountId, 'accountId');
       await this.assertCategoryFits(tx, input.categoryId ?? null, input.direction);
 
+      // §20.9 — chek surati ixtiyoriy
+      if (input.attachmentFileId) {
+        await requireFileRef(
+          tx,
+          input.attachmentFileId,
+          FileKind.CASH_ATTACHMENT,
+          'Ilova fayli topilmadi.',
+        );
+      }
+
       const entry = await tx.cashEntry.create({
         data: {
           accountId: account.id,
@@ -106,6 +118,7 @@ export class CashEntriesService {
           categoryId: input.categoryId ?? null,
           sourceType: CashSourceType.MANUAL,
           note: input.note ?? null,
+          attachmentFileId: input.attachmentFileId ?? undefined,
           createdById: actor.id,
         },
         include: ENTRY_INCLUDE,

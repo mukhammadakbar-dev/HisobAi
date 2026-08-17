@@ -21,7 +21,9 @@ import { ShopContextInterceptor } from './common/shop-context.interceptor';
 import { validateEnv } from './config/env';
 import { CustomersModule } from './customers/customers.module';
 import { DatabaseModule } from './database/database.module';
+import { DocumentsModule } from './documents/documents.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
+import { FilesModule } from './files/files.module';
 import { HealthModule } from './health/health.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { MailModule } from './mail/mail.module';
@@ -32,6 +34,7 @@ import { InstallmentsModule } from './installments/installments.module';
 import { PaymentsModule } from './payments/payments.module';
 import { SalesModule } from './sales/sales.module';
 import { ShopsModule } from './shops/shops.module';
+import { StorageModule } from './storage/storage.module';
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -80,6 +83,7 @@ function isMutation(context: ExecutionContext): boolean {
     DatabaseModule,
     AuditModule,
     MailModule,
+    StorageModule,
     HealthModule,
     AuthModule,
     PlatformModule,
@@ -93,6 +97,8 @@ function isMutation(context: ExecutionContext): boolean {
     PaymentsModule,
     InstallmentsModule,
     ReportsModule,
+    FilesModule,
+    DocumentsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

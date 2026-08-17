@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
   ErrorCode,
+  FileKind,
   ProductType,
   buildDisplayName,
   type CreateProductInput,
@@ -15,6 +16,7 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AppException } from '../common/app.exception';
 import { auditDiff, hasChanges } from '../common/audit-diff';
+import { requireFileRef } from '../common/file-ref';
 import { staleResource, type Precondition } from '../common/optimistic-lock';
 import { normalizeLimit, toPage, toPrismaCursor } from '../common/pagination';
 import { isForeignKeyViolation, isRecordNotFound } from '../common/prisma-errors';
@@ -100,6 +102,12 @@ export class ProductService {
       });
       await this.reserveName(tx, displayName, null);
 
+      // §18.1 — rasm ixtiyoriy; berilgan bo'lsa joriy Shop'niki va
+      // `PRODUCT_IMAGE` ekani tekshiriladi (`common/file-ref.ts`).
+      if (input.imageFileId) {
+        await requireFileRef(tx, input.imageFileId, FileKind.PRODUCT_IMAGE, 'Rasm topilmadi.');
+      }
+
       return tx.product
         .create({
           data: {
@@ -114,6 +122,7 @@ export class ProductService {
             suggestedPrice: toDecimal(input.suggestedPrice),
             lowStockThreshold: input.lowStockThreshold,
             description: input.description,
+            imageFileId: input.imageFileId ?? undefined,
           },
           include: WITH_TAXONOMY,
         })
@@ -186,6 +195,11 @@ export class ProductService {
       });
       if (displayName !== before.displayName) {
         await this.reserveName(tx, displayName, id);
+      }
+
+      // §18.1 — `null` biriktirishni uzadi, `undefined` esa tegilmagan
+      if (input.imageFileId) {
+        await requireFileRef(tx, input.imageFileId, FileKind.PRODUCT_IMAGE, 'Rasm topilmadi.');
       }
 
       // `updatedAt` `WHERE` da — tekshiruv va yozuv bitta atomik amal (§17.5 naqshi)
@@ -457,6 +471,7 @@ function toPrismaData(input: UpdateProductInput): Prisma.ProductUncheckedUpdateI
   if (input.suggestedPrice !== undefined) data.suggestedPrice = toDecimal(input.suggestedPrice);
   if (input.lowStockThreshold !== undefined) data.lowStockThreshold = input.lowStockThreshold;
   if (input.description !== undefined) data.description = input.description;
+  if (input.imageFileId !== undefined) data.imageFileId = input.imageFileId;
   if (input.isActive !== undefined) data.isActive = input.isActive;
 
   return data;
@@ -482,6 +497,7 @@ function auditView(row: ProductRow): Record<string, unknown> {
     suggestedPrice: row.suggestedPrice?.toString() ?? null,
     lowStockThreshold: row.lowStockThreshold,
     description: row.description,
+    imageFileId: row.imageFileId,
     isActive: row.isActive,
   };
 }
@@ -512,6 +528,7 @@ export function toDto(row: ProductRow, stock: StockCount): ProductDto {
     lastCostPrice: row.lastCostPrice?.toString() ?? null,
     lowStockThreshold: row.lowStockThreshold,
     description: row.description,
+    imageFileId: row.imageFileId,
     isActive: row.isActive,
     stock: toStockDto(stock),
     createdAt: row.createdAt.toISOString(),

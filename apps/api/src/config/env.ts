@@ -70,11 +70,29 @@ const envSchema = z.object({
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_PASSWORD: z.string().min(8).optional(),
 
-  /** §0.2 — MinIO, S3-mos. Kalitlar hech qachon repoga kirmaydi. */
+  /**
+   * §0.2 — prod uchun MinIO/S3, dev uchun lokal disk. `StorageProvider`
+   * porti ikkalasini bir xil interfeys ortida yashiradi (10-bosqich A).
+   * Kalitlar hech qachon repoga kirmaydi.
+   */
+  STORAGE_DRIVER: z.enum(['local', 'minio']).default('local'),
   STORAGE_ENDPOINT: z.string().default('http://localhost:9000'),
   STORAGE_BUCKET: z.string().default('hisobai'),
   STORAGE_ACCESS_KEY: z.string().optional(),
   STORAGE_SECRET_KEY: z.string().optional(),
+  /**
+   * `local` drayver uchun: fayllar shu papkaga yoziladi (`.gitignore`da
+   * `uploads/` allaqachon chiqarilgan). Ishlab chiqarishda ishlatilmaydi —
+   * u yerda `STORAGE_DRIVER=minio`.
+   */
+  STORAGE_LOCAL_PATH: z.string().default('./uploads'),
+  /**
+   * `local` drayverdagi "imzolangan havola" shu maxfiy kalit bilan
+   * HMAC qilinadi (MinIO presigned URL semantikasining o'rnini bosadi).
+   * Faqat dev'da ishlatiladi, shuning uchun standart qiymat bor — prodda
+   * `STORAGE_DRIVER=minio` bo'lgani uchun bu o'zgaruvchi ishlamaydi.
+   */
+  STORAGE_LOCAL_TOKEN_SECRET: z.string().default('dev-insecure-local-storage-secret'),
   /** §15.5 — vaqtinchalik havola 15 daqiqa. */
   STORAGE_URL_TTL_MINUTES: z.coerce.number().int().positive().default(15),
   /** §15.7 — 10 MB. */
