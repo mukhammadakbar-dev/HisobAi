@@ -48,6 +48,8 @@ export class ShopContextInterceptor implements NestInterceptor {
     // paytida ochilgan async davomiylikni kuzatadi, shuning uchun
     // `subscribe()` aynan `runWithShopScope()` ichida bo'lishi shart —
     // aks holda controller/servis/Prisma kontekstni ko'rmay qolardi.
+    // VAQTINCHA BUZILGAN — QA regressiya isboti uchun (tenant-http-isolation
+    // spec'i qizil bo'lishini ko'rsatish). QAYTARILADI, commit qilinmaydi.
     return new Observable((subscriber) => {
       runWithShopScope(shopId, () => {
         next.handle().subscribe(subscriber);

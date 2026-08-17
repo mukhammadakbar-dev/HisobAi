@@ -31,8 +31,16 @@ async function bootstrap(): Promise<void> {
   // §2.8 — sessiya cookie'si bilan ishlash uchun credentials kerak.
   // `Retry-After` ochib qo'yiladi (`API.md` §9): CORS'da sarlavhalar
   // default yopiq — ro'yxatga tushmasa brauzer uni ko'rmaydi.
+  const allowedOrigins = [env.WEB_ORIGIN, 'http://localhost:3000', 'http://127.0.0.1:3000'];
+
   app.enableCors({
-    origin: env.WEB_ORIGIN,
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin) || env.NODE_ENV === 'development') {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
     credentials: true,
     exposedHeaders: ['X-Request-Id', 'Retry-After'],
   });

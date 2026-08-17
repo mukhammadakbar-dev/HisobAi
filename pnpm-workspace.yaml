@@ -11,6 +11,7 @@ allowBuilds:
   prisma: true
   # Faqat telemetriya yig'adi — kerak emas.
   '@scarf/scarf': false
+  msw: false
 
 minimumReleaseAgeExclude:
   - '@types/node@26.2.0'
