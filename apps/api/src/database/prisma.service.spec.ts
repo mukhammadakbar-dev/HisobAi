@@ -238,9 +238,9 @@ describe("SHOP_SCOPE_EXEMPT_MODELS — ro'yxat eskirmasligi", () => {
  */
 describe('withShopScope — haqiqiy $extends zanjiri (DB’siz)', () => {
   function makeBase(): PrismaService {
-    // Konstruktor faqat `DATABASE_URL` borligini tekshiradi va adapterni
+    // Konstruktor faqat `DATABASE_URL_APP` borligini tekshiradi va adapterni
     // yaratadi — hech qanday tarmoq ulanishi qilmaydi ($connect() alohida).
-    process.env.DATABASE_URL ??= 'postgresql://fake:fake@127.0.0.1:1/fake';
+    process.env.DATABASE_URL_APP ??= 'postgresql://fake:fake@127.0.0.1:1/fake';
     return new PrismaService();
   }
 

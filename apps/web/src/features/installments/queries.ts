@@ -5,6 +5,9 @@ import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query';
 import type {
   CloseContractInput,
   CreatePaymentInput,
+  DocumentGenerateDto,
+  DocumentVersionDto,
+  FileDownloadDto,
   InstallmentContractDto,
   InstallmentSummaryDto,
   Page,
@@ -48,6 +51,11 @@ export const paymentKeys = {
   list: (contractId: string) => [...paymentKeys.all, 'list', contractId] as const,
 };
 
+export const documentKeys = {
+  all: ['documents'] as const,
+  list: (contractId: string) => [...documentKeys.all, 'list', contractId] as const,
+};
+
 export const installmentsApi = {
   list: (filters: InstallmentFilters): Promise<Page<InstallmentSummaryDto>> =>
     api.get('/installments', { query: { ...filters, limit: 50 } }),
@@ -75,6 +83,17 @@ export const paymentsApi = {
     api.post(`/payments/${id}/reverse`, input, { idempotencyKey }),
 };
 
+export const documentsApi = {
+  generate: (contractId: string): Promise<DocumentGenerateDto> =>
+    api.post(`/documents/contracts/${contractId}/pdf`),
+  list: (contractId: string): Promise<DocumentVersionDto[]> =>
+    api.get(`/documents/contracts/${contractId}`),
+};
+
+export const filesApi = {
+  getDownloadUrl: (fileId: string): Promise<FileDownloadDto> => api.get(`/files/${fileId}`),
+};
+
 export function useInstallments(
   filters: InstallmentFilters,
 ): UseQueryResult<Page<InstallmentSummaryDto>, ApiError> {
@@ -98,6 +117,15 @@ export function useContractPayments(
   return useQuery<Page<PaymentDto>, ApiError>({
     queryKey: paymentKeys.list(contractId),
     queryFn: () => paymentsApi.list(contractId),
+  });
+}
+
+export function useContractDocuments(
+  contractId: string,
+): UseQueryResult<DocumentVersionDto[], ApiError> {
+  return useQuery<DocumentVersionDto[], ApiError>({
+    queryKey: documentKeys.list(contractId),
+    queryFn: () => documentsApi.list(contractId),
   });
 }
 
@@ -192,6 +220,27 @@ export function useCloseContract(
     mutationFn: ({ input, idempotencyKey }) => installmentsApi.close(id, input, idempotencyKey),
     onSuccess: () => {
       invalidateMoney(queryClient, id);
+    },
+  });
+}
+
+/**
+ * Nasiya shartnomasi PDF'ini yaratish (§15.2, §16.10).
+ *
+ * Muvaffaqiyatli bo'lganda hujjatlar ro'yxati va shartnoma keshini yangilaydi.
+ * `Idempotency-Key` shart emas: backend o'zi sha256 bo'yicha dedup qiladi (§15.2).
+ */
+export function useGenerateContractPdf(
+  contractId: string,
+): UseMutationResult<DocumentGenerateDto, ApiError, void> {
+  const queryClient = useQueryClient();
+
+  return useMutation<DocumentGenerateDto, ApiError, void>({
+    mutationFn: () => documentsApi.generate(contractId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: documentKeys.all });
+      void queryClient.invalidateQueries({ queryKey: installmentKeys.detail(contractId) });
+      void queryClient.invalidateQueries({ queryKey: installmentKeys.all });
     },
   });
 }

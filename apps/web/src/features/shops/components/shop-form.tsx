@@ -1,11 +1,12 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { updateShopSchema } from '@hisobai/contracts';
+import { FileKind, updateShopSchema } from '@hisobai/contracts';
 import type { ShopDto, UpdateShopInput } from '@hisobai/contracts';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 
+import { FileUpload } from '../../../components/files';
 import { ErrorState, TableSkeleton } from '../../../components/states';
 import { Button, Card, Field, Input } from '../../../components/ui';
 import { applyApiFieldErrors, isFieldOwnedError } from '../../../lib/form-errors';
@@ -23,6 +24,7 @@ import { useShop, useUpdateShop } from '../queries';
  */
 interface ShopFormValues {
   name?: string;
+  logoFileId?: string | null;
   address?: string | null;
   phone?: string | null;
   workStart?: string;
@@ -45,6 +47,7 @@ interface ShopFormValues {
  */
 const FIELDS = [
   'name',
+  'logoFileId',
   'address',
   'phone',
   'workStart',
@@ -86,6 +89,7 @@ function toFormValues(settings: ShopDto): ShopFormValues {
      */
     expectedUpdatedAt: settings.updatedAt,
     name: settings.name,
+    logoFileId: settings.logoFileId,
     address: settings.address,
     phone: settings.phone,
     workStart: settings.workStart,
@@ -193,6 +197,17 @@ export function ShopForm() {
         <Field label="Do‘kon nomi" htmlFor="name" error={errors.name?.message}>
           <Input id="name" {...register('name')} />
         </Field>
+
+        {/* §19.7 — do'kon logosi */}
+        <FileUpload
+          kind={FileKind.SHOP_LOGO}
+          accept="image/jpeg,image/png,image/webp"
+          label="Do‘kon logosi"
+          existingFileId={settings.data?.logoFileId ?? null}
+          onUploaded={(fileId) => {
+            setValue('logoFileId', fileId, { shouldDirty: true });
+          }}
+        />
 
         <Field label="Manzil" htmlFor="address" error={errors.address?.message}>
           <Input id="address" {...register('address', { setValueAs: optionalText })} />

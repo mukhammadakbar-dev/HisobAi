@@ -314,6 +314,21 @@ describe('ShopsService', () => {
 
     expect(saved.logoFileId).toBe('file-1');
   });
+
+  it('null yuborilsa logotip olib tashlanadi va audit yoziladi', async () => {
+    const initial = { ...baseRow(), logoFileId: 'old-logo-id' };
+    const { service, audit } = makeService(initial);
+
+    const saved = await withShop(() =>
+      service.update(ACTOR, { logoFileId: null }, preconditionFor(UPDATED_AT), null),
+    );
+
+    expect(saved.logoFileId).toBeNull();
+    expect(audit.record).toHaveBeenCalledOnce();
+    const entry = audit.record.mock.calls[0]?.[2];
+    expect(entry?.before).toEqual({ logoFileId: 'old-logo-id' });
+    expect(entry?.after).toEqual({ logoFileId: null });
+  });
 });
 
 /**

@@ -22,6 +22,10 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.spec.ts'],
     root: './',
+    env: {
+      DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/hisob_ai?schema=public',
+      DATABASE_URL_APP: 'postgresql://hisobai_app:fake@localhost:5432/hisob_ai?schema=public',
+    },
   },
   // NestJS DI `emitDecoratorMetadata`ga tayanadi — esbuild uni qo'llab-quvvatlamaydi,
   // shuning uchun testlar SWC orqali kompilyatsiya qilinadi.

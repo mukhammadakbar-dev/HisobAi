@@ -1,12 +1,13 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { createCustomerSchema, formatPhone, normalizePhone } from '@hisobai/contracts';
+import { FileKind, createCustomerSchema, formatPhone, normalizePhone } from '@hisobai/contracts';
 import type { CreateCustomerInput, CustomerDto } from '@hisobai/contracts';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 
+import { FileUpload } from '../../../components/files';
 import { Button, Card, Field, Input } from '../../../components/ui';
 import { applyApiFieldErrors, isFieldOwnedError } from '../../../lib/form-errors';
 import { can } from '../../../lib/permissions';
@@ -36,6 +37,7 @@ const FIELDS = [
   'passportSeries',
   'passportNumber',
   'pinfl',
+  'passportFileId',
 ] as const;
 
 interface CustomerFormValues {
@@ -47,6 +49,7 @@ interface CustomerFormValues {
   passportSeries: string | null;
   passportNumber: string | null;
   pinfl: string | null;
+  passportFileId?: string | null;
 }
 
 function toFormValues(customer: CustomerDto | undefined): CustomerFormValues {
@@ -60,6 +63,7 @@ function toFormValues(customer: CustomerDto | undefined): CustomerFormValues {
     passportSeries: customer?.passportSeries ?? null,
     passportNumber: customer?.passportNumber ?? null,
     pinfl: customer?.pinfl ?? null,
+    passportFileId: customer?.passportFileId ?? null,
   };
 }
 
@@ -77,6 +81,7 @@ export function CustomerForm({ customer }: { customer?: CustomerDto }) {
   const {
     register,
     handleSubmit,
+    setValue,
     setError,
     watch,
     formState: { errors },
@@ -111,7 +116,13 @@ export function CustomerForm({ customer }: { customer?: CustomerDto }) {
        */
       const patch = canSeePassport
         ? input
-        : { ...input, passportSeries: undefined, passportNumber: undefined, pinfl: undefined };
+        : {
+            ...input,
+            passportSeries: undefined,
+            passportNumber: undefined,
+            pinfl: undefined,
+            passportFileId: undefined,
+          };
 
       update.mutate(
         // Qulf tokeni forma yuklangan versiyaga bog'lanadi (`API.md` §8)
@@ -240,6 +251,17 @@ export function CustomerForm({ customer }: { customer?: CustomerDto }) {
               {...register('pinfl', { setValueAs: optionalText })}
             />
           </Field>
+
+          {/* §6.6, §6.7 — passport rasmi */}
+          <FileUpload
+            kind={FileKind.PASSPORT}
+            accept="image/jpeg,image/png,image/webp"
+            label="Passport rasmi"
+            existingFileId={customer?.passportFileId ?? null}
+            onUploaded={(fileId) => {
+              setValue('passportFileId', fileId, { shouldDirty: true });
+            }}
+          />
         </Card>
       )}
 

@@ -158,6 +158,7 @@ function drawCustomer(doc: PDFKit.PDFDocument, data: ContractPdfData): void {
 function drawItemsTable(doc: PDFKit.PDFDocument, data: ContractPdfData): void {
   doc.font('Bold').fontSize(11).text('Mahsulotlar', PAGE_MARGIN, doc.y);
   doc.moveDown(0.3);
+  doc.font('Regular').fontSize(9);
 
   // `.table({ data })` shakli `PDFDocument`ning O'ZINI qaytaradi (sinxron,
   // sodda massiv uchun) — `PDFTableObject.end()` faqat `.table()` (`data`siz,
@@ -165,7 +166,7 @@ function drawItemsTable(doc: PDFKit.PDFDocument, data: ContractPdfData): void {
   // `.end()` qo'shilsa, butun PDF oqimi VAQTIDAN OLDIN yopilib qolardi.
   doc.table({
     columnStyles: ['5%', '43%', '27%', '10%', '15%'],
-    defaultStyle: { padding: 5, fontSize: 9 },
+    defaultStyle: { padding: 5 },
     data: [
       ['#', 'Mahsulot', 'IMEI / seriya', 'Miqdor', 'Birlik narxi'].map(headerCell),
       ...data.items.map((item, index) => [
@@ -199,10 +200,11 @@ function drawFinanceSummary(doc: PDFKit.PDFDocument, data: ContractPdfData): voi
 function drawScheduleTable(doc: PDFKit.PDFDocument, data: ContractPdfData): void {
   doc.font('Bold').fontSize(11).text("To'lov jadvali", PAGE_MARGIN, doc.y);
   doc.moveDown(0.3);
+  doc.font('Regular').fontSize(9);
 
   doc.table({
     columnStyles: ['10%', '45%', '45%'],
-    defaultStyle: { padding: 5, fontSize: 9 },
+    defaultStyle: { padding: 5 },
     data: [
       ['#', 'Muddat', 'Summasi'].map(headerCell),
       ...data.schedules.map((row) => [

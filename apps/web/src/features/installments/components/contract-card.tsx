@@ -9,6 +9,7 @@ import { Badge, Card } from '../../../components/ui';
 import { formatDate } from '../../../lib/format';
 import { CONTRACT_STATUS_LABEL, CONTRACT_STATUS_TONE } from '../../../lib/labels';
 import { ContractActions } from './contract-actions';
+import { ContractDocuments } from './contract-documents';
 import { PaymentHistory } from './payment-history';
 
 /**
@@ -133,6 +134,8 @@ export function ContractCard({ contract }: { contract: InstallmentContractDto })
       </Card>
 
       {contract.status === ContractStatus.ACTIVE && <ContractActions contract={contract} />}
+
+      <ContractDocuments contract={contract} />
 
       <PaymentHistory contractId={contract.id} />
     </div>

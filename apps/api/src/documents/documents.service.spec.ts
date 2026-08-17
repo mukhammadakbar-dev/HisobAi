@@ -150,9 +150,13 @@ describe('DocumentsService', () => {
   it('CANCELLED shartnomaga hujjat yaratilmaydi', async () => {
     const { service } = makeService(makeContract(ContractStatus.CANCELLED), null);
 
-    const error: AppException = await scoped(() =>
-      service.generate('contract-1', ACTOR, null),
-    ).catch((caught: unknown) => caught as AppException);
+    let caught: unknown;
+    try {
+      await scoped(() => service.generate('contract-1', ACTOR, null));
+    } catch (err) {
+      caught = err;
+    }
+    const error = caught as AppException;
 
     expect(error).toBeInstanceOf(AppException);
     expect(error.code).toBe(ErrorCode.INSTALLMENT_CONTRACT_NOT_ACTIVE);
@@ -170,11 +174,15 @@ describe('DocumentsService', () => {
   it('mavjud bo`lmagan shartnoma uchun NOT_FOUND', async () => {
     const contract = makeContract();
     const { service, prisma } = makeService(contract, null);
-    prisma.installmentContract.findUnique = vi.fn(() => Promise.resolve(null));
+    prisma.installmentContract.findUnique = vi.fn().mockResolvedValue(null) as never;
 
-    const error: AppException = await scoped(() =>
-      service.generate('missing', ACTOR, null),
-    ).catch((caught: unknown) => caught as AppException);
+    let caught: unknown;
+    try {
+      await scoped(() => service.generate('missing', ACTOR, null));
+    } catch (err) {
+      caught = err;
+    }
+    const error = caught as AppException;
 
     expect(error).toBeInstanceOf(AppException);
     expect(error.code).toBe(ErrorCode.NOT_FOUND);

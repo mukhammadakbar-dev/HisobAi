@@ -1,11 +1,12 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Currency, ProductType, buildDisplayName, createProductSchema } from '@hisobai/contracts';
+import { Currency, FileKind, ProductType, buildDisplayName, createProductSchema } from '@hisobai/contracts';
 import type { CreateProductInput, ProductDto } from '@hisobai/contracts';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 
+import { FileUpload } from '../../../components/files';
 import { MoneyInput } from '../../../components/money/money-input';
 import { Button, Card, Field, Input, Select } from '../../../components/ui';
 import { applyApiFieldErrors, isFieldOwnedError } from '../../../lib/form-errors';
@@ -46,6 +47,7 @@ const FIELDS = [
   'suggestedPrice',
   'lowStockThreshold',
   'description',
+  'imageFileId',
 ] as const;
 
 /**
@@ -65,6 +67,7 @@ interface ProductFormValues {
   suggestedPrice: string | number | null;
   lowStockThreshold: number | null;
   description: string | null;
+  imageFileId?: string | null;
 }
 
 function toFormValues(product: ProductDto | undefined): ProductFormValues {
@@ -79,6 +82,7 @@ function toFormValues(product: ProductDto | undefined): ProductFormValues {
     suggestedPrice: product?.suggestedPrice ?? null,
     lowStockThreshold: product?.lowStockThreshold ?? null,
     description: product?.description ?? null,
+    imageFileId: product?.imageFileId ?? null,
   };
 }
 
@@ -296,6 +300,17 @@ export function ProductForm({ product }: { product?: ProductDto }) {
         <Field label="Tavsif" htmlFor="description" error={errors.description?.message}>
           <Input id="description" {...register('description', { setValueAs: optionalText })} />
         </Field>
+
+        {/* §18.1 — mahsulot rasmi */}
+        <FileUpload
+          kind={FileKind.PRODUCT_IMAGE}
+          accept="image/jpeg,image/png,image/webp"
+          label="Mahsulot rasmi"
+          existingFileId={product?.imageFileId ?? null}
+          onUploaded={(fileId) => {
+            setValue('imageFileId', fileId, { shouldDirty: true });
+          }}
+        />
       </Card>
 
       <div className="flex flex-wrap gap-2">

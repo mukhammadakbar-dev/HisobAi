@@ -83,8 +83,9 @@ async function request<T>(
 ): Promise<T> {
   const headers: Record<string, string> = {};
   const isMutation = method !== 'GET' && method !== 'HEAD';
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
 
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (body !== undefined && !isFormData) headers['Content-Type'] = 'application/json';
 
   if (isMutation) {
     const csrf = await ensureCsrfToken();
@@ -102,7 +103,7 @@ async function request<T>(
       headers,
       credentials: 'include',
       signal: options.signal,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: isFormData ? body : (body === undefined ? undefined : JSON.stringify(body)),
     });
   } catch (error) {
     // AbortError — foydalanuvchi sahifadan chiqdi, xato emas
@@ -141,6 +142,9 @@ export const api = {
 
   post: <T>(path: string, body?: unknown, options?: RequestOptions): Promise<T> =>
     request<T>('POST', path, body, options),
+
+  upload: <T>(path: string, formData: FormData, options?: RequestOptions): Promise<T> =>
+    request<T>('POST', path, formData, options),
 
   patch: <T>(path: string, body?: unknown, options?: RequestOptions): Promise<T> =>
     request<T>('PATCH', path, body, options),
