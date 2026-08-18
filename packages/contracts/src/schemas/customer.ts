@@ -33,6 +33,9 @@ const fullName = z
 const phone = z
   .string()
   .trim()
+  .refine((val) => /^[+\d\s\-().]+$/.test(val), {
+    message: "Telefon raqami faqat raqamlardan iborat bo'lishi kerak",
+  })
   .transform((value) => normalizePhone(value))
   .refine((value): value is string => value !== null, {
     message: "Telefon raqami noto'g'ri (masalan +998 90 123 45 67)",
@@ -52,6 +55,10 @@ const optionalPhone = z
   .nullable()
   .superRefine((value, ctx) => {
     if (value === null || value === '') return;
+    if (!/^[+\d\s\-().]+$/.test(value)) {
+      ctx.addIssue({ code: 'custom', message: "Telefon raqami faqat raqamlardan iborat bo'lishi kerak" });
+      return;
+    }
     if (normalizePhone(value) === null) {
       ctx.addIssue({ code: 'custom', message: "Telefon raqami noto'g'ri" });
     }
@@ -74,25 +81,18 @@ const optionalPhone = z
  * identifikatori, ya'ni "14 ta raqam" formatning taxmini emas, tushunchaning
  * o'zi. Chet el fuqarosida u yo'q va maydon `null` bo'lib qolaveradi.
  */
-const IDENTIFIER_CHARS = /^[A-Z0-9-]+$/u;
-
 const passportSeries = z
   .string()
   .trim()
   .toUpperCase()
-  .min(1, 'Seriyani kiriting')
-  .max(10, 'Seriya 10 belgidan oshmasin')
-  .regex(IDENTIFIER_CHARS, {
-    message: "Seriya lotin harflari va raqamlardan iborat bo'lsin (masalan AA)",
+  .regex(/^[A-Z]{2}$/u, {
+    message: "Seriya 2 ta lotin harfidan iborat bo'lsin (masalan AA)",
   });
 const passportNumber = z
   .string()
   .trim()
-  .toUpperCase()
-  .min(3, 'Passport raqami juda qisqa')
-  .max(20, 'Passport raqami 20 belgidan oshmasin')
-  .regex(IDENTIFIER_CHARS, {
-    message: "Raqam lotin harflari va raqamlardan iborat bo'lsin (masalan 1234567)",
+  .regex(/^\d{7}$/u, {
+    message: "Passport raqami 7 ta raqamdan iborat bo'lsin (masalan 1234567)",
   });
 const pinfl = z
   .string()

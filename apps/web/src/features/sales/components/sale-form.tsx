@@ -19,6 +19,7 @@ import { Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { Money } from '../../../components/money/money';
 import { ErrorState, TableSkeleton } from '../../../components/states';
@@ -28,12 +29,15 @@ import { SHOP_TIME_ZONE, todayInShopZone } from '../../../lib/format';
 import { errorMessage } from '../../../lib/messages';
 import { can } from '../../../lib/permissions';
 import { useCurrentUser } from '../../auth/queries';
-import { useCashAccounts } from '../../cashbook/queries';
-import { useProducts } from '../../catalog/queries';
-import { useCustomers } from '../../customers/queries';
+import { cashKeys, useCashAccounts } from '../../cashbook/queries';
+import { catalogKeys, useProducts } from '../../catalog/queries';
+import { customerKeys, useCustomers } from '../../customers/queries';
+import { dashboardKeys } from '../../dashboard/queries';
 import { useTodayRate } from '../../exchange-rates/queries';
+import { inventoryKeys } from '../../inventory/queries';
 import {
-  useConfirmSale,
+  salesApi,
+  saleKeys,
   useCreateSaleDraft,
   useDeleteSaleDraft,
   useUpdateSaleDraft,
@@ -126,7 +130,9 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
   const createDraft = useCreateSaleDraft();
   const updateDraft = useUpdateSaleDraft(sale?.id ?? '');
   const deleteDraft = useDeleteSaleDraft();
-  const confirmSale = useConfirmSale(sale?.id ?? '');
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState<ApiError | null>(null);
 
   const [form, setForm] = useState<FormState>(() => initialState(sale));
   const [payments, setPayments] = useState<PaymentRow[]>([emptyPaymentRow()]);
@@ -300,18 +306,29 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
       const saved = await persistDraft();
       if (!saved) return;
 
-      confirmSale.mutate(
-        { input: parsed.data satisfies ConfirmSaleInput, idempotencyKey },
-        {
-          onSuccess: (confirmed) => {
-            setDirty(false);
-            router.push(`/sales/${confirmed.id}`);
-          },
-          onError: (error) => {
-            setIssues(serverIssues(error));
-          },
-        },
-      );
+      try {
+        setConfirming(true);
+        setConfirmError(null);
+        const confirmed = await salesApi.confirm(
+          saved.id,
+          parsed.data satisfies ConfirmSaleInput,
+          idempotencyKey,
+        );
+        queryClient.setQueryData(saleKeys.detail(saved.id), confirmed);
+        void queryClient.invalidateQueries({ queryKey: saleKeys.all });
+        void queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+        void queryClient.invalidateQueries({ queryKey: catalogKeys.all });
+        void queryClient.invalidateQueries({ queryKey: cashKeys.all });
+        void queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+        void queryClient.invalidateQueries({ queryKey: customerKeys.all });
+        setDirty(false);
+        router.push(`/sales/${confirmed.id}`);
+      } catch (error) {
+        setConfirmError(error instanceof ApiError ? error : null);
+        setIssues(serverIssues(error));
+      } finally {
+        setConfirming(false);
+      }
     })();
   };
 
@@ -330,8 +347,8 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
     return <ErrorState error={accounts.error} onRetry={() => void accounts.refetch()} />;
   }
 
-  const pending = createDraft.isPending || updateDraft.isPending || confirmSale.isPending;
-  const failure = confirmSale.error ?? updateDraft.error ?? createDraft.error;
+  const pending = createDraft.isPending || updateDraft.isPending || confirming;
+  const failure = confirmError ?? updateDraft.error ?? createDraft.error;
 
   return (
     <form onSubmit={handleSaveDraft} noValidate className="flex flex-col gap-4">
@@ -580,7 +597,7 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
             }
             onClick={handleConfirm}
           >
-            {confirmSale.isPending ? 'Tasdiqlanmoqda…' : 'Tasdiqlash'}
+            {confirming ? 'Tasdiqlanmoqda…' : 'Tasdiqlash'}
           </Button>
         </div>
       </Card>

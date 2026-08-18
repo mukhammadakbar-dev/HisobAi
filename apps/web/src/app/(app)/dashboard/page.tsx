@@ -102,8 +102,8 @@ function DashboardBlocks({ data, canSeeCash }: { data: DashboardDto; canSeeCash:
         <InventoryBlock inventory={data.inventory} currency={data.currency} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Block title="So'nggi 14 kun savdosi" className="lg:col-span-2">
+      <div className="grid gap-4 lg:grid-cols-3 2xl:grid-cols-4">
+        <Block title="So'nggi 14 kun savdosi" className="lg:col-span-2 2xl:col-span-3">
           <RevenueChart points={data.chart} currency={data.currency} />
         </Block>
         <ActivityBlock activity={data.recentActivity} />
@@ -364,8 +364,8 @@ function DashboardSkeleton() {
         <Skeleton className="h-44" />
         <Skeleton className="h-44" />
       </div>
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Skeleton className="h-52 lg:col-span-2" />
+      <div className="grid gap-4 lg:grid-cols-3 2xl:grid-cols-4">
+        <Skeleton className="h-52 lg:col-span-2 2xl:col-span-3" />
         <Skeleton className="h-52" />
       </div>
     </div>

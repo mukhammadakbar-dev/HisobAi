@@ -32,7 +32,18 @@ async function bootstrap(): Promise<void> {
   // `Retry-After` ochib qo'yiladi (`API.md` §9): CORS'da sarlavhalar
   // default yopiq — ro'yxatga tushmasa brauzer uni ko'rmaydi.
   app.enableCors({
-    origin: env.WEB_ORIGIN,
+    origin: (origin, callback) => {
+      if (
+        !origin ||
+        env.NODE_ENV === 'development' ||
+        origin === env.WEB_ORIGIN ||
+        /^http:\/\/(localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/.test(origin)
+      ) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
     exposedHeaders: ['X-Request-Id', 'Retry-After'],
   });
@@ -52,8 +63,8 @@ async function bootstrap(): Promise<void> {
     .build();
   SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, swaggerConfig));
 
-  await app.listen(env.PORT);
-  new Logger('Bootstrap').log(`API tayyor: http://localhost:${env.PORT}/api/v1`);
+  await app.listen(env.PORT, '0.0.0.0');
+  new Logger('Bootstrap').log(`API tayyor: http://0.0.0.0:${env.PORT}/api/v1 (LAN IP: 10.17.252.126:${env.PORT})`);
 }
 
 void bootstrap();

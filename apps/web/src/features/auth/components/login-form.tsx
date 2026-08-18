@@ -4,10 +4,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { loginSchema } from '@hisobai/contracts';
 import type { LoginInput } from '@hisobai/contracts';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
 import { Button, Field, Input } from '../../../components/ui';
+import { prefetchCsrf } from '../../../lib/api-client';
 import { useLogin } from '../queries';
 import { ForgotPasswordPanel } from './forgot-password-panel';
 import { FormError } from './form-error';
@@ -23,6 +24,10 @@ export function LoginForm() {
   const router = useRouter();
   const login = useLogin();
   const [showForgot, setShowForgot] = useState(false);
+
+  useEffect(() => {
+    prefetchCsrf();
+  }, []);
 
   const {
     register,

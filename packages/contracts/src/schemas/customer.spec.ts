@@ -42,6 +42,13 @@ describe('createCustomerSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('harflar qatnashgan telefon raqami rad etiladi', () => {
+    const result = createCustomerSchema.safeParse({ ...VALID, phonePrimary: '901234567asd' });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toBe("Telefon raqami faqat raqamlardan iborat bo'lishi kerak");
+  });
+
   it("asosiy telefonsiz mijoz bo'lmaydi (§6.4)", () => {
     expect(createCustomerSchema.safeParse({ ...VALID, phonePrimary: '' }).success).toBe(false);
   });
@@ -64,15 +71,16 @@ describe('createCustomerSchema', () => {
    * namunadagi hujjat boshqacha yoziladi. Ular rad etilsa, mijozni
    * umuman kiritib bo'lmasdi va nasiya (§6.1) to'xtardi.
    */
-  it('§19.6 — boshqa namunadagi hujjat ham qabul qilinadi', () => {
+  it('pasport seriyasi 2 harf va raqami 7 ta raqam bo‘lishi kerak', () => {
     const parsed = createCustomerSchema.parse({
       ...VALID,
       passportSeries: 'ab',
-      passportNumber: 'c-9912345',
+      passportNumber: '9912345',
       pinfl: null,
     });
 
-    expect(parsed.passportNumber).toBe('C-9912345');
+    expect(parsed.passportSeries).toBe('AB');
+    expect(parsed.passportNumber).toBe('9912345');
   });
 
   it("ma'nosiz passport qiymati rad etiladi", () => {

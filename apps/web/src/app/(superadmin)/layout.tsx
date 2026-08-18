@@ -45,7 +45,7 @@ export default function SuperadminLayout({ children }: { children: ReactNode }) 
 
   if (admin.isPending || isUnauthenticated) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-10">
+      <div className="mx-auto w-full max-w-[1920px] px-4 md:px-6 lg:px-8 py-10">
         <TableSkeleton rows={4} />
       </div>
     );
@@ -53,7 +53,7 @@ export default function SuperadminLayout({ children }: { children: ReactNode }) 
 
   if (admin.isError) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-10">
+      <div className="mx-auto w-full max-w-[1920px] px-4 md:px-6 lg:px-8 py-10">
         <ErrorState
           error={admin.error}
           onRetry={() => {
@@ -75,7 +75,7 @@ export default function SuperadminLayout({ children }: { children: ReactNode }) 
   return (
     <div className="flex min-h-dvh flex-col bg-surface-page">
       <header className="border-b border-border-default bg-surface-card">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-4 px-4 py-3">
+        <div className="mx-auto flex w-full max-w-[1920px] flex-wrap items-center gap-4 px-4 md:px-6 lg:px-8 py-3">
           <div className="flex items-center gap-2">
             <Logo className="h-7 w-auto" />
             <span className="rounded-md bg-info-bg px-2 py-0.5 text-xs font-semibold text-info">
@@ -125,7 +125,7 @@ export default function SuperadminLayout({ children }: { children: ReactNode }) 
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">{children}</main>
+      <main className="mx-auto w-full max-w-[1920px] flex-1 px-4 md:px-6 lg:px-8 py-6">{children}</main>
     </div>
   );
 }

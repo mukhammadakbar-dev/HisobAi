@@ -53,7 +53,7 @@ export function sessionCookieOptions(isProduction: boolean, maxAgeMs: number): C
   return {
     httpOnly: true,
     secure: isProduction,
-    sameSite: 'strict',
+    sameSite: isProduction ? 'strict' : 'lax',
     path: '/',
     maxAge: maxAgeMs,
   };
@@ -64,7 +64,7 @@ export function csrfCookieOptions(isProduction: boolean, maxAgeMs: number): Cook
     // Client JavaScript o'qiydi va `X-CSRF-Token` sarlavhasida qaytaradi
     httpOnly: false,
     secure: isProduction,
-    sameSite: 'strict',
+    sameSite: isProduction ? 'strict' : 'lax',
     path: '/',
     maxAge: maxAgeMs,
   };

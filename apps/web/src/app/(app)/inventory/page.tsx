@@ -46,8 +46,7 @@ export default function InventoryPage() {
         <div className="flex flex-col gap-1">
           <h1 className="m-0 text-2xl font-semibold">Ombor</h1>
           <p className="m-0 text-text-secondary">
-            Har fizik birlik o‘z tannarxi bilan (§5.1). IMEI, seriya raqami yoki nom bo‘yicha
-            qidiring.
+            IMEI, seriya raqami yoki nom bo‘yicha qidiring.
           </p>
         </div>
 

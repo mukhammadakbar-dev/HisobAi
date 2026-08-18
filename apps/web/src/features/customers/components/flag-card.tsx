@@ -41,9 +41,14 @@ export function FlagCard({ customer }: { customer: CustomerDto }) {
 
   return (
     <Card className="flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <ShieldAlert size={18} aria-hidden="true" className="text-warning" />
-        <h2 className="m-0 text-lg font-semibold">Ehtiyot belgisi</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <ShieldAlert size={18} aria-hidden="true" className="text-warning" />
+          <h2 className="m-0 text-lg font-semibold">Ehtiyot belgisi</h2>
+        </div>
+        <span className="text-xs text-text-tertiary">
+          Nasiya savdo boshlanganda ogohlantiradi, lekin taqiqlamaydi.
+        </span>
       </div>
 
       {customer.isFlagged ? (
@@ -58,30 +63,27 @@ export function FlagCard({ customer }: { customer: CustomerDto }) {
           </div>
         </>
       ) : (
-        <>
-          <p className="m-0 text-sm text-text-tertiary">
-            Nasiya savdo boshlanganda ogohlantiradi, lekin taqiqlamaydi (§6.9).
-          </p>
-          <Field label="Sababi" htmlFor="flagReason">
-            <Input
-              id="flagReason"
-              value={reason}
-              placeholder="Masalan: to‘lovni ikki marta kechiktirgan"
-              onChange={(event) => {
-                setReason(event.target.value);
-              }}
-            />
+        <Field label="Sababi" htmlFor="flagReason">
+            <div className="flex items-center gap-2">
+              <Input
+                id="flagReason"
+                value={reason}
+                placeholder="Masalan: to‘lovni ikki marta kechiktirgan"
+                className="flex-1"
+                onChange={(event) => {
+                  setReason(event.target.value);
+                }}
+              />
+              <Button
+                type="button"
+                onClick={flag}
+                disabled={update.isPending || reason.trim() === ''}
+                className="shrink-0"
+              >
+                Belgilash
+              </Button>
+            </div>
           </Field>
-          <div>
-            <Button
-              type="button"
-              onClick={flag}
-              disabled={update.isPending || reason.trim() === ''}
-            >
-              Belgilash
-            </Button>
-          </div>
-        </>
       )}
 
       {update.isError && (

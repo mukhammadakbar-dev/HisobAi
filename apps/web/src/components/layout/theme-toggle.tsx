@@ -33,16 +33,17 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={toggleTheme}
-      className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-border-default text-text-secondary transition-colors hover:bg-surface-raised"
+      aria-label="Mavzuni almashtirish"
+      className="inline-flex min-h-9 min-w-9 sm:min-h-11 sm:min-w-11 shrink-0 items-center justify-center rounded-md border border-border-default text-text-secondary transition-colors hover:bg-surface-raised"
     >
       {/* Ikonka ham, matn ham juft: ekran o'quvchisi tugma nima
           qilishini o'qiydi, ko'zi bilan ko'radigan esa ikonkani */}
       <span className="theme-light-only items-center">
-        <Moon size={18} aria-hidden="true" />
+        <Moon size={20} aria-hidden="true" />
         <span className="sr-only">Qorong‘i rejimga o‘tish</span>
       </span>
       <span className="theme-dark-only items-center">
-        <Sun size={18} aria-hidden="true" />
+        <Sun size={20} aria-hidden="true" />
         <span className="sr-only">Yorug‘ rejimga o‘tish</span>
       </span>
     </button>

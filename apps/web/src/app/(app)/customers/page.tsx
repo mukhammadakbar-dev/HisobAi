@@ -1,10 +1,10 @@
 'use client';
 
 import { formatPhone } from '@hisobai/contracts';
-import { Plus } from 'lucide-react';
+import { CheckCircle2, Plus } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
 
 import { EmptyState, ErrorState, TableSkeleton } from '../../../components/states';
 import { Badge, Card, Input, Select } from '../../../components/ui';
@@ -23,7 +23,37 @@ import { EMPTY_MESSAGES } from '../../../lib/messages';
  * bo'lmagan raqamni haqiqatdek ko'rsatardi.
  */
 export default function CustomersPage() {
+  return (
+    <Suspense
+      fallback={
+        <Card>
+          <TableSkeleton rows={6} />
+        </Card>
+      }
+    >
+      <CustomersContent />
+    </Suspense>
+  );
+}
+
+function CustomersContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const savedName = searchParams.get('savedName');
+  const [showNotification, setShowNotification] = useState(true);
+
+  useEffect(() => {
+    if (!savedName) return;
+    setShowNotification(true);
+    const timer = setTimeout(() => {
+      setShowNotification(false);
+    }, 3000);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [savedName]);
+
   const [q, setQ] = useState('');
   const [isActive, setIsActive] = useState<'active' | 'archived' | 'all'>('active');
   const [onlyFlagged, setOnlyFlagged] = useState(false);
@@ -43,7 +73,7 @@ export default function CustomersPage() {
         <div className="flex flex-col gap-1">
           <h1 className="m-0 text-2xl font-semibold">Mijozlar</h1>
           <p className="m-0 text-text-secondary">
-            Ism yoki telefon bo‘yicha qidiring — ikkala raqam ham qamraladi (§6.4).
+            Ism yoki telefon bo‘yicha qidiring.
           </p>
         </div>
 
@@ -65,7 +95,7 @@ export default function CustomersPage() {
             id="q"
             type="search"
             inputMode="search"
-            placeholder="Ism yoki telefon"
+            placeholder="Qidirish..."
             value={q}
             onChange={(event) => {
               setQ(event.target.value);
@@ -185,6 +215,16 @@ export default function CustomersPage() {
         <p className="m-0 text-sm text-text-tertiary">
           Birinchi {rows.length} ta ko‘rsatildi — qidiruv bilan toraytiring.
         </p>
+      )}
+
+      {savedName && showNotification && (
+        <div
+          role="status"
+          className="fixed top-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2.5 rounded-lg border border-border-default bg-surface-card px-4 py-3 text-sm font-semibold text-text-primary shadow-xl"
+        >
+          <CheckCircle2 size={18} aria-hidden="true" className="shrink-0 text-success" />
+          <span>{savedName} mijoz muvaffaqiyatli saqlandi</span>
+        </div>
       )}
     </div>
   );

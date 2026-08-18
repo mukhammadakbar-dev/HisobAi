@@ -11,7 +11,7 @@ import { ApiError } from './api-error';
  * bittasi unutiladi.
  */
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '/api/v1';
 const CSRF_COOKIE = 'hisobai_csrf';
 
 export interface RequestOptions {
@@ -55,18 +55,41 @@ function readCookie(name: string): string | undefined {
  * yon ta'siri yo'q. `GET /auth/me` esa `401` qaytarib, sessiya tugagan deb
  * keshni tozalash oqimini ishga tushirardi.
  */
-async function ensureCsrfToken(): Promise<string | undefined> {
-  const existing = readCookie(CSRF_COOKIE);
-  if (existing) return existing;
+function getOrigin(): string {
+  if (typeof window !== 'undefined') return window.location.origin;
+  return 'http://localhost:3000';
+}
 
-  // Xato yutiladi: cookie olinmasa ham asosiy so'rov yuboriladi va
-  // serverning o'z javobi (`403`) foydalanuvchiga ko'rinadi
-  await fetch(`${BASE_URL}/health/live`, { credentials: 'include' }).catch(() => undefined);
-  return readCookie(CSRF_COOKIE);
+export function prefetchCsrf(): void {
+  if (typeof window === 'undefined') return;
+  if (!readCookie(CSRF_COOKIE)) {
+    fetch(buildUrl('/health/live', undefined), { credentials: 'include' }).catch(() => undefined);
+  }
+}
+
+// Brauzerda fayl yuklanganda avtomatik CSRF tokenini tayyorlab qo'yadi
+prefetchCsrf();
+
+async function ensureCsrfToken(): Promise<string | undefined> {
+  let token = readCookie(CSRF_COOKIE);
+  if (token) return token;
+
+  await fetch(buildUrl('/health/live', undefined), { credentials: 'include' }).catch(() => undefined);
+  token = readCookie(CSRF_COOKIE);
+  if (!token) {
+    // Brauzer kuki yozib ulgurishi uchun qisqa 50ms kutiladi
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    token = readCookie(CSRF_COOKIE);
+  }
+  return token;
 }
 
 function buildUrl(path: string, query: RequestOptions['query']): string {
-  const url = new URL(`${BASE_URL}${path}`);
+  const fullPath = `${BASE_URL}${path}`;
+  const url =
+    fullPath.startsWith('http://') || fullPath.startsWith('https://')
+      ? new URL(fullPath)
+      : new URL(fullPath, getOrigin());
   if (query) {
     for (const [key, value] of Object.entries(query)) {
       if (value !== undefined) url.searchParams.set(key, String(value));
@@ -75,11 +98,18 @@ function buildUrl(path: string, query: RequestOptions['query']): string {
   return url.toString();
 }
 
+function clearCsrfCookie(): void {
+  if (typeof document !== 'undefined') {
+    document.cookie = `${CSRF_COOKIE}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+  }
+}
+
 async function request<T>(
   method: string,
   path: string,
   body?: unknown,
   options: RequestOptions = {},
+  isRetry = false,
 ): Promise<T> {
   const headers: Record<string, string> = {};
   const isMutation = method !== 'GET' && method !== 'HEAD';
@@ -118,6 +148,13 @@ async function request<T>(
   if (!response.ok) {
     const shape = payload as ApiErrorBody | null;
     const error = shape?.error;
+
+    // CSRF token yaroqsiz bo'lsa — eski cookieni tozalab, bir marta avtomatik qayta urinadi
+    if (!isRetry && response.status === 403 && error?.code === ErrorCode.AUTH_CSRF_INVALID) {
+      clearCsrfCookie();
+      await ensureCsrfToken();
+      return request<T>(method, path, body, options, true);
+    }
 
     if (response.status === 401) {
       onUnauthorized?.();

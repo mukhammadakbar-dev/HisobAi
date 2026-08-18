@@ -43,7 +43,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   if (user.isPending || isUnauthenticated || needsShopSetup) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-10">
+      <div className="mx-auto w-full max-w-[1920px] px-4 md:px-6 lg:px-8 py-10">
         <TableSkeleton rows={4} />
       </div>
     );
@@ -56,7 +56,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
    */
   if (user.isError) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-10">
+      <div className="mx-auto w-full max-w-[1920px] px-4 md:px-6 lg:px-8 py-10">
         <ErrorState
           error={user.error}
           onRetry={() => {

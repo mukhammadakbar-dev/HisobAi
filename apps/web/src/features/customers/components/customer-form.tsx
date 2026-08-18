@@ -68,7 +68,8 @@ function toFormValues(customer: CustomerDto | undefined): CustomerFormValues {
 }
 
 /** Bo'sh maydon — "yo'q", bo'sh satr emas. */
-const optionalText = (value: string): string | null => (value.trim() === '' ? null : value);
+const optionalText = (value: string | null): string | null =>
+  !value || value.trim() === '' ? null : value;
 
 export function CustomerForm({ customer }: { customer?: CustomerDto }) {
   const router = useRouter();
@@ -129,7 +130,7 @@ export function CustomerForm({ customer }: { customer?: CustomerDto }) {
         { ...patch, expectedUpdatedAt: customer.updatedAt },
         {
           onSuccess: () => {
-            router.push(`/customers/${customer.id}`);
+            router.push(`/customers?savedName=${encodeURIComponent(input.fullName)}`);
           },
           onError,
         },
@@ -139,7 +140,7 @@ export function CustomerForm({ customer }: { customer?: CustomerDto }) {
 
     create.mutate(input, {
       onSuccess: (created) => {
-        router.push(`/customers/${created.id}`);
+        router.push(`/customers?savedName=${encodeURIComponent(created.fullName)}`);
       },
       onError,
     });
@@ -161,13 +162,17 @@ export function CustomerForm({ customer }: { customer?: CustomerDto }) {
             autoComplete="off"
             placeholder="90 123 45 67"
             aria-describedby="phone-hint"
-            {...register('phonePrimary')}
+            {...register('phonePrimary', {
+              onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+                e.target.value = e.target.value.replace(/[^\d\s+\-()]/g, '');
+              },
+            })}
           />
         </Field>
         <p id="phone-hint" className="m-0 text-sm text-text-tertiary">
           {normalized
-            ? `Saqlanadi: ${formatPhone(normalized)} — SMS shu raqamga ketadi.`
-            : 'SMS shu raqamga ketadi (§6.4).'}
+            ? `Saqlanadi: ${formatPhone(normalized)} — SMS xabar shu raqamga ketadi.`
+            : 'SMS xabarlar uchun mijoz raqamini kiriting!'}
         </p>
 
         {/* §6.3 — "Bu raqam Alisher Karimovda bor. O'shami?" */}
@@ -197,7 +202,12 @@ export function CustomerForm({ customer }: { customer?: CustomerDto }) {
             id="phoneSecondary"
             inputMode="tel"
             autoComplete="off"
-            {...register('phoneSecondary', { setValueAs: optionalText })}
+            {...register('phoneSecondary', {
+              setValueAs: optionalText,
+              onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+                e.target.value = e.target.value.replace(/[^\d\s+\-()]/g, '');
+              },
+            })}
           />
         </Field>
 
@@ -226,8 +236,18 @@ export function CustomerForm({ customer }: { customer?: CustomerDto }) {
                 <Input
                   id="passportSeries"
                   placeholder="AA"
+                  maxLength={2}
                   autoCapitalize="characters"
-                  {...register('passportSeries', { setValueAs: optionalText })}
+                  {...register('passportSeries', {
+                    setValueAs: optionalText,
+                    onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+                      const cleaned = e.target.value.replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 2);
+                      e.target.value = cleaned;
+                      if (cleaned.length === 2) {
+                        document.getElementById('passportNumber')?.focus();
+                      }
+                    },
+                  })}
                 />
               </Field>
             </div>
@@ -237,7 +257,13 @@ export function CustomerForm({ customer }: { customer?: CustomerDto }) {
                   id="passportNumber"
                   inputMode="numeric"
                   placeholder="1234567"
-                  {...register('passportNumber', { setValueAs: optionalText })}
+                  maxLength={7}
+                  {...register('passportNumber', {
+                    setValueAs: optionalText,
+                    onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+                      e.target.value = e.target.value.replace(/[^\d]/g, '').slice(0, 7);
+                    },
+                  })}
                 />
               </Field>
             </div>
@@ -248,7 +274,13 @@ export function CustomerForm({ customer }: { customer?: CustomerDto }) {
               id="pinfl"
               inputMode="numeric"
               placeholder="14 ta raqam"
-              {...register('pinfl', { setValueAs: optionalText })}
+              maxLength={14}
+              {...register('pinfl', {
+                setValueAs: optionalText,
+                onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+                  e.target.value = e.target.value.replace(/[^\d]/g, '').slice(0, 14);
+                },
+              })}
             />
           </Field>
 

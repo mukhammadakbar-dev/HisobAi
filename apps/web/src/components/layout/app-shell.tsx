@@ -24,6 +24,7 @@ import type { CurrentUserDto } from '@hisobai/contracts';
 import { useLogout } from '../../features/auth/queries';
 import { useTodayRate } from '../../features/exchange-rates/queries';
 import { useShop } from '../../features/shops/queries';
+import { Button } from '../ui';
 import { Logo } from './logo';
 import { RateBar } from './rate-bar';
 import { ThemeToggle } from './theme-toggle';
@@ -80,6 +81,7 @@ export function AppShell({ user, children }: { user: CurrentUserDto; children: R
   const shop = useShop();
   const todayRate = useTodayRate();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // Varaq bo'lim almashganda ochiq qolmasin — orqaga qaytishda ham
   useEffect(() => {
@@ -97,31 +99,71 @@ export function AppShell({ user, children }: { user: CurrentUserDto; children: R
   return (
     <div className="min-h-dvh bg-surface-page">
       <header className="border-b border-border-default bg-surface-card">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <div className="flex items-center gap-3">
-            <Logo className="h-7 w-auto" />
-            <span className="text-sm text-text-secondary">{shop.data?.name ?? ''}</span>
+        <div className="mx-auto flex w-full max-w-[1920px] items-center justify-between gap-2 px-3 sm:px-4 md:px-7 lg:px-8 py-2.5 sm:py-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <Logo className="h-6 sm:h-7 w-auto" />
+            <span className="hidden text-xs text-text-secondary sm:inline md:text-sm">{shop.data?.name ?? ''}</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-row items-center gap-1.5 sm:gap-3 md:gap-5 lg:gap-6 whitespace-nowrap">
+            <RateBar data={todayRate.data} />
             <span className="hidden text-sm text-text-secondary sm:inline">{user.displayName}</span>
             <ThemeToggle />
             <button
               type="button"
-              onClick={handleLogout}
+              onClick={() => {
+                setShowLogoutConfirm(true);
+              }}
               disabled={logout.isPending}
-              className="inline-flex min-h-11 items-center gap-2 rounded-md border border-border-default px-3 text-sm font-semibold text-text-primary disabled:opacity-50"
+              className="inline-flex min-h-9 sm:min-h-11 items-center gap-1.5 sm:gap-2 rounded-md border border-border-default px-2.5 sm:px-3 text-xs sm:text-sm font-semibold text-text-primary whitespace-nowrap disabled:opacity-50"
             >
-              <LogOut size={16} aria-hidden="true" />
-              Chiqish
+              <LogOut size={15} aria-hidden="true" className="shrink-0" />
+              <span>Chiqish</span>
             </button>
           </div>
         </div>
       </header>
 
-      <div className="mx-auto max-w-5xl px-4 py-4">
-        <RateBar data={todayRate.data} />
-      </div>
+      {showLogoutConfirm && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="logout-dialog-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+        >
+          <div className="flex w-full max-w-sm flex-col gap-4 rounded-lg border border-border-default bg-surface-card p-5 shadow-xl">
+            <div className="flex flex-col gap-1">
+              <h3 id="logout-dialog-title" className="m-0 text-lg font-semibold text-text-primary">
+                Tizimdan chiqish
+              </h3>
+              <p className="m-0 text-sm text-text-secondary">
+                Haqiqatan ham tizimdan chiqmoqchimisiz?
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                }}
+                disabled={logout.isPending}
+              >
+                Bekor qilish
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                onClick={handleLogout}
+                disabled={logout.isPending}
+              >
+                {logout.isPending ? 'Chiqilmoqda…' : 'Chiqish'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/*
         Pastki bo'shliq suzuvchi tugmadan KATTA bo'lishi shart. U `fixed`
@@ -132,7 +174,7 @@ export function AppShell({ user, children }: { user: CurrentUserDto; children: R
         ko'rindi). Telefonda esa tugma pastki navigatsiya ustida
         (`bottom-20`), shuning uchun bo'shliq yanada kattaroq.
       */}
-      <div className="mx-auto flex max-w-5xl gap-6 px-4 pb-40 md:pb-24">
+      <div className="mx-auto flex w-full max-w-[1920px] gap-6 px-4 md:px-6 lg:px-8 pt-6 pb-40 md:pb-24">
         {/* Noutbukda chap menyu */}
         <nav aria-label="Asosiy menyu" className="hidden w-52 shrink-0 md:block">
           <ul className="flex list-none flex-col gap-1 p-0">
