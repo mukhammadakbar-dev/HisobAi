@@ -53,11 +53,20 @@ export function RateBar({ data }: { data: TodayExchangeRateDto | undefined }) {
         />
       </button>
 
+      {/*
+        Mobilda popover viewport'ga bog'lanadi (`fixed inset-x-3`), `sm:`
+        dan boshlab tugmaga (`absolute right-0`).
+
+        Ilgari hamma joyda `absolute right-0 w-72` edi: popover o'ng cheti
+        tugmaning o'ng cheti bilan tekislanadi, tugma esa ekran chetida
+        emas — yonida ThemeToggle va "Chiqish" turadi. 390px kenglikda
+        popover chap chetdan ~40px chiqib ketib, matni kesilardi.
+      */}
       {open && (
         <div
           role="dialog"
           aria-label="Valyuta kursi ma'lumotlari"
-          className="absolute right-0 top-full mt-2 w-72 sm:w-80 z-50 flex flex-col gap-3 rounded-lg border border-border-default bg-surface-card p-4 shadow-xl backdrop-blur-xs"
+          className="fixed inset-x-3 top-15 z-50 flex w-auto flex-col gap-3 rounded-lg border border-border-default bg-surface-card p-4 shadow-xl backdrop-blur-xs sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80"
         >
           <div className="flex items-center justify-between border-b border-border-default pb-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
@@ -85,8 +94,7 @@ export function RateBar({ data }: { data: TodayExchangeRateDto | undefined }) {
               <div className="flex items-start gap-1.5 rounded-md bg-warning-bg p-2 text-xs font-medium text-warning">
                 <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
                 <span>
-                  Kurs {staleDays} kun eskirgan ({rate.date}). Sozlamalarda yangilang.
-                </span>
+                  Kurs {staleDays} kun eskirgan ({rate.date})</span>
               </div>
             )}
           </div>

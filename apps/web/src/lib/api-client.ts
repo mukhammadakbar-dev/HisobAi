@@ -36,6 +36,34 @@ function readCookie(name: string): string | undefined {
   return match ? decodeURIComponent(match[1] ?? '') : undefined;
 }
 
+function getOrigin(): string {
+  if (typeof window !== 'undefined') return window.location.origin;
+  return 'http://localhost:3000';
+}
+
+/**
+ * Uchayotgan yagona "cookie oldirish" so'rovi.
+ *
+ * `CsrfCookieMiddleware` cookie yo'q bo'lsa **yangi** token qo'yadi va
+ * o'z izohida aynan shundan ogohlantiradi: ikki parallel so'rov ikki xil
+ * token yozib, foydalanuvchi `403 AUTH_CSRF_INVALID` olardi. Ilgari
+ * `/health/live` uch joydan (modul yuklanishi, login formasi, birinchi
+ * mutatsiya) bir vaqtda chaqirilardi — poyga aynan shu yerda tug'ilardi.
+ * Shuning uchun bir vaqtda faqat bitta so'rov ketadi, qolganlari o'shani
+ * kutadi.
+ */
+let csrfPending: Promise<void> | null = null;
+
+function fetchCsrfCookie(): Promise<void> {
+  csrfPending ??= fetch(buildUrl('/health/live', undefined), { credentials: 'include' })
+    .then(() => undefined)
+    .catch(() => undefined)
+    .finally(() => {
+      csrfPending = null;
+    });
+  return csrfPending;
+}
+
 /**
  * CSRF cookie'si yo'q bo'lsa — uni oldindan oldiradi (`API.md` §1).
  *
@@ -43,45 +71,30 @@ function readCookie(name: string): string | undefined {
  * lekin `/login` sahifasi hech qanday so'rov yubormaydi: `(auth)` qobig'i
  * ataylab `GET /auth/me` ni chaqirmaydi (sessiya talab qilmaydigan sahifa).
  * Natijada **birinchi** login urinishi har doim `403 AUTH_CSRF_INVALID`
- * bilan tugardi va faqat ikkinchisi o'tardi — yangi brauzerda, incognito'da
- * va cookie tozalangandan keyin ham. Ishga tushirib tekshirilganda aynan shu
- * chiqdi.
+ * bilan tugardi va faqat ikkinchisi o'tardi.
  *
- * Nega bu yerda: `api-client` — CSRF sarlavhasi qo'yiladigan yagona joy,
- * ya'ni tuzatish ham shu yerda turishi kerak. Login formasiga qo'yilsa,
- * keyingi ochiq forma (parol tiklash) uni qaytadan unutardi.
+ * `LoginForm` uni `useEffect` ichida chaqiradi. Modul yuklanishida
+ * ATAYLAB chaqirilmaydi: u SSR paytida ham, CSRF kerak bo'lmagan har bir
+ * sahifada ham ishga tushib, yuqoridagi poygani kuchaytirardi.
  *
  * `GET /health/live` tanlangan: u `@Public()`, javobi kichik va hech qanday
  * yon ta'siri yo'q. `GET /auth/me` esa `401` qaytarib, sessiya tugagan deb
  * keshni tozalash oqimini ishga tushirardi.
  */
-function getOrigin(): string {
-  if (typeof window !== 'undefined') return window.location.origin;
-  return 'http://localhost:3000';
-}
-
 export function prefetchCsrf(): void {
   if (typeof window === 'undefined') return;
-  if (!readCookie(CSRF_COOKIE)) {
-    fetch(buildUrl('/health/live', undefined), { credentials: 'include' }).catch(() => undefined);
-  }
+  if (readCookie(CSRF_COOKIE)) return;
+  void fetchCsrfCookie();
 }
 
-// Brauzerda fayl yuklanganda avtomatik CSRF tokenini tayyorlab qo'yadi
-prefetchCsrf();
-
 async function ensureCsrfToken(): Promise<string | undefined> {
-  let token = readCookie(CSRF_COOKIE);
-  if (token) return token;
+  const existing = readCookie(CSRF_COOKIE);
+  if (existing) return existing;
 
-  await fetch(buildUrl('/health/live', undefined), { credentials: 'include' }).catch(() => undefined);
-  token = readCookie(CSRF_COOKIE);
-  if (!token) {
-    // Brauzer kuki yozib ulgurishi uchun qisqa 50ms kutiladi
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    token = readCookie(CSRF_COOKIE);
-  }
-  return token;
+  // `await fetch()` qaytganda `Set-Cookie` allaqachon qo'llanilgan —
+  // bu yerda qo'shimcha kutish kerak emas.
+  await fetchCsrfCookie();
+  return readCookie(CSRF_COOKIE);
 }
 
 function buildUrl(path: string, query: RequestOptions['query']): string {
@@ -102,6 +115,9 @@ function clearCsrfCookie(): void {
   if (typeof document !== 'undefined') {
     document.cookie = `${CSRF_COOKIE}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
   }
+  // Uchayotgan so'rov endi eskirgan: u cookie tozalanishidan oldin
+  // boshlangan, ya'ni uni kutish yangi token bermaydi.
+  csrfPending = null;
 }
 
 async function request<T>(

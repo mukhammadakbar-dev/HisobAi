@@ -48,6 +48,14 @@ export function safeEquals(left: string, right: string): boolean {
  * ishlaydi va `Secure` cookie umuman o'rnatilmay qolardi — ya'ni lokal
  * muhitda kirish ishlamas edi. Bu qoidani bo'shatish emas, muhitga
  * moslash: productionda HTTPS majburiy (`ARCHITECTURE.md` §12).
+ *
+ * `sameSite` ham shunday: productionda `strict`, development'da `lax`.
+ * `strict` cookie'ni tashqi havoladan kelgan birinchi navigatsiyada
+ * yubormaydi va bu lokal sinovda (telefondan LAN havolasini ochish,
+ * Swagger UI) sessiyani yo'q deb ko'rsatardi. CSRF himoyasi bundan
+ * zaiflashmaydi: `CsrfGuard` dagi double-submit tekshiruvi cookie
+ * atributidan MUSTAQIL ikkinchi qatlam va u har ikkala muhitda ham
+ * bir xil ishlaydi.
  */
 export function sessionCookieOptions(isProduction: boolean, maxAgeMs: number): CookieOptions {
   return {

@@ -18,8 +18,10 @@ export const CSRF_HEADER_NAME = 'x-csrf-token';
  * qaytaradi. Boshqa saytdagi soxta forma cookie'ni **o'qiy olmaydi**
  * (same-origin siyosati), demak sarlavhani ham to'ldira olmaydi.
  *
- * `SameSite=Strict` o'zi ham ko'p hujumni to'sadi, lekin u brauzerga
- * bog'liq yagona himoya — ikkinchi qatlam arzon va mustaqil.
+ * `SameSite` o'zi ham ko'p hujumni to'sadi (productionda `Strict`,
+ * development'da `Lax` — `session-token.ts`), lekin u brauzerga bog'liq
+ * yagona himoya bo'lib qolardi. Bu tekshiruv undan mustaqil ishlaydi va
+ * ikkala muhitda ham bir xil qo'llanadi.
  */
 @Injectable()
 export class CsrfGuard implements CanActivate {

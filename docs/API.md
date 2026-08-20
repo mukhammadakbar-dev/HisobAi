@@ -18,7 +18,7 @@
 | Format           | JSON, `Content-Type: application/json; charset=utf-8`                                                         |
 | Til              | Xato matnlari o'zbekcha; `code` esa barqaror inglizcha identifikator                                          |
 | Swagger          | `/api/docs` (versiya segmentisiz)                                                                             |
-| Autentifikatsiya | Sessiya cookie (`HttpOnly`, `Secure`, `SameSite=Strict`)                                                      |
+| Autentifikatsiya | Sessiya cookie (`HttpOnly`; prodda `Secure` + `SameSite=Strict`, dev'da `SameSite=Lax`)                       |
 | CSRF             | Double-submit token: `X-CSRF-Token` sarlavhasi + `csrf` cookie. Barcha `POST/PATCH/PUT/DELETE` uchun majburiy |
 
 ### Versiyalash

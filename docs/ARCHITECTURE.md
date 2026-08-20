@@ -523,8 +523,10 @@ xarajat baholashidan keyin qilinadi.
 ## 12. Xavfsizlik va ishga tayyorlik
 
 - Parol Argon2id bilan hash qilinadi (§2.4).
-- Sessiya `HttpOnly`, `Secure`, `SameSite=Strict` cookie orqali; CSRF —
-  double-submit token (§2.8, `API.md` §1).
+- Sessiya `HttpOnly` cookie orqali; ishlab chiqarishda `Secure` +
+  `SameSite=Strict`, development'da `SameSite=Lax` (lokal `http://` va
+  LAN sinovi uchun). CSRF — double-submit token, cookie atributidan
+  mustaqil ikkinchi qatlam (§2.8, `API.md` §1).
 - Login urinishlari cheklanadi va jurnalga yoziladi (§2.9, §2.10).
   Reverse proxy ortida `trust proxy` **sozlanadi** — aks holda IP bo'yicha
   cheklov yagona foydalanuvchini bloklaydi.

@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
 /**
+ * `local` drayverning standart kaliti. Nom bilan ajratilgan, chunki
+ * `validateEnv` ishlab chiqarishda aynan shu qiymatni rad etadi.
+ */
+const DEFAULT_LOCAL_TOKEN_SECRET = 'dev-insecure-local-storage-secret';
+
+/**
  * Muhit o'zgaruvchilari ishga tushishda bir marta tekshiriladi.
  * Xato konfiguratsiya bilan ishga tushgandan ko'ra, darhol yiqilgan yaxshi:
  * v0.1 da noto'g'ri `DATABASE_URL` API'ni jimgina o'ldirar edi.
@@ -38,6 +44,16 @@ const envSchema = z.object({
   /** Brauzerdan keladigan origin — CORS va cookie uchun. */
   WEB_ORIGIN: z.string().url().default('http://localhost:3000'),
 
+  /**
+   * Qo'shimcha ruxsat etilgan origin'lar, vergul bilan (staging, ikkinchi
+   * domen). Bo'sh qoldirilsa faqat `WEB_ORIGIN` ruxsat etiladi.
+   *
+   * Dev'da telefonning LAN IP'sini bu yerga yozish SHART EMAS: brauzer
+   * API'ga Next rewrite proksisi orqali, ya'ni same-origin uradi
+   * (`apps/web/next.config.ts`), CORS umuman ishtirok etmaydi.
+   */
+  WEB_ORIGIN_EXTRA: z.string().optional(),
+
   /** §2.7 — sessiya 30 kun. */
   SESSION_COOKIE_NAME: z.string().default('hisobai_session'),
   SESSION_TTL_DAYS: z.coerce.number().int().positive().default(30),
@@ -46,7 +62,7 @@ const envSchema = z.object({
    * §21.3, `ARCHITECTURE.md` §14.3 — platforma (SUPERADMIN) sessiyasi
    * **alohida** cookie'da yuradi. Bir xil cookie nomi ishlatilsa, bitta
    * brauzerda business va platforma sessiyasi bir-birini ustidan yozib
-   * yuborardi (ikkalasi ham `SameSite=Strict`, `path=/`) — admin business
+   * yuborardi (ikkalasi ham bir xil `SameSite`, `path=/`) — admin business
    * panelida ochiq turgan holda `/platform/*`ga kirsa, business sessiyasi
    * jimgina o'chib qolardi.
    */
@@ -92,7 +108,7 @@ const envSchema = z.object({
    * Faqat dev'da ishlatiladi, shuning uchun standart qiymat bor — prodda
    * `STORAGE_DRIVER=minio` bo'lgani uchun bu o'zgaruvchi ishlamaydi.
    */
-  STORAGE_LOCAL_TOKEN_SECRET: z.string().default('dev-insecure-local-storage-secret'),
+  STORAGE_LOCAL_TOKEN_SECRET: z.string().default(DEFAULT_LOCAL_TOKEN_SECRET),
   /** §15.5 — vaqtinchalik havola 15 daqiqa. */
   STORAGE_URL_TTL_MINUTES: z.coerce.number().int().positive().default(15),
   /** §15.7 — 10 MB. */
@@ -112,6 +128,36 @@ const envSchema = z.object({
 export type Env = z.infer<typeof envSchema>;
 
 /**
+ * Ishlab chiqarish uchun fail-safe to'siq.
+ *
+ * Yuqoridagi standart qiymatlar dev qulayligi uchun qo'yilgan, lekin ular
+ * jimgina prodga o'tib ketishi mumkin edi: `STORAGE_DRIVER` standarti
+ * `local`, `STORAGE_LOCAL_TOKEN_SECRET` esa repoda ochiq turibdi. Ikkalasi
+ * birga `GET /files/download/:token` (`@Public()`) marshrutini imzo
+ * qalbakilashtirishga ochib qo'yardi — konfiguratsiya unutilgani uchun
+ * ilova xavfsizroq emas, balki jimgina xavfliroq bo'lib qolardi.
+ */
+const guardedEnvSchema = envSchema.superRefine((env, ctx) => {
+  if (env.NODE_ENV !== 'production') return;
+
+  if (env.STORAGE_DRIVER !== 'minio') {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['STORAGE_DRIVER'],
+      message: "ishlab chiqarishda `minio` bo'lishi shart — `local` drayver faqat dev uchun (§0.2)",
+    });
+  }
+
+  if (env.STORAGE_LOCAL_TOKEN_SECRET === DEFAULT_LOCAL_TOKEN_SECRET) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['STORAGE_LOCAL_TOKEN_SECRET'],
+      message: "standart dev kaliti ishlab chiqarishda ishlatilmaydi — o'zingiznikini bering",
+    });
+  }
+});
+
+/**
  * `.env` faylida to'ldirilmagan qator (`ADMIN_PASSWORD=`) `undefined` emas,
  * BO'SH SATR bo'lib keladi. U holda `.optional()` ishlamaydi va standart
  * qiymatlar ham qo'llanmaydi. Shuning uchun bo'sh satrlar tekshiruvdan
@@ -127,7 +173,7 @@ function dropEmpty(raw: Record<string, unknown>): Record<string, unknown> {
 }
 
 export function validateEnv(raw: Record<string, unknown>): Env {
-  const parsed = envSchema.safeParse(dropEmpty(raw));
+  const parsed = guardedEnvSchema.safeParse(dropEmpty(raw));
   if (!parsed.success) {
     const details = parsed.error.issues
       .map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`)

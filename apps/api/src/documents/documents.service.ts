@@ -137,6 +137,15 @@ export class DocumentsService {
       });
       return toGenerateDto(created);
     } catch (error) {
+      /**
+       * Obyekt tranzaksiyadan OLDIN yozilgan (`storage.put` yuqorida) —
+       * tranzaksiya yiqilsa, unga ishora qiluvchi `FileAsset` qatori
+       * yo'q va fayl storage'da abadiy yetim qolardi. Tozalash
+       * best-effort: uning o'zi yiqilsa ham asosiy xato yashirilmasligi
+       * kerak.
+       */
+      await this.storage.delete(key).catch(() => undefined);
+
       // `@@unique([contractId, version])` — ikkita parallel so'rov bir xil
       // "keyingi versiya"ni hisoblab qolishi mumkin (kam uchraydigan poyga,
       // bitta shartnoma uchun odatda bitta admin ishlaydi). Xato ravon:

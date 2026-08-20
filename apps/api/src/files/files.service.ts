@@ -161,7 +161,11 @@ export class FilesService {
       downloadName: row.originalName,
     });
 
-    return { url, expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString() };
+    return {
+      url,
+      expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
+      mimeType: row.mimeType,
+    };
   }
 
   /**

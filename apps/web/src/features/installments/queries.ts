@@ -7,7 +7,6 @@ import type {
   CreatePaymentInput,
   DocumentGenerateDto,
   DocumentVersionDto,
-  FileDownloadDto,
   InstallmentContractDto,
   InstallmentSummaryDto,
   Page,
@@ -88,10 +87,6 @@ export const documentsApi = {
     api.post(`/documents/contracts/${contractId}/pdf`),
   list: (contractId: string): Promise<DocumentVersionDto[]> =>
     api.get(`/documents/contracts/${contractId}`),
-};
-
-export const filesApi = {
-  getDownloadUrl: (fileId: string): Promise<FileDownloadDto> => api.get(`/files/${fileId}`),
 };
 
 export function useInstallments(

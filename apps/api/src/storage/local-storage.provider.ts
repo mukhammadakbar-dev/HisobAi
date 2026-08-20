@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, resolve, sep } from 'node:path';
 
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -52,10 +52,27 @@ export class LocalStorageProvider extends StorageProvider {
     return this.config.get('STORAGE_LOCAL_TOKEN_SECRET', { infer: true });
   }
 
+  /**
+   * Kalitni ildiz papka ichida qolishga majburlaydi; chiqib ketsa `null`.
+   *
+   * Token HMAC bilan imzolangan, lekin `STORAGE_LOCAL_TOKEN_SECRET` ning
+   * standart qiymati bor va `GET /files/download/:token` marshruti
+   * `@Public()` — imzo qalbakilashtirilsa `key: "../../../../etc/passwd"`
+   * bilan sessiyasiz ixtiyoriy fayl o'qilardi. Imzoga ishonish yetarli
+   * emas: yo'l tekshiruvi mustaqil ikkinchi qatlam bo'lib turishi kerak.
+   */
+  private safePath(key: string): string | null {
+    const root = this.rootDir;
+    const target = resolve(root, key);
+    if (target !== root && !target.startsWith(root + sep)) return null;
+    return target;
+  }
+
   async put(key: string, buffer: Buffer, _mimeType: string): Promise<void> {
     // MIME turi bu yerda saqlanmaydi — u `getSignedUrl()` chaqirilganda
     // `meta` orqali tokenning o'ziga ko'chadi (izohga qarang).
-    const target = join(this.rootDir, key);
+    const target = this.safePath(key);
+    if (!target) throw new Error('Storage kaliti ildiz papkadan tashqariga chiqadi');
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, buffer);
   }
@@ -67,7 +84,9 @@ export class LocalStorageProvider extends StorageProvider {
   }
 
   async delete(key: string): Promise<void> {
-    await rm(join(this.rootDir, key), { force: true });
+    const target = this.safePath(key);
+    if (!target) throw new Error('Storage kaliti ildiz papkadan tashqariga chiqadi');
+    await rm(target, { force: true });
   }
 
   async healthCheck(): Promise<boolean> {
@@ -88,8 +107,12 @@ export class LocalStorageProvider extends StorageProvider {
   async resolveDownload(token: string): Promise<ResolvedDownload | null> {
     const payload = this.verify(token);
     if (!payload) return null;
+
+    const target = this.safePath(payload.key);
+    if (!target) return null;
+
     try {
-      const buffer = await readFile(join(this.rootDir, payload.key));
+      const buffer = await readFile(target);
       return { buffer, mimeType: payload.mimeType, downloadName: payload.downloadName };
     } catch {
       return null;

@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -83,5 +83,47 @@ describe('LocalStorageProvider', () => {
 
   it('healthCheck() papka yozilishini tekshiradi', async () => {
     expect(await provider.healthCheck()).toBe(true);
+  });
+
+  /**
+   * Imzo o'zi yetarli himoya emas: `STORAGE_LOCAL_TOKEN_SECRET` ning
+   * standart qiymati repoda ochiq va `download` marshruti `@Public()`.
+   * Kalitni o'zi imzolay oladigan hujumchi ham ildiz papkadan chiqa
+   * olmasligi kerak — quyidagi testlar aynan shu holatni modellaydi
+   * (token to'g'ri imzo bilan, `provider` ning o'zi orqali yasaladi).
+   */
+  describe('ildiz papkadan chiqish', () => {
+    const meta = { mimeType: 'text/plain', downloadName: 'x.txt' };
+
+    it("to'g'ri imzolangan bo'lsa ham `../` kalitini o'qimaydi", async () => {
+      const outside = join(root, '..', 'hisobai-traversal-target.txt');
+      await writeFile(outside, 'maxfiy');
+
+      const url = await provider.getSignedUrl('../hisobai-traversal-target.txt', 60, meta);
+      const token = url.split('/').pop() ?? '';
+
+      try {
+        expect(await provider.resolveDownload(token)).toBeNull();
+      } finally {
+        await rm(outside, { force: true });
+      }
+    });
+
+    it('absolyut kalitni ham rad etadi', async () => {
+      const url = await provider.getSignedUrl('/etc/passwd', 60, meta);
+      const token = url.split('/').pop() ?? '';
+
+      expect(await provider.resolveDownload(token)).toBeNull();
+    });
+
+    it("put() ildizdan tashqariga yozmaydi", async () => {
+      await expect(
+        provider.put('../hisobai-traversal-write.txt', Buffer.from('yo'), 'text/plain'),
+      ).rejects.toThrow(/tashqariga/);
+    });
+
+    it("delete() ildizdan tashqarini o'chirmaydi", async () => {
+      await expect(provider.delete('../hisobai-traversal-write.txt')).rejects.toThrow(/tashqariga/);
+    });
   });
 });

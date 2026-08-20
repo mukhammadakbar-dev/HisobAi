@@ -43,4 +43,11 @@ export interface FileDto {
 export interface FileDownloadDto {
   url: string;
   expiresAt: string;
+  /**
+   * Client faylni qanday ko'rsatishni shu asosda hal qiladi: rasm
+   * `<img>` bilan, PDF esa havola bilan. Bu maydonsiz `FilePreview`
+   * har qanday faylni `<img>` deb chizib, PDF o'rniga buzuq rasm
+   * ko'rsatardi. `storageKey` dan farqli — ichki tafsilot emas.
+   */
+  mimeType: string;
 }

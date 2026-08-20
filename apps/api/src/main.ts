@@ -1,5 +1,7 @@
 import 'reflect-metadata';
 
+import { networkInterfaces } from 'node:os';
+
 import { Logger, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -28,21 +30,34 @@ async function bootstrap(): Promise<void> {
   app.use(helmet());
   app.use(cookieParser());
 
-  // §2.8 — sessiya cookie'si bilan ishlash uchun credentials kerak.
-  // `Retry-After` ochib qo'yiladi (`API.md` §9): CORS'da sarlavhalar
-  // default yopiq — ro'yxatga tushmasa brauzer uni ko'rmaydi.
+  /**
+   * §2.8 — sessiya cookie'si bilan ishlash uchun credentials kerak.
+   * `Retry-After` ochib qo'yiladi (`API.md` §9): CORS'da sarlavhalar
+   * default yopiq — ro'yxatga tushmasa brauzer uni ko'rmaydi.
+   *
+   * Ro'yxat ANIQ: `WEB_ORIGIN` (+ ixtiyoriy `WEB_ORIGIN_EXTRA`). Bu yerda
+   * ilgari `NODE_ENV === 'development'` shoxi va private-IP regexi bor edi;
+   * ikkalasi ham fail-open edi — `NODE_ENV` standarti `development`,
+   * ya'ni prodda o'zgaruvchi unutilsa har qanday origin `credentials`
+   * bilan o'tib ketardi, regex esa prodda ham ishlardi. Telefon uchun
+   * ular kerak emas: brauzer API'ga Next rewrite proksisi orqali
+   * same-origin uradi (`apps/web/next.config.ts`).
+   */
+  const allowedOrigins = new Set(
+    [env.WEB_ORIGIN, ...(env.WEB_ORIGIN_EXTRA?.split(',') ?? [])]
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+  );
+
   app.enableCors({
     origin: (origin, callback) => {
-      if (
-        !origin ||
-        env.NODE_ENV === 'development' ||
-        origin === env.WEB_ORIGIN ||
-        /^http:\/\/(localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/.test(origin)
-      ) {
+      // `Origin`siz so'rov — server-to-server, `curl`, sog'liq tekshiruvi
+      // yoki Next proksisi. Brauzer cross-origin so'rovda uni doim yuboradi.
+      if (!origin || allowedOrigins.has(origin)) {
         callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
+        return;
       }
+      callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
     exposedHeaders: ['X-Request-Id', 'Retry-After'],
@@ -63,8 +78,19 @@ async function bootstrap(): Promise<void> {
     .build();
   SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, swaggerConfig));
 
+  // `0.0.0.0` — telefon LAN orqali `apps/web` proksisiga, u esa bu yerga uradi.
   await app.listen(env.PORT, '0.0.0.0');
-  new Logger('Bootstrap').log(`API tayyor: http://0.0.0.0:${env.PORT}/api/v1 (LAN IP: 10.17.252.126:${env.PORT})`);
+
+  const lanHosts = Object.values(networkInterfaces())
+    .flatMap((entries) => entries ?? [])
+    .filter((entry) => entry.family === 'IPv4' && !entry.internal)
+    .map((entry) => entry.address);
+
+  const logger = new Logger('Bootstrap');
+  logger.log(`API tayyor: http://localhost:${env.PORT}/api/v1`);
+  for (const host of lanHosts) {
+    logger.log(`LAN: http://${host}:${env.PORT}/api/v1 (web: http://${host}:3000)`);
+  }
 }
 
 void bootstrap();

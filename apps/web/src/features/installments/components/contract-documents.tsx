@@ -9,7 +9,8 @@ import { ErrorState, TableSkeleton } from '../../../components/states';
 import { Badge, Button, Card } from '../../../components/ui';
 import { formatDateTime } from '../../../lib/format';
 import { FormError } from '../../auth/components/form-error';
-import { filesApi, useContractDocuments, useGenerateContractPdf } from '../queries';
+import { filesApi } from '../../files/queries';
+import { useContractDocuments, useGenerateContractPdf } from '../queries';
 
 /**
  * Nasiya shartnomasi PDF hujjatlari va versiyalari (§15, §16.10).
@@ -33,7 +34,7 @@ export function ContractDocuments({ contract }: { contract: InstallmentContractD
     try {
       setDownloadError(null);
       setDownloadingFileId(fileId);
-      const res = await filesApi.getDownloadUrl(fileId);
+      const res = await filesApi.getUrl(fileId);
       if (res?.url) {
         window.open(res.url, '_blank', 'noopener,noreferrer');
       } else {

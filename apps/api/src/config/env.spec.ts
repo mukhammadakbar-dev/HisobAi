@@ -57,4 +57,38 @@ describe('validateEnv', () => {
   it("to'ldirilgan ADMIN_PASSWORD hali ham tekshiriladi", () => {
     expect(() => validateEnv({ ...minimal, ADMIN_PASSWORD: 'qisqa' })).toThrow(/ADMIN_PASSWORD/);
   });
+
+  /**
+   * Standart qiymatlar dev qulayligi uchun; ular jimgina prodga o'tsa,
+   * `local` drayver + repoda ochiq turgan kalit `@Public()` download
+   * marshrutini imzo qalbakilashtirishga ochib qo'yardi. Konfiguratsiya
+   * unutilgani ilovani xavfliroq qilmasligi kerak.
+   */
+  describe('ishlab chiqarish to‘siqlari', () => {
+    const prod = { ...minimal, NODE_ENV: 'production' };
+
+    it('prodda `local` storage drayverini rad etadi', () => {
+      expect(() => validateEnv(prod)).toThrow(/STORAGE_DRIVER/);
+    });
+
+    it('prodda standart local kalitini rad etadi', () => {
+      expect(() => validateEnv({ ...prod, STORAGE_DRIVER: 'minio' })).toThrow(
+        /STORAGE_LOCAL_TOKEN_SECRET/,
+      );
+    });
+
+    it("to'g'ri sozlangan prod konfiguratsiyasi o'tadi", () => {
+      const env = validateEnv({
+        ...prod,
+        STORAGE_DRIVER: 'minio',
+        STORAGE_LOCAL_TOKEN_SECRET: 'haqiqiy-maxfiy-kalit',
+      });
+      expect(env.NODE_ENV).toBe('production');
+      expect(env.STORAGE_DRIVER).toBe('minio');
+    });
+
+    it("dev'da bu to'siqlar qo'llanmaydi", () => {
+      expect(validateEnv(minimal).STORAGE_DRIVER).toBe('local');
+    });
+  });
 });
