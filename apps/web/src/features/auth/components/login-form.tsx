@@ -3,6 +3,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { loginSchema } from '@hisobai/contracts';
 import type { LoginInput } from '@hisobai/contracts';
+import { Eye, EyeOff } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -24,6 +25,8 @@ export function LoginForm() {
   const router = useRouter();
   const login = useLogin();
   const [showForgot, setShowForgot] = useState(false);
+  // Parolni ko'rsatish/yashirish — faqat ko'rinishga ta'sir qiladi, forma holatiga tegmaydi
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     prefetchCsrf();
@@ -82,12 +85,31 @@ export function LoginForm() {
       </Field>
 
       <Field label="Parol" htmlFor="password" error={errors.password?.message}>
-        <Input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          {...register('password')}
-        />
+        <div className="relative">
+          <Input
+            id="password"
+            type={showPassword ? 'text' : 'password'}
+            autoComplete="current-password"
+            className="pr-11"
+            {...register('password')}
+          />
+          {/* Ikonka tugma input ichida, matn bilan ustma-ust tushmaydi (pr-11) */}
+          <button
+            type="button"
+            onClick={() => {
+              setShowPassword((prev) => !prev);
+            }}
+            aria-label={showPassword ? 'Parolni yashirish' : "Parolni ko'rsatish"}
+            aria-pressed={showPassword}
+            className="absolute inset-y-0 right-0 flex min-w-11 items-center justify-center text-text-secondary hover:text-text-primary"
+          >
+            {showPassword ? (
+              <EyeOff size={18} aria-hidden="true" />
+            ) : (
+              <Eye size={18} aria-hidden="true" />
+            )}
+          </button>
+        </div>
       </Field>
 
       <Button type="submit" variant="primary" disabled={login.isPending}>
