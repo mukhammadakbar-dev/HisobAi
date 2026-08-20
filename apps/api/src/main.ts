@@ -39,9 +39,7 @@ async function bootstrap(): Promise<void> {
    * ilgari `NODE_ENV === 'development'` shoxi va private-IP regexi bor edi;
    * ikkalasi ham fail-open edi — `NODE_ENV` standarti `development`,
    * ya'ni prodda o'zgaruvchi unutilsa har qanday origin `credentials`
-   * bilan o'tib ketardi, regex esa prodda ham ishlardi. Telefon uchun
-   * ular kerak emas: brauzer API'ga Next rewrite proksisi orqali
-   * same-origin uradi (`apps/web/next.config.ts`).
+   * bilan o'tib ketardi, regex esa prodda ham ishlardi.
    */
   const allowedOrigins = new Set(
     [env.WEB_ORIGIN, ...(env.WEB_ORIGIN_EXTRA?.split(',') ?? [])]
@@ -50,14 +48,25 @@ async function bootstrap(): Promise<void> {
   );
 
   app.enableCors({
+    /**
+     * Ro'yxatda yo'q origin uchun XATO EMAS, `false` qaytariladi: so'rov
+     * odatdagidek bajariladi, javobga faqat CORS sarlavhalari qo'shilmaydi.
+     *
+     * Xato qaytarilsa, telefondan LAN orqali kelgan login `500` bo'lardi.
+     * Sababi: brauzer `POST` da `Origin` sarlavhasini same-origin holatda
+     * ham yuboradi, Next rewrite proksisi esa uni o'zgartirmay uzatadi —
+     * API `Origin: http://10.x.x.x:3000` ni ko'rib rad etardi, garchi
+     * brauzer uchun bu so'rov same-origin bo'lsa ham. Bu ishga tushirib
+     * tekshirilganda aniqlandi.
+     *
+     * Himoya zaiflashmaydi: haqiqiy cross-origin so'rovda javobda
+     * `Access-Control-Allow-Origin` bo'lmaydi va brauzer natijani o'qishga
+     * qo'ymaydi; `X-CSRF-Token` sarlavhali so'rov esa preflight'dan
+     * o'tolmaydi. Sarlavhasiz oddiy forma POST'ini `CsrfGuard` to'sadi.
+     */
     origin: (origin, callback) => {
-      // `Origin`siz so'rov — server-to-server, `curl`, sog'liq tekshiruvi
-      // yoki Next proksisi. Brauzer cross-origin so'rovda uni doim yuboradi.
-      if (!origin || allowedOrigins.has(origin)) {
-        callback(null, true);
-        return;
-      }
-      callback(new Error('Not allowed by CORS'));
+      // `Origin`siz so'rov — server-to-server, `curl`, sog'liq tekshiruvi.
+      callback(null, !origin || allowedOrigins.has(origin));
     },
     credentials: true,
     exposedHeaders: ['X-Request-Id', 'Retry-After'],
