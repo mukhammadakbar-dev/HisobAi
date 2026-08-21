@@ -17,14 +17,14 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { CurrentUserDto } from '@hisobai/contracts';
 
 import { useLogout } from '../../features/auth/queries';
 import { useTodayRate } from '../../features/exchange-rates/queries';
 import { useShop } from '../../features/shops/queries';
-import { Button } from '../ui';
+import { ConfirmDialog } from '../ui/modal';
 import { Logo } from './logo';
 import { RateBar } from './rate-bar';
 import { ThemeToggle } from './theme-toggle';
@@ -37,9 +37,6 @@ import { ThemeToggle } from './theme-toggle';
  * Sabab jismoniy: 375px kenglikda oltinchi elementdan boshlab bosish
  * maydoni 44px dan tor bo'lib qoladi (`design.md` §6) va yonidagini
  * bosib yuborish oson bo'ladi.
- *
- * Ro'yxat bosqichma-bosqich o'sadi: nasiya, to'lovlar, hisobotlar va
- * AI tahlil o'z bosqichlarida qo'shiladi (`TZ.md` §22).
  */
 interface NavItem {
   href: string;
@@ -47,26 +44,29 @@ interface NavItem {
   icon: typeof LayoutDashboard;
 }
 
-/** Telefonda pastki qatorda turadigan to'rttasi + "Yana" (§4). */
+/**
+ * Telefonda pastki qatorda turadigan to'rttasi + "Yana".
+ *
+ * Tartib do'kon egasining KUNLIK ishiga qarab tanlangan, bo'limlarning
+ * mantiqiy kattaligiga emas: nasiya to'lovini qabul qilish, ombordan
+ * mahsulot izlash va kassani yopish — kun davomida qayta-qayta
+ * takrorlanadi. Savdo ro'yxati esa pastda turishi shart emas, chunki
+ * yangi savdo suzuvchi tugmadan ochiladi va tugagan savdolarga kunda
+ * bir marta qaraladi.
+ */
 const PRIMARY_NAV: NavItem[] = [
   { href: '/dashboard', label: 'Boshqaruv', icon: LayoutDashboard },
-  { href: '/sales', label: 'Savdo', icon: Receipt },
+  { href: '/installments', label: 'Nasiya', icon: CalendarClock },
   { href: '/inventory', label: 'Ombor', icon: Boxes },
-  { href: '/customers', label: 'Mijozlar', icon: Users },
+  { href: '/cashbook', label: 'Kassa', icon: Wallet },
 ];
 
 /** "Yana" varag'idagilar; noutbukda ular ham yon menyuda turadi. */
 const SECONDARY_NAV: NavItem[] = [
-  /**
-   * Nasiya "Yana" varag'ida: §4 pastki qatorda beshta element chegara
-   * (`design.md` §6 — 375px da bosish maydoni 44px dan tor bo'lmasin).
-   * Qarzdorlar ro'yxati kunlik emas, haftalik ish — kunlik savdo va
-   * ombordan ustun qo'yish tartibni buzardi.
-   */
-  { href: '/installments', label: 'Nasiya', icon: CalendarClock },
+  { href: '/sales', label: 'Savdo', icon: Receipt },
+  { href: '/customers', label: 'Mijozlar', icon: Users },
   { href: '/reports', label: 'Hisobot', icon: BarChart3 },
   { href: '/products', label: 'Katalog', icon: Tags },
-  { href: '/cashbook', label: 'Kassa', icon: Wallet },
   { href: '/settings', label: 'Sozlamalar', icon: Settings },
   { href: '/settings/security', label: 'Xavfsizlik', icon: ShieldCheck },
 ];
@@ -98,86 +98,63 @@ export function AppShell({ user, children }: { user: CurrentUserDto; children: R
 
   return (
     <div className="min-h-dvh bg-surface-page">
-      <header className="border-b border-border-default bg-surface-card">
-        <div className="mx-auto flex w-full max-w-[1920px] items-center justify-between gap-2 px-3 sm:px-4 md:px-7 lg:px-8 py-2.5 sm:py-3">
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            <Logo className="h-6 sm:h-7 w-auto" />
-            <span className="hidden text-xs text-text-secondary sm:inline md:text-sm">{shop.data?.name ?? ''}</span>
+      {/*
+        Sarlavha YOPISHQOQ. Ilgari u sahifa bilan birga tepaga chiqib
+        ketardi va uzun ro'yxatda foydalanuvchi qaysi do'konda ishlayotgani
+        hamda joriy kursni ko'rish uchun tepaga qaytishi kerak bo'lardi.
+      */}
+      <header className="sticky top-0 z-40 border-b border-border-default bg-surface-card">
+        <div className="mx-auto flex w-full max-w-[1920px] items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3 md:px-7 lg:px-8">
+          <Logo className="h-6 w-auto shrink-0 sm:h-7" />
+
+          {/*
+            Do'kon nomi endi TELEFONDA HAM ko'rinadi. Ilgari u `hidden
+            sm:inline` edi va kichik ekranda foydalanuvchi qaysi do'kon
+            ustida ishlayotganini umuman ko'rmasdi — bir necha do'koni
+            bor egasi uchun bu xavfli.
+          */}
+          <div className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate text-sm font-semibold text-text-primary sm:text-base">
+              {shop.data?.name ?? ''}
+            </span>
+            <span className="truncate text-xs text-text-tertiary">{user.displayName}</span>
           </div>
 
-          <div className="flex flex-row items-center gap-1.5 sm:gap-3 md:gap-5 lg:gap-6 whitespace-nowrap">
-            <RateBar data={todayRate.data} />
-            <span className="hidden text-sm text-text-secondary sm:inline">{user.displayName}</span>
-            <ThemeToggle />
-            <button
-              type="button"
-              onClick={() => {
-                setShowLogoutConfirm(true);
-              }}
-              disabled={logout.isPending}
-              className="inline-flex min-h-9 sm:min-h-11 items-center gap-1.5 sm:gap-2 rounded-md border border-border-default px-2.5 sm:px-3 text-xs sm:text-sm font-semibold text-text-primary whitespace-nowrap disabled:opacity-50"
-            >
-              <LogOut size={15} aria-hidden="true" className="shrink-0" />
-              <span>Chiqish</span>
-            </button>
-          </div>
+          <RateBar data={todayRate.data} />
+
+          <HeaderMenu
+            onLogout={() => {
+              setShowLogoutConfirm(true);
+            }}
+          />
         </div>
       </header>
 
-      {showLogoutConfirm && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="logout-dialog-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
-        >
-          <div className="flex w-full max-w-sm flex-col gap-4 rounded-lg border border-border-default bg-surface-card p-5 shadow-xl">
-            <div className="flex flex-col gap-1">
-              <h3 id="logout-dialog-title" className="m-0 text-lg font-semibold text-text-primary">
-                Tizimdan chiqish
-              </h3>
-              <p className="m-0 text-sm text-text-secondary">
-                Haqiqatan ham tizimdan chiqmoqchimisiz?
-              </p>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  setShowLogoutConfirm(false);
-                }}
-                disabled={logout.isPending}
-              >
-                Bekor qilish
-              </Button>
-              <Button
-                type="button"
-                variant="danger"
-                onClick={handleLogout}
-                disabled={logout.isPending}
-              >
-                {logout.isPending ? 'Chiqilmoqda…' : 'Chiqish'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={showLogoutConfirm}
+        onClose={() => {
+          setShowLogoutConfirm(false);
+        }}
+        onConfirm={handleLogout}
+        title="Tizimdan chiqish"
+        description="Haqiqatan ham tizimdan chiqmoqchimisiz?"
+        confirmLabel="Chiqish"
+        destructive
+        pending={logout.isPending}
+        pendingLabel="Chiqilmoqda…"
+      />
 
       {/*
-        Pastki bo'shliq suzuvchi tugmadan KATTA bo'lishi shart. U `fixed`
-        va noutbukda pastdan 24px da turadi, balandligi 56px — ya'ni
-        oxirgi 80px kontentni to'sadi. Ilgari bu yerda `md:pb-8` (32px)
-        edi va sahifa oxiridagi tugma yoki matn tugma ostida qolib
-        ketardi (nasiya shartnomasidagi "Erta yopish" kartasida
-        ko'rindi). Telefonda esa tugma pastki navigatsiya ustida
-        (`bottom-20`), shuning uchun bo'shliq yanada kattaroq.
+        Pastki bo'shliq bir joyda hisoblanadi: pastki navigatsiya (56px) +
+        suzuvchi tugma (56px) + oraliq (24px) + qurilmaning xavfsiz zonasi
+        (iPhone'dagi uy chizig'i). Ilgari bu `pb-40` degan sehrli qiymat
+        edi va xavfsiz zona umuman hisobga olinmasdi — natijada oxirgi
+        qator uy chizig'i ostida qolardi.
       */}
-      <div className="mx-auto flex w-full max-w-[1920px] gap-6 px-4 md:px-6 lg:px-8 pt-6 pb-40 md:pb-24">
-        {/* Noutbukda chap menyu */}
+      <div className="mx-auto flex w-full max-w-[1920px] gap-6 px-4 pt-6 pb-[calc(9rem+env(safe-area-inset-bottom))] md:px-6 md:pb-24 lg:px-8">
+        {/* Planshet va noutbukda chap menyu */}
         <nav aria-label="Asosiy menyu" className="hidden w-52 shrink-0 md:block">
-          <ul className="flex list-none flex-col gap-1 p-0">
+          <ul className="sticky top-24 flex list-none flex-col gap-1 p-0">
             {NAV.map((item) => (
               <li key={item.href}>
                 <NavLink item={item} active={active === item.href} />
@@ -191,31 +168,27 @@ export function AppShell({ user, children }: { user: CurrentUserDto; children: R
 
       {/*
         §14.6 — YAGONA suzuvchi tugma: "Yangi savdo". `FRONTEND.md` §4
-        boshqa suzuvchi tugma qo'shishni taqiqlaydi, shuning uchun
-        kalkulyator ham savdo formasidagi narx maydonining yonida
-        turadi (§12.6), ekranda emas.
-
-        Savdo formasining o'zida u ko'rinmaydi: o'sha sahifada tugma
-        turgan joyni "Tasdiqlash" egallaydi va ikkitasi bir-birini
-        bosib qolardi.
+        boshqa suzuvchi tugma qo'shishni taqiqlaydi.
+        Savdo formasining o'zida u ko'rinmaydi: o'sha sahifada pastda
+        "Tasdiqlash" paneli turadi va ikkitasi bir-birini bosib qolardi.
       */}
       {!pathname.startsWith('/sales/') && (
         <Link
           href="/sales/new"
-          className="fixed right-4 bottom-20 inline-flex min-h-14 items-center gap-2 rounded-full bg-action px-5 text-sm font-semibold text-action-text shadow-lg md:bottom-6"
+          className="fixed right-4 bottom-[calc(5rem+env(safe-area-inset-bottom))] inline-flex min-h-14 items-center gap-2 rounded-full bg-action px-5 text-sm font-semibold text-action-text shadow-lg md:bottom-6"
         >
           <Plus size={20} aria-hidden="true" />
           Yangi savdo
         </Link>
       )}
 
-      {/* Telefonda pastki navigatsiya — beshta element (§4) */}
+      {/* Telefonda pastki navigatsiya — to'rtta bo'lim va "Yana" */}
       <nav
         aria-label="Asosiy menyu"
-        className="fixed inset-x-0 bottom-0 border-t border-border-default bg-surface-card md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-border-default bg-surface-card pb-[env(safe-area-inset-bottom)] md:hidden"
       >
         {moreOpen && (
-          <ul className="m-0 flex list-none flex-col gap-1 border-b border-border-default p-2">
+          <ul className="m-0 flex max-h-[50dvh] list-none flex-col gap-1 overflow-y-auto border-b border-border-default p-2">
             {SECONDARY_NAV.map((item) => (
               <li key={item.href}>
                 <NavLink item={item} active={active === item.href} />
@@ -231,7 +204,7 @@ export function AppShell({ user, children }: { user: CurrentUserDto; children: R
                 href={item.href}
                 aria-current={active === item.href ? 'page' : undefined}
                 className={`flex min-h-14 flex-col items-center justify-center gap-1 text-xs ${
-                  active === item.href ? 'text-action' : 'text-text-secondary'
+                  active === item.href ? 'font-semibold text-action' : 'text-text-secondary'
                 }`}
               >
                 <item.icon size={20} aria-hidden="true" />
@@ -249,7 +222,7 @@ export function AppShell({ user, children }: { user: CurrentUserDto; children: R
               aria-expanded={moreOpen}
               className={`flex min-h-14 w-full flex-col items-center justify-center gap-1 text-xs ${
                 moreOpen || SECONDARY_NAV.some((item) => item.href === active)
-                  ? 'text-action'
+                  ? 'font-semibold text-action'
                   : 'text-text-secondary'
               }`}
             >
@@ -259,6 +232,81 @@ export function AppShell({ user, children }: { user: CurrentUserDto; children: R
           </li>
         </ul>
       </nav>
+    </div>
+  );
+}
+
+/**
+ * Sarlavhadagi "⋯" menyusi.
+ *
+ * Ilgari mavzu tugmasi va "Chiqish" sarlavhada ochiq turardi va 390px
+ * kenglikda logotip, do'kon nomi, kurs, mavzu va chiqish bitta qatorga
+ * siqilib, do'kon nomi butunlay yashirilardi. Kunda bir marta bosiladigan
+ * amallar menyuga yig'ildi — kurs esa ochiq qoldi, chunki u ma'lumot.
+ */
+function HeaderMenu({ onLogout }: { onLogout: () => void }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function handlePointerDown(event: MouseEvent): void {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === 'Escape') setOpen(false);
+    }
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative shrink-0" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => {
+          setOpen((value) => !value);
+        }}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-label="Qo‘shimcha amallar"
+        className="inline-flex size-9 items-center justify-center rounded-md border border-border-default text-text-secondary transition-colors hover:bg-surface-raised sm:size-11"
+      >
+        <MoreHorizontal size={18} aria-hidden="true" />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-50 mt-2 flex w-56 flex-col gap-1 rounded-lg border border-border-default bg-surface-card p-2 shadow-xl"
+        >
+          <div className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5">
+            <span className="text-sm text-text-secondary">Mavzu</span>
+            <ThemeToggle />
+          </div>
+
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onLogout();
+            }}
+            className="flex min-h-11 items-center gap-2 rounded-md px-2 text-sm font-semibold text-danger transition-colors hover:bg-surface-raised"
+          >
+            <LogOut size={16} aria-hidden="true" />
+            Chiqish
+          </button>
+        </div>
+      )}
     </div>
   );
 }

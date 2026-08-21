@@ -1,10 +1,12 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 import { Money } from '../../../../components/money/money';
 import { EmptyState, ErrorState, TableSkeleton } from '../../../../components/states';
-import { Card } from '../../../../components/ui';
+import { Badge, Card } from '../../../../components/ui';
+import { DataList } from '../../../../components/ui/data-list';
 import { formatDate } from '../../../../lib/format';
 import { useDebtors } from '../../../../features/reports/queries';
 
@@ -20,6 +22,7 @@ import { useDebtors } from '../../../../features/reports/queries';
  * ko'rsatiladi.
  */
 export default function DebtorsPage() {
+  const router = useRouter();
   const report = useDebtors();
 
   return (
@@ -79,54 +82,65 @@ export default function DebtorsPage() {
           </div>
         )}
 
-        {report.isSuccess && report.data.debtors.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-border-default text-left text-text-secondary">
-                  <th className="p-3 font-medium">Mijoz</th>
-                  <th className="p-3 font-medium">Savdo</th>
-                  <th className="p-3 font-medium">Qarz</th>
-                  <th className="p-3 font-medium">Muddat</th>
-                  <th className="p-3 font-medium">Kechikish</th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.data.debtors.map((debtor) => (
-                  <tr
-                    key={debtor.contractId}
-                    className="border-b border-border-default last:border-0"
-                  >
-                    <td className="p-3">
-                      <Link href={`/installments/${debtor.contractId}`} className="text-link">
-                        {debtor.customerName ?? '—'}
-                      </Link>
-                    </td>
-                    <td className="tabular p-3 text-text-secondary">{debtor.saleNumber ?? '—'}</td>
-                    <td className="tabular p-3 font-medium">
-                      <Money
-                        amount={debtor.outstanding}
-                        currency={debtor.currency}
-                        withCurrency={false}
-                      />
-                    </td>
-                    <td className="tabular p-3">
-                      {debtor.nextDueDate === null ? '—' : formatDate(debtor.nextDueDate)}
-                    </td>
-                    <td className="tabular p-3">
-                      {debtor.daysOverdue === 0 ? (
-                        <span className="text-text-tertiary">—</span>
-                      ) : (
-                        <span className="text-danger">{debtor.daysOverdue} kun</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </Card>
+
+      {report.isSuccess && report.data.debtors.length > 0 && (
+        <DataList
+          label="Qarzdorlar ro‘yxati"
+          rows={report.data.debtors}
+          rowKey={(debtor) => debtor.contractId}
+          onRowClick={(debtor) => {
+            router.push(`/installments/${debtor.contractId}`);
+          }}
+          accent={(debtor) => (debtor.daysOverdue === 0 ? undefined : 'danger')}
+          columns={[
+            {
+              header: 'Mijoz',
+              mobile: 'primary',
+              cell: (debtor) => debtor.customerName ?? '—',
+            },
+            {
+              header: 'Savdo',
+              mobile: 'secondary',
+              className: 'w-32',
+              cell: (debtor) => debtor.saleNumber ?? '—',
+            },
+            {
+              header: 'Qarz',
+              mobile: 'amount',
+              numeric: true,
+              className: 'w-40',
+              cell: (debtor) => (
+                <Money
+                  amount={debtor.outstanding}
+                  currency={debtor.currency}
+                  withCurrency={false}
+                />
+              ),
+            },
+            {
+              header: 'Muddat',
+              className: 'w-36',
+              cell: (debtor) => (
+                <span className="tabular">
+                  {debtor.nextDueDate === null ? '—' : formatDate(debtor.nextDueDate)}
+                </span>
+              ),
+            },
+            {
+              header: 'Kechikish',
+              mobile: 'status',
+              className: 'w-32',
+              cell: (debtor) =>
+                debtor.daysOverdue === 0 ? (
+                  <span className="text-text-tertiary">—</span>
+                ) : (
+                  <Badge tone="danger">{debtor.daysOverdue} kun</Badge>
+                ),
+            },
+          ]}
+        />
+      )}
     </div>
   );
 }

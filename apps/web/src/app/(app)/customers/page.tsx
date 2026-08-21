@@ -1,13 +1,16 @@
 'use client';
 
 import { formatPhone } from '@hisobai/contracts';
-import { CheckCircle2, Plus } from 'lucide-react';
+import type { CustomerSummaryDto } from '@hisobai/contracts';
+import { Plus } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 import { EmptyState, ErrorState, TableSkeleton } from '../../../components/states';
-import { Badge, Card, Input, Select } from '../../../components/ui';
+import { Badge, Card } from '../../../components/ui';
+import { DataList } from '../../../components/ui/data-list';
+import { FilterBar, FilterChip, SearchInput } from '../../../components/ui/filters';
 import { useCustomers } from '../../../features/customers/queries';
 import { EMPTY_MESSAGES } from '../../../lib/messages';
 
@@ -19,43 +22,22 @@ import { EMPTY_MESSAGES } from '../../../lib/messages';
  * tozalanadi, ya'ni "90 123" ham, "901234567" ham topadi.
  *
  * Qarz ustuni yo'q (§6.11, §6.12): u savdo va to'lovlardan
- * hisoblanadi va 5-bosqichda qo'shiladi. Bo'sh "0 so'm" ustuni
+ * hisoblanadi va alohida bosqichda qo'shiladi. Bo'sh "0 so'm" ustuni
  * bo'lmagan raqamni haqiqatdek ko'rsatardi.
  */
+type ActiveFilter = 'active' | 'archived' | 'all';
+
+const STATUS_FILTERS: { value: ActiveFilter; label: string }[] = [
+  { value: 'active', label: 'Faol' },
+  { value: 'archived', label: 'Arxivda' },
+  { value: 'all', label: 'Hammasi' },
+];
+
 export default function CustomersPage() {
-  return (
-    <Suspense
-      fallback={
-        <Card>
-          <TableSkeleton rows={6} />
-        </Card>
-      }
-    >
-      <CustomersContent />
-    </Suspense>
-  );
-}
-
-function CustomersContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const savedName = searchParams.get('savedName');
-  const [showNotification, setShowNotification] = useState(true);
-
-  useEffect(() => {
-    if (!savedName) return;
-    setShowNotification(true);
-    const timer = setTimeout(() => {
-      setShowNotification(false);
-    }, 3000);
-
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [savedName]);
 
   const [q, setQ] = useState('');
-  const [isActive, setIsActive] = useState<'active' | 'archived' | 'all'>('active');
+  const [isActive, setIsActive] = useState<ActiveFilter>('active');
   const [onlyFlagged, setOnlyFlagged] = useState(false);
 
   const customers = useCustomers({
@@ -67,14 +49,18 @@ function CustomersContent() {
   const rows = customers.data?.data ?? [];
   const isFiltered = q.trim() !== '' || isActive !== 'active' || onlyFlagged;
 
+  const resetFilters = (): void => {
+    setQ('');
+    setIsActive('active');
+    setOnlyFlagged(false);
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           <h1 className="m-0 text-2xl font-semibold">Mijozlar</h1>
-          <p className="m-0 text-text-secondary">
-            Ism yoki telefon bo‘yicha qidiring.
-          </p>
+          <p className="m-0 text-text-secondary">Ism yoki telefon bo‘yicha qidiring.</p>
         </div>
 
         <Link
@@ -86,51 +72,49 @@ function CustomersContent() {
         </Link>
       </header>
 
-      <Card className="flex flex-wrap items-center gap-3">
-        <div className="min-w-48 flex-2 basis-64">
-          <label htmlFor="q" className="sr-only">
-            Qidiruv
-          </label>
-          <Input
-            id="q"
-            type="search"
-            inputMode="search"
-            placeholder="Qidirish..."
+      <Card>
+        <FilterBar
+          count={
+            customers.isPending
+              ? undefined
+              : `${rows.length} ta mijoz${customers.data?.hasMore === true ? ' (birinchi sahifa)' : ''}`
+          }
+          onReset={isFiltered ? resetFilters : undefined}
+          chips={
+            <>
+              {STATUS_FILTERS.map((filter) => (
+                <FilterChip
+                  key={filter.value}
+                  active={isActive === filter.value}
+                  dismissable={false}
+                  onClick={() => {
+                    setIsActive(filter.value);
+                  }}
+                >
+                  {filter.label}
+                </FilterChip>
+              ))}
+
+              {/* §6.9 — belgilash ogohlantiradi, taqiqlamaydi */}
+              <FilterChip
+                active={onlyFlagged}
+                onClick={() => {
+                  setOnlyFlagged((value) => !value);
+                }}
+              >
+                Belgilangan
+              </FilterChip>
+            </>
+          }
+        >
+          <SearchInput
+            id="customers-q"
+            label="Mijoz qidirish"
             value={q}
-            onChange={(event) => {
-              setQ(event.target.value);
-            }}
+            onChange={setQ}
+            placeholder="Ism yoki telefon"
           />
-        </div>
-
-        <div className="min-w-36 flex-1">
-          <label htmlFor="isActive" className="sr-only">
-            Holat
-          </label>
-          <Select
-            id="isActive"
-            value={isActive}
-            onChange={(event) => {
-              setIsActive(event.target.value as 'active' | 'archived' | 'all');
-            }}
-          >
-            <option value="active">Faol</option>
-            <option value="archived">Arxivda</option>
-            <option value="all">Hammasi</option>
-          </Select>
-        </div>
-
-        <label className="flex min-h-11 items-center gap-2 text-sm text-text-secondary">
-          <input
-            type="checkbox"
-            className="size-4"
-            checked={onlyFlagged}
-            onChange={(event) => {
-              setOnlyFlagged(event.target.checked);
-            }}
-          />
-          Faqat belgilanganlar
-        </label>
+        </FilterBar>
       </Card>
 
       {customers.isPending && (
@@ -161,70 +145,68 @@ function CustomersContent() {
               router.push('/customers/new');
               return;
             }
-            setQ('');
-            setIsActive('active');
-            setOnlyFlagged(false);
+            resetFilters();
           }}
         />
       )}
 
       {rows.length > 0 && (
-        <Card className="overflow-x-auto p-0">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-border-default text-left text-text-secondary">
-                <th className="p-3 font-medium">Ism</th>
-                <th className="p-3 font-medium">Telefon</th>
-                <th className="p-3 font-medium">Holat</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((customer) => (
-                <tr key={customer.id} className="border-b border-border-default last:border-0">
-                  <td className="p-3">
-                    <Link
-                      href={`/customers/${customer.id}`}
-                      className="font-medium text-link hover:underline"
-                    >
-                      {customer.fullName}
-                    </Link>
-                  </td>
-                  <td className="tabular p-3 text-text-secondary">
-                    {formatPhone(customer.phonePrimary)}
-                    {customer.phoneSecondary && (
-                      <div className="text-text-tertiary">
-                        {formatPhone(customer.phoneSecondary)}
-                      </div>
-                    )}
-                  </td>
-                  <td className="p-3">
-                    <div className="flex flex-wrap gap-2">
-                      {/* §6.9 — ogohlantiradi, taqiqlamaydi */}
-                      {customer.isFlagged && <Badge tone="warning">Ehtiyot bo‘ling</Badge>}
-                      {!customer.isActive && <Badge tone="muted">Arxivda</Badge>}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+        <DataList<CustomerSummaryDto>
+          label="Mijozlar ro‘yxati"
+          rows={rows}
+          rowKey={(customer) => customer.id}
+          onRowClick={(customer) => {
+            router.push(`/customers/${customer.id}`);
+          }}
+          accent={(customer) => {
+            if (!customer.isActive) return 'muted';
+            return customer.isFlagged ? 'warning' : undefined;
+          }}
+          columns={[
+            {
+              header: 'Ism',
+              mobile: 'primary',
+              cell: (customer) => customer.fullName,
+            },
+            {
+              header: 'Telefon',
+              mobile: 'secondary',
+              cell: (customer) => (
+                <>
+                  {formatPhone(customer.phonePrimary)}
+                  {customer.phoneSecondary && (
+                    <span className="block text-text-tertiary">
+                      {formatPhone(customer.phoneSecondary)}
+                    </span>
+                  )}
+                </>
+              ),
+            },
+            {
+              header: 'Holat',
+              mobile: 'status',
+              className: 'w-56',
+              cell: (customer) => (
+                <span className="flex flex-wrap gap-2">
+                  {customer.isFlagged && <Badge tone="warning">Ehtiyot bo‘ling</Badge>}
+                  {!customer.isActive && <Badge tone="muted">Arxivda</Badge>}
+                </span>
+              ),
+            },
+          ]}
+        />
       )}
 
-      {customers.data?.hasMore && (
+      {/*
+        Bu yerda "yana yuklash" tugmasi ATAYLAB yo'q: ro'yxat so'rovi
+        kursor qaytarmaydi, ya'ni keyingi sahifani so'rashning yo'li yo'q.
+        Soxta tugma qo'yish ishlamaydigan narsani ishlaydigandek
+        ko'rsatardi — o'rniga nima qilish kerakligi aytiladi.
+      */}
+      {customers.data?.hasMore === true && (
         <p className="m-0 text-sm text-text-tertiary">
           Birinchi {rows.length} ta ko‘rsatildi — qidiruv bilan toraytiring.
         </p>
-      )}
-
-      {savedName && showNotification && (
-        <div
-          role="status"
-          className="fixed top-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2.5 rounded-lg border border-border-default bg-surface-card px-4 py-3 text-sm font-semibold text-text-primary shadow-xl"
-        >
-          <CheckCircle2 size={18} aria-hidden="true" className="shrink-0 text-success" />
-          <span>{savedName} mijoz muvaffaqiyatli saqlandi</span>
-        </div>
       )}
     </div>
   );

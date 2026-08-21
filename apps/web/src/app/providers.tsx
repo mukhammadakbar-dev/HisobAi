@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 
+import { ToastProvider } from '../components/ui/toast';
 import { setUnauthorizedHandler } from '../lib/api-client';
 import { createQueryClient } from '../lib/query-client';
 
@@ -38,5 +39,9 @@ export function Providers({ children }: { children: ReactNode }) {
     });
   }, [queryClient, router]);
 
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ToastProvider>{children}</ToastProvider>
+    </QueryClientProvider>
+  );
 }

@@ -9,6 +9,7 @@ import { useForm } from 'react-hook-form';
 
 import { FileUpload } from '../../../components/files';
 import { Button, Card, Field, Input } from '../../../components/ui';
+import { useToast } from '../../../components/ui/toast';
 import { applyApiFieldErrors, isFieldOwnedError } from '../../../lib/form-errors';
 import { can } from '../../../lib/permissions';
 import { useCurrentUser } from '../../auth/queries';
@@ -73,6 +74,7 @@ const optionalText = (value: string | null): string | null =>
 
 export function CustomerForm({ customer }: { customer?: CustomerDto }) {
   const router = useRouter();
+  const toast = useToast();
   const user = useCurrentUser();
   const create = useCreateCustomer();
   const update = useUpdateCustomer(customer?.id ?? '');
@@ -130,7 +132,11 @@ export function CustomerForm({ customer }: { customer?: CustomerDto }) {
         { ...patch, expectedUpdatedAt: customer.updatedAt },
         {
           onSuccess: () => {
-            router.push(`/customers?savedName=${encodeURIComponent(input.fullName)}`);
+            // Xabar `ToastProvider` da turadi — u ildiz qatlamda, ya'ni
+            // sahifa almashganda yo'qolmaydi. Ilgari buning uchun
+            // `?savedName=` ishlatilardi va nom manzil qatorida qolib ketardi.
+            toast.success(`${input.fullName} saqlandi`);
+            router.push('/customers');
           },
           onError,
         },
@@ -140,7 +146,8 @@ export function CustomerForm({ customer }: { customer?: CustomerDto }) {
 
     create.mutate(input, {
       onSuccess: (created) => {
-        router.push(`/customers?savedName=${encodeURIComponent(created.fullName)}`);
+        toast.success(`${created.fullName} saqlandi`);
+        router.push('/customers');
       },
       onError,
     });

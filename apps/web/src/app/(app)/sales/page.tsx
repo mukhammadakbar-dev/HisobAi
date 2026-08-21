@@ -1,6 +1,7 @@
 'use client';
 
 import { SaleStatus, formatMoneyWithCurrency } from '@hisobai/contracts';
+import type { SaleSummaryDto } from '@hisobai/contracts';
 import { Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -8,6 +9,7 @@ import { useState } from 'react';
 
 import { EmptyState, ErrorState, TableSkeleton } from '../../../components/states';
 import { Badge, Card, Input, Select } from '../../../components/ui';
+import { DataList } from '../../../components/ui/data-list';
 import { useSales } from '../../../features/sales/queries';
 import { formatDate } from '../../../lib/format';
 import { SALE_STATUS_LABEL, SALE_STATUS_TONE } from '../../../lib/labels';
@@ -139,49 +141,57 @@ export default function SalesPage() {
       )}
 
       {rows.length > 0 && (
-        <Card className="overflow-x-auto p-0">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-border-default text-left text-text-secondary">
-                <th className="p-3 font-medium">Raqam</th>
-                <th className="p-3 font-medium">Sana</th>
-                <th className="p-3 font-medium">Mijoz</th>
-                <th className="p-3 font-medium">Summa</th>
-                <th className="p-3 font-medium">Holat</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((sale) => (
-                <tr key={sale.id} className="border-b border-border-default last:border-0">
-                  <td className="tabular p-3">
-                    <Link href={`/sales/${sale.id}`} className="font-medium text-link">
-                      {sale.number ?? 'Qoralama'}
-                    </Link>
-                    <div className="text-text-tertiary">{sale.itemCount} qator</div>
-                  </td>
-                  <td className="tabular p-3 text-text-secondary">{formatDate(sale.soldAt)}</td>
-                  <td className="p-3">
-                    {sale.customerId && sale.customerName ? (
-                      <Link href={`/customers/${sale.customerId}`} className="text-link">
-                        {sale.customerName}
-                      </Link>
-                    ) : (
-                      <span className="text-text-tertiary">—</span>
-                    )}
-                  </td>
-                  <td className="tabular p-3 font-medium">
-                    {formatMoneyWithCurrency(sale.total, sale.currency)}
-                  </td>
-                  <td className="p-3">
-                    <Badge tone={SALE_STATUS_TONE[sale.status] ?? 'muted'}>
-                      {SALE_STATUS_LABEL[sale.status] ?? sale.status}
-                    </Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+        <DataList<SaleSummaryDto>
+          label="Savdolar ro‘yxati"
+          rows={rows}
+          rowKey={(sale) => sale.id}
+          onRowClick={(sale) => {
+            router.push(`/sales/${sale.id}`);
+          }}
+          accent={(sale) => SALE_STATUS_TONE[sale.status]}
+          columns={[
+            {
+              header: 'Raqam',
+              mobile: 'primary',
+              cell: (sale) => (
+                <span className="tabular">
+                  {sale.number ?? 'Qoralama'}
+                  <span className="block text-xs font-normal text-text-tertiary">
+                    {sale.itemCount} qator
+                  </span>
+                </span>
+              ),
+            },
+            {
+              header: 'Sana',
+              mobile: 'secondary',
+              className: 'w-36',
+              cell: (sale) => formatDate(sale.soldAt),
+            },
+            {
+              header: 'Mijoz',
+              cell: (sale) =>
+                sale.customerName ?? <span className="text-text-tertiary">—</span>,
+            },
+            {
+              header: 'Summa',
+              mobile: 'amount',
+              numeric: true,
+              className: 'w-44',
+              cell: (sale) => formatMoneyWithCurrency(sale.total, sale.currency),
+            },
+            {
+              header: 'Holat',
+              mobile: 'status',
+              className: 'w-40',
+              cell: (sale) => (
+                <Badge tone={SALE_STATUS_TONE[sale.status] ?? 'muted'}>
+                  {SALE_STATUS_LABEL[sale.status] ?? sale.status}
+                </Badge>
+              ),
+            },
+          ]}
+        />
       )}
 
       {sales.data?.hasMore && (

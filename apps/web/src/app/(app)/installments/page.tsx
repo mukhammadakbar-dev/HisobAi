@@ -1,12 +1,14 @@
 'use client';
 
 import { ContractStatus } from '@hisobai/contracts';
-import Link from 'next/link';
+import type { InstallmentSummaryDto } from '@hisobai/contracts';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { Money } from '../../../components/money/money';
 import { EmptyState, ErrorState, TableSkeleton } from '../../../components/states';
 import { Badge, Card, Select } from '../../../components/ui';
+import { DataList } from '../../../components/ui/data-list';
 import { formatDate } from '../../../lib/format';
 import { CONTRACT_STATUS_LABEL, CONTRACT_STATUS_TONE } from '../../../lib/labels';
 import { useInstallments, type InstallmentFilters } from '../../../features/installments/queries';
@@ -21,6 +23,7 @@ import { useInstallments, type InstallmentFilters } from '../../../features/inst
  * §9.9 — jarima yo'q: kechikish faqat belgi bilan ko'rsatiladi.
  */
 export default function InstallmentsPage() {
+  const router = useRouter();
   const [filters, setFilters] = useState<InstallmentFilters>({ status: ContractStatus.ACTIVE });
   const contracts = useInstallments(filters);
 
@@ -80,84 +83,95 @@ export default function InstallmentsPage() {
         </p>
       )}
 
-      <Card className="p-0">
-        {contracts.isPending && (
-          <div className="p-4">
-            <TableSkeleton rows={5} />
-          </div>
-        )}
+      {contracts.isPending && (
+        <Card>
+          <TableSkeleton rows={5} />
+        </Card>
+      )}
 
-        {contracts.isError && (
-          <div className="p-4">
-            <ErrorState
-              error={contracts.error}
-              onRetry={() => {
-                void contracts.refetch();
-              }}
-            />
-          </div>
-        )}
+      {contracts.isError && (
+        <ErrorState
+          error={contracts.error}
+          onRetry={() => {
+            void contracts.refetch();
+          }}
+        />
+      )}
 
-        {contracts.isSuccess && rows.length === 0 && (
-          <div className="p-4">
-            <EmptyState title="Nasiya savdo rasmiylashtirilganda shartnoma shu yerda paydo bo‘ladi" />
-          </div>
-        )}
+      {contracts.isSuccess && rows.length === 0 && (
+        <EmptyState title="Nasiya savdo rasmiylashtirilganda shartnoma shu yerda paydo bo‘ladi" />
+      )}
 
-        {contracts.isSuccess && rows.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-border-default text-left text-text-secondary">
-                  <th className="p-3 font-medium">Mijoz</th>
-                  <th className="p-3 font-medium">Savdo</th>
-                  <th className="p-3 font-medium">Qarz</th>
-                  <th className="p-3 font-medium">Qoldiq</th>
-                  <th className="p-3 font-medium">Keyingi to‘lov</th>
-                  <th className="p-3 font-medium">Holat</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id} className="border-b border-border-default last:border-0">
-                    <td className="p-3">
-                      <Link href={`/installments/${row.id}`} className="text-link">
-                        {row.customerName ?? '—'}
-                      </Link>
-                    </td>
-                    <td className="tabular p-3 text-text-secondary">{row.saleNumber ?? '—'}</td>
-                    <td className="tabular p-3">
-                      <Money amount={row.principal} currency={row.currency} withCurrency={false} />
-                    </td>
-                    <td className="tabular p-3 font-medium">
-                      <Money
-                        amount={row.outstanding}
-                        currency={row.currency}
-                        withCurrency={false}
-                      />
-                    </td>
-                    <td className="tabular p-3">
-                      {row.nextDueDate === null ? (
-                        <span className="text-text-tertiary">—</span>
-                      ) : (
-                        <>
-                          {formatDate(row.nextDueDate)}
-                          {row.isOverdue && <span className="ml-2 text-danger">kechikkan</span>}
-                        </>
-                      )}
-                    </td>
-                    <td className="p-3">
-                      <Badge tone={CONTRACT_STATUS_TONE[row.status] ?? 'muted'}>
-                        {CONTRACT_STATUS_LABEL[row.status] ?? row.status}
-                      </Badge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
+      {contracts.isSuccess && rows.length > 0 && (
+        <DataList<InstallmentSummaryDto>
+          label="Nasiya shartnomalari"
+          rows={rows}
+          rowKey={(row) => row.id}
+          onRowClick={(row) => {
+            router.push(`/installments/${row.id}`);
+          }}
+          /**
+           * Kechikkan shartnoma holatidan qat'i nazar qizil chekka
+           * oladi: ro'yxatda uni birinchi bo'lib ko'rish kerak.
+           */
+          accent={(row) => (row.isOverdue ? 'danger' : CONTRACT_STATUS_TONE[row.status])}
+          columns={[
+            {
+              header: 'Mijoz',
+              mobile: 'primary',
+              cell: (row) => row.customerName ?? '—',
+            },
+            {
+              header: 'Savdo',
+              mobile: 'secondary',
+              className: 'w-32',
+              cell: (row) => row.saleNumber ?? '—',
+            },
+            {
+              header: 'Qarz',
+              numeric: true,
+              className: 'w-36',
+              cell: (row) => (
+                <Money amount={row.principal} currency={row.currency} withCurrency={false} />
+              ),
+            },
+            {
+              header: 'Qoldiq',
+              mobile: 'amount',
+              numeric: true,
+              className: 'w-36',
+              cell: (row) => (
+                <Money amount={row.outstanding} currency={row.currency} withCurrency={false} />
+              ),
+            },
+            {
+              header: 'Keyingi to‘lov',
+              className: 'w-44',
+              cell: (row) =>
+                row.nextDueDate === null ? (
+                  <span className="text-text-tertiary">—</span>
+                ) : (
+                  <span className="tabular">
+                    {formatDate(row.nextDueDate)}
+                    {row.isOverdue && <span className="ml-2 text-danger">kechikkan</span>}
+                  </span>
+                ),
+            },
+            {
+              header: 'Holat',
+              mobile: 'status',
+              className: 'w-40',
+              cell: (row) => (
+                <Badge tone={row.isOverdue ? 'danger' : (CONTRACT_STATUS_TONE[row.status] ?? 'muted')}>
+                  {row.isOverdue
+                    ? 'Muddati o‘tgan'
+                    : (CONTRACT_STATUS_LABEL[row.status] ?? row.status)}
+                </Badge>
+              ),
+            },
+          ]}
+        />
+      )}
 
       {contracts.data?.hasMore === true && (
         <p className="m-0 text-sm text-text-tertiary">

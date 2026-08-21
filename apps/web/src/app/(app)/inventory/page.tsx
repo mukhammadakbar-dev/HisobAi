@@ -1,6 +1,7 @@
 'use client';
 
 import { InventoryStatus } from '@hisobai/contracts';
+import type { InventoryBatchDto, InventoryItemDto } from '@hisobai/contracts';
 import { PackagePlus } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -9,6 +10,7 @@ import { useState } from 'react';
 import { Money } from '../../../components/money/money';
 import { EmptyState, ErrorState, TableSkeleton } from '../../../components/states';
 import { Badge, Card, Input, Select } from '../../../components/ui';
+import { DataList } from '../../../components/ui/data-list';
 import { useCurrentUser } from '../../../features/auth/queries';
 import { useBatches, useInventoryItems } from '../../../features/inventory/queries';
 import { formatDateTime } from '../../../lib/format';
@@ -131,48 +133,64 @@ export default function InventoryPage() {
       )}
 
       {rows.length > 0 && (
-        <Card className="overflow-x-auto p-0">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-border-default text-left text-text-secondary">
-                <th className="p-3 font-medium">Mahsulot</th>
-                <th className="p-3 font-medium">Identifikator</th>
-                <th className="p-3 font-medium">Holat</th>
-                {showCost && <th className="p-3 text-right font-medium">Tannarx</th>}
-                <th className="p-3 font-medium">Qabul</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((item) => (
-                <tr key={item.id} className="border-b border-border-default last:border-0">
-                  <td className="p-3">
-                    <Link
-                      href={`/inventory/${item.id}`}
-                      className="font-medium text-link hover:underline"
-                    >
-                      {item.product.displayName}
-                    </Link>
-                  </td>
-                  <td className="tabular p-3 text-text-secondary">
-                    {item.imei1 ?? item.serialNumber ?? '—'}
-                    {item.imei2 && <div className="text-text-tertiary">{item.imei2}</div>}
-                  </td>
-                  <td className="p-3">
-                    <Badge tone={INVENTORY_STATUS_TONE[item.status] ?? 'muted'}>
-                      {INVENTORY_STATUS_LABEL[item.status]}
-                    </Badge>
-                  </td>
-                  {showCost && (
-                    <td className="p-3 text-right">
+        <DataList<InventoryItemDto>
+          label="Ombor birliklari"
+          rows={rows}
+          rowKey={(item) => item.id}
+          onRowClick={(item) => {
+            router.push(`/inventory/${item.id}`);
+          }}
+          accent={(item) => INVENTORY_STATUS_TONE[item.status]}
+          columns={[
+            {
+              header: 'Mahsulot',
+              mobile: 'primary',
+              cell: (item) => item.product.displayName,
+            },
+            {
+              header: 'Identifikator',
+              mobile: 'secondary',
+              className: 'w-56',
+              cell: (item) => (
+                <>
+                  {item.imei1 ?? item.serialNumber ?? '—'}
+                  {item.imei2 && <span className="block text-text-tertiary">{item.imei2}</span>}
+                </>
+              ),
+            },
+            {
+              header: 'Holat',
+              mobile: 'status',
+              className: 'w-36',
+              cell: (item) => (
+                <Badge tone={INVENTORY_STATUS_TONE[item.status] ?? 'muted'}>
+                  {INVENTORY_STATUS_LABEL[item.status]}
+                </Badge>
+              ),
+            },
+            // Tannarx faqat ruxsati borga ko'rinadi (`PERMISSIONS.md`)
+            ...(showCost
+              ? [
+                  {
+                    header: 'Tannarx',
+                    mobile: 'amount' as const,
+                    numeric: true,
+                    className: 'w-40',
+                    cell: (item: InventoryItemDto) => (
                       <Money amount={item.costPrice} currency={item.costCurrency} />
-                    </td>
-                  )}
-                  <td className="p-3 text-text-secondary">{formatDateTime(item.receivedAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+                    ),
+                  },
+                ]
+              : []),
+            {
+              header: 'Qabul',
+              className: 'w-48',
+              cell: (item) => (
+                <span className="text-text-secondary">{formatDateTime(item.receivedAt)}</span>
+              ),
+            },
+          ]}
+        />
       )}
 
       <section className="flex flex-col gap-3">
@@ -203,34 +221,45 @@ export default function InventoryPage() {
         )}
 
         {batchRows.length > 0 && (
-          <Card className="overflow-x-auto p-0">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-border-default text-left text-text-secondary">
-                  <th className="p-3 font-medium">Mahsulot</th>
-                  <th className="p-3 text-right font-medium">Qoldiq</th>
-                  {showCost && <th className="p-3 text-right font-medium">Donasiga</th>}
-                  <th className="p-3 font-medium">Qabul</th>
-                </tr>
-              </thead>
-              <tbody>
-                {batchRows.map((batch) => (
-                  <tr key={batch.id} className="border-b border-border-default last:border-0">
-                    <td className="p-3">{batch.product.displayName}</td>
-                    <td className="tabular p-3 text-right">
-                      {batch.quantityRemaining} / {batch.quantityReceived}
-                    </td>
-                    {showCost && (
-                      <td className="p-3 text-right">
+          <DataList<InventoryBatchDto>
+            label="Mahsulot partiyalari"
+            rows={batchRows}
+            rowKey={(batch) => batch.id}
+            columns={[
+              {
+                header: 'Mahsulot',
+                mobile: 'primary',
+                cell: (batch) => batch.product.displayName,
+              },
+              {
+                header: 'Qoldiq',
+                mobile: 'amount',
+                numeric: true,
+                className: 'w-36',
+                cell: (batch) => `${batch.quantityRemaining} / ${batch.quantityReceived}`,
+              },
+              ...(showCost
+                ? [
+                    {
+                      header: 'Donasiga',
+                      mobile: 'secondary' as const,
+                      numeric: true,
+                      className: 'w-40',
+                      cell: (batch: InventoryBatchDto) => (
                         <Money amount={batch.unitCost} currency={batch.costCurrency} />
-                      </td>
-                    )}
-                    <td className="p-3 text-text-secondary">{formatDateTime(batch.receivedAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
+                      ),
+                    },
+                  ]
+                : []),
+              {
+                header: 'Qabul',
+                className: 'w-48',
+                cell: (batch) => (
+                  <span className="text-text-secondary">{formatDateTime(batch.receivedAt)}</span>
+                ),
+              },
+            ]}
+          />
         )}
       </section>
     </div>

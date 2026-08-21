@@ -1,11 +1,14 @@
 'use client';
 
+import type { ProductDto } from '@hisobai/contracts';
 import { PackagePlus, Plus } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { EmptyState, ErrorState, TableSkeleton } from '../../../components/states';
 import { Badge, Card, Input, Select } from '../../../components/ui';
+import { DataList } from '../../../components/ui/data-list';
 import { Money } from '../../../components/money/money';
 import { useBrands, useCategories, useProducts } from '../../../features/catalog/queries';
 import { PRODUCT_TYPE_LABEL } from '../../../lib/labels';
@@ -18,6 +21,7 @@ import { PRODUCT_TYPE_LABEL } from '../../../lib/labels';
  * har harfda jadval bo'shab, "topilmadi" bo'lib ko'rinmasin.
  */
 export default function ProductsPage() {
+  const router = useRouter();
   const [q, setQ] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [brandId, setBrandId] = useState('');
@@ -171,48 +175,57 @@ export default function ProductsPage() {
       )}
 
       {rows.length > 0 && (
-        <Card className="overflow-x-auto p-0">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-border-default text-left text-text-secondary">
-                <th className="p-3 font-medium">Nomi</th>
-                <th className="p-3 font-medium">Turi</th>
-                <th className="p-3 text-right font-medium">Qoldiq</th>
-                <th className="p-3 text-right font-medium">Tavsiya narxi</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((product) => (
-                <tr key={product.id} className="border-b border-border-default last:border-0">
-                  <td className="p-3">
-                    <Link
-                      href={`/products/${product.id}`}
-                      className="font-medium text-link hover:underline"
-                    >
-                      {product.displayName}
-                    </Link>
-                    <div className="text-text-tertiary">
-                      {product.categoryName}
-                      {!product.isActive && ' · arxivda'}
-                    </div>
-                  </td>
-                  <td className="p-3 text-text-secondary">{PRODUCT_TYPE_LABEL[product.type]}</td>
-                  <td className="p-3 text-right">
-                    <span className="tabular">{product.stock.available}</span>
-                    {product.stock.isLowStock && (
-                      <span className="ml-2">
-                        <Badge tone="warning">Kam qoldiq</Badge>
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-3 text-right">
-                    <Money amount={product.suggestedPrice} currency={product.currency} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+        <DataList<ProductDto>
+          label="Katalog"
+          rows={rows}
+          rowKey={(product) => product.id}
+          onRowClick={(product) => {
+            router.push(`/products/${product.id}`);
+          }}
+          accent={(product) => {
+            if (!product.isActive) return 'muted';
+            return product.stock.isLowStock ? 'warning' : undefined;
+          }}
+          columns={[
+            {
+              header: 'Nomi',
+              mobile: 'primary',
+              cell: (product) => product.displayName,
+            },
+            {
+              header: 'Turi',
+              mobile: 'secondary',
+              className: 'w-40',
+              cell: (product) => (
+                <>
+                  {product.categoryName} · {PRODUCT_TYPE_LABEL[product.type]}
+                  {!product.isActive && ' · arxivda'}
+                </>
+              ),
+            },
+            {
+              header: 'Qoldiq',
+              mobile: 'status',
+              numeric: true,
+              className: 'w-40',
+              cell: (product) => (
+                <span className="inline-flex items-center gap-2">
+                  <span className="tabular">{product.stock.available} dona</span>
+                  {product.stock.isLowStock && <Badge tone="warning">Kam qoldiq</Badge>}
+                </span>
+              ),
+            },
+            {
+              header: 'Tavsiya narxi',
+              mobile: 'amount',
+              numeric: true,
+              className: 'w-44',
+              cell: (product) => (
+                <Money amount={product.suggestedPrice} currency={product.currency} />
+              ),
+            },
+          ]}
+        />
       )}
 
       {products.data?.hasMore && (
