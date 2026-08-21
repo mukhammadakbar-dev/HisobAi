@@ -1,16 +1,19 @@
 'use client';
 
-import { ContractStatus, ScheduleStatus } from '@hisobai/contracts';
+import { ContractStatus } from '@hisobai/contracts';
 import type { InstallmentContractDto } from '@hisobai/contracts';
 import Link from 'next/link';
+import { useState } from 'react';
 
 import { Money } from '../../../components/money/money';
 import { Badge, Card } from '../../../components/ui';
+import { Tabs } from '../../../components/ui/tabs';
 import { formatDate } from '../../../lib/format';
 import { CONTRACT_STATUS_LABEL, CONTRACT_STATUS_TONE } from '../../../lib/labels';
 import { ContractActions } from './contract-actions';
 import { ContractDocuments } from './contract-documents';
 import { PaymentHistory } from './payment-history';
+import { ScheduleTable } from './schedule-table';
 
 /**
  * Shartnoma kartasi (§9).
@@ -19,11 +22,19 @@ import { PaymentHistory } from './payment-history';
  * savolga javob beradigan yagona joy. Kechikkan qatorlar **belgilanadi,
  * lekin jarima yozilmaydi** (§9.9): kechikish faqat ogohlantirish.
  *
+ * Xulosa va amallar bo'limlardan TASHQARIDA turadi, jadval / tarix /
+ * hujjatlar esa bo'limlarda. Sabab: birinchi ikkitasi har kirishda kerak,
+ * qolgan uchtasi esa har biri o'z so'rovini olib keladi — ularni birga
+ * chizish sahifani uch so'rovga aylantirardi. Endi ochilishda bitta.
+ *
  * Qarz qoldig'i serverdan keladi va **hisoblanadi** (`outstanding`) —
  * ekranda qayta hisoblanmaydi, aks holda ikki manba paydo bo'lardi.
  */
+type Tab = 'schedule' | 'history' | 'documents';
+
 export function ContractCard({ contract }: { contract: InstallmentContractDto }) {
   const overdueCount = contract.schedules.filter((schedule) => schedule.isOverdue).length;
+  const [tab, setTab] = useState<Tab>('schedule');
 
   return (
     <div className="flex flex-col gap-4">
@@ -85,75 +96,54 @@ export function ContractCard({ contract }: { contract: InstallmentContractDto })
         </div>
       </Card>
 
-      <Card className="flex flex-col gap-3 p-0">
-        <h2 className="m-0 px-4 pt-4 text-lg font-semibold">To‘lov jadvali</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-border-default text-left text-text-secondary">
-                <th className="p-3 font-medium">№</th>
-                <th className="p-3 font-medium">Muddat</th>
-                <th className="p-3 font-medium">Summa</th>
-                <th className="p-3 font-medium">To‘langan</th>
-                <th className="p-3 font-medium">Holat</th>
-              </tr>
-            </thead>
-            <tbody>
-              {contract.schedules.map((schedule) => (
-                <tr key={schedule.id} className="border-b border-border-default last:border-0">
-                  <td className="tabular p-3">{schedule.sequence}</td>
-                  <td className="tabular p-3">
-                    {formatDate(schedule.dueDate)}
-                    {/* §9.8 — kechikish saqlanmaydi, sanadan hisoblanadi */}
-                    {schedule.isOverdue && <span className="ml-2 text-danger">kechikkan</span>}
-                  </td>
-                  <td className="tabular p-3">
-                    <Money
-                      amount={schedule.amountDue}
-                      currency={contract.currency}
-                      withCurrency={false}
-                    />
-                  </td>
-                  <td className="tabular p-3 text-text-secondary">
-                    <Money
-                      amount={schedule.amountPaid}
-                      currency={contract.currency}
-                      withCurrency={false}
-                    />
-                  </td>
-                  <td className="p-3">
-                    <Badge tone={SCHEDULE_TONE[schedule.status]}>
-                      {SCHEDULE_LABEL[schedule.status]}
-                    </Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
+      {/*
+        Amallar bo'lim ortiga YASHIRILMAYDI: to'lov qabul qilish — bu ekran
+        ochilishining asosiy sababi va kunlik ish. Uni bo'lim ostiga qo'yish
+        har bir to'lovga bitta ortiqcha bosish qo'shardi.
+      */}
       {contract.status === ContractStatus.ACTIVE && <ContractActions contract={contract} />}
 
-      <ContractDocuments contract={contract} />
+      <Tabs
+        items={[
+          /*
+            Faqat "Jadval" da son bor — u yuklangan shartnoma DTO'sida
+            allaqachon mavjud. To'lovlar va hujjatlar soni esa o'sha
+            komponentlarning O'Z so'rovlari ichida: ularni bu yerga
+            ko'tarish ikkala so'rovni sahifa ochilganda ham yuborishni
+            anglatardi — aynan shu xarajatni bo'limlar bartaraf qilyapti.
+            `getQueryData` bilan "arzon" o'qish ham yaramaydi: u obuna
+            bo'lmaydi, ya'ni son birinchi kirishda bo'sh, keyin eskirgan
+            bo'lardi. Ba'zan noto'g'ri son — sonsizdan yomon.
+          */
+          { id: 'schedule', label: 'Jadval', badge: contract.schedules.length },
+          { id: 'history', label: 'To‘lovlar tarixi' },
+          { id: 'documents', label: 'Hujjatlar' },
+        ]}
+        active={tab}
+        onChange={(id) => {
+          setTab(id as Tab);
+        }}
+      />
 
-      <PaymentHistory contractId={contract.id} />
+      {/*
+        Panel almashganda oldingisi unmount bo'ladi va o'z holatini
+        yo'qotadi. Bu qabul qilingan: `staleTime` 60 s, ya'ni qaytib
+        kelganda so'rov qayta yuborilmaydi va skeleton ko'rinmaydi.
+        `PaymentHistory` dagi `idempotencyKey` ning qayta yasalishi
+        XAVFSIZ: kalit faqat yuborishda ishlatiladi — yuborilmagan bo'lsa
+        serverga umuman bormagan, yuborilgan bo'lsa `onSuccess` panelni
+        allaqachon yopgan. Ya'ni takroriy to'lov oynasi ochilmaydi.
+      */}
+      {tab === 'schedule' && (
+        <ScheduleTable schedules={contract.schedules} currency={contract.currency} />
+      )}
+
+      {tab === 'history' && <PaymentHistory contractId={contract.id} />}
+
+      {tab === 'documents' && <ContractDocuments contract={contract} />}
     </div>
   );
 }
-
-/** §9.8 — "muddati o'tgan" holat sifatida yo'q; u alohida belgi. */
-const SCHEDULE_LABEL: Record<ScheduleStatus, string> = {
-  [ScheduleStatus.UNPAID]: 'To‘lanmagan',
-  [ScheduleStatus.PARTIAL]: 'Qisman',
-  [ScheduleStatus.PAID]: 'To‘langan',
-};
-
-const SCHEDULE_TONE: Record<ScheduleStatus, 'muted' | 'warning' | 'success'> = {
-  [ScheduleStatus.UNPAID]: 'muted',
-  [ScheduleStatus.PARTIAL]: 'warning',
-  [ScheduleStatus.PAID]: 'success',
-};
 
 function Row({ label, value, href }: { label: string; value: string; href?: string }) {
   return (

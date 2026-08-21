@@ -10,6 +10,7 @@ import {
   ProductType,
   ReversalReason,
   SaleKind,
+  ScheduleStatus,
   SaleStatus,
   StockMovementType,
 } from '@hisobai/contracts';
@@ -116,6 +117,19 @@ export const CONTRACT_STATUS_TONE: Record<string, 'success' | 'muted' | 'warning
   [ContractStatus.ACTIVE]: 'success',
   [ContractStatus.CLOSED]: 'muted',
   [ContractStatus.CANCELLED]: 'warning',
+};
+
+/** §9.8 — "muddati o'tgan" holat sifatida yo'q; u alohida belgi. */
+export const SCHEDULE_LABEL: Record<ScheduleStatus, string> = {
+  [ScheduleStatus.UNPAID]: 'To‘lanmagan',
+  [ScheduleStatus.PARTIAL]: 'Qisman',
+  [ScheduleStatus.PAID]: 'To‘langan',
+};
+
+export const SCHEDULE_TONE: Record<ScheduleStatus, 'muted' | 'warning' | 'success'> = {
+  [ScheduleStatus.UNPAID]: 'muted',
+  [ScheduleStatus.PARTIAL]: 'warning',
+  [ScheduleStatus.PAID]: 'success',
 };
 
 // ──────────────────────────────── To'lovlar (§10) ────────────────────────────────
