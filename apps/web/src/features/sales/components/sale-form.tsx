@@ -52,6 +52,7 @@ import {
 } from '../../installments/components/installment-plan-panel';
 import { PaymentsPanel, emptyPaymentRow, remainingAmount } from './payments-panel';
 import type { PaymentRow } from './payments-panel';
+import { randomUuid } from '../../../lib/uuid';
 
 /**
  * Savdo formasi — 5-bosqichning eng murakkab ekrani (`FRONTEND.md` §14).
@@ -140,7 +141,7 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
   const [issues, setIssues] = useState<Record<string, string>>({});
   const [dirty, setDirty] = useState(false);
   // `API.md` §4.2 — kalit forma ochilganda yaratiladi, qayta bosishda o'zgarmaydi
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const [idempotencyKey] = useState(() => randomUuid());
 
   const activeAccounts = (accounts.data ?? []).filter((account) => account.isActive);
   const storeRate = todayRate.data?.rate?.storeRate ?? null;

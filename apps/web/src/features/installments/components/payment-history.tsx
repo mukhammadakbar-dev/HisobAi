@@ -14,6 +14,7 @@ import {
   PAYMENT_STATUS_TONE,
 } from '../../../lib/labels';
 import { useContractPayments, usePaymentAction } from '../queries';
+import { randomUuid } from '../../../lib/uuid';
 
 /**
  * To'lovlar tarixi va o'tkazmani hal qilish (§12).
@@ -31,7 +32,7 @@ export function PaymentHistory({ contractId }: { contractId: string }) {
   const action = usePaymentAction(contractId);
   const [reasonFor, setReasonFor] = useState<string | null>(null);
   const [reason, setReason] = useState('');
-  const idempotencyKey = useMemo(() => crypto.randomUUID(), [reasonFor]);
+  const idempotencyKey = useMemo(() => randomUuid(), [reasonFor]);
 
   if (payments.isPending) {
     return (

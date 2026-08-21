@@ -15,6 +15,7 @@ import { Button, Card, Field, Input, Select } from '../../../components/ui';
 import { FormError } from '../../auth/components/form-error';
 import { REVERSAL_REASON_LABEL } from '../../../lib/labels';
 import { useCancelSale, useReturnSale } from '../queries';
+import { randomUuid } from '../../../lib/uuid';
 
 /**
  * Qaytarish va bekor qilish paneli (§8, §16.5).
@@ -124,7 +125,7 @@ function ActionChoice({
  */
 function ReturnForm({ sale, onClose }: { sale: SaleDto; onClose: () => void }) {
   const returnSale = useReturnSale(sale.id);
-  const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
+  const idempotencyKey = useMemo(() => randomUuid(), []);
 
   const returnable = sale.items
     .map((item) => ({ item, remaining: item.quantity - item.returnedQuantity }))
@@ -241,7 +242,7 @@ function ReturnForm({ sale, onClose }: { sale: SaleDto; onClose: () => void }) {
  */
 function CancelForm({ sale, onClose }: { sale: SaleDto; onClose: () => void }) {
   const cancelSale = useCancelSale(sale.id);
-  const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
+  const idempotencyKey = useMemo(() => randomUuid(), []);
 
   const [reason, setReason] = useState<ReversalReason>(ReversalReason.ENTRY_ERROR);
   const [note, setNote] = useState('');

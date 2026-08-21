@@ -12,6 +12,7 @@ import { ApiError } from '../../../lib/api-error';
 import { CASH_DIRECTION_LABEL } from '../../../lib/labels';
 import { errorMessage } from '../../../lib/messages';
 import { useCashAccounts, useCashCategories, useCreateCashEntry } from '../queries';
+import { randomUuid } from '../../../lib/uuid';
 
 /**
  * Qo'lda kirim/chiqim (§11.9).
@@ -38,7 +39,7 @@ export function CashEntryForm() {
   const [note, setNote] = useState('');
   const [issues, setIssues] = useState<Record<string, string>>({});
   // `API.md` §4.2 — kalit forma ochilganda yaratiladi
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const [idempotencyKey] = useState(() => randomUuid());
 
   if (accounts.isPending) {
     return (

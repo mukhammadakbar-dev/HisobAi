@@ -8,6 +8,7 @@ import { Money } from '../../../components/money/money';
 import { MoneyInput } from '../../../components/money/money-input';
 import { Badge, Button, Field, Select } from '../../../components/ui';
 import { PAYMENT_METHOD_LABEL } from '../../../lib/labels';
+import { randomUuid } from '../../../lib/uuid';
 
 /**
  * To'lovlar paneli (§7.1, §17.10).
@@ -36,7 +37,7 @@ export interface PaymentRow {
 
 export function emptyPaymentRow(): PaymentRow {
   return {
-    key: crypto.randomUUID(),
+    key: randomUuid(),
     method: PaymentMethod.CASH,
     cashAccountId: '',
     amount: '',

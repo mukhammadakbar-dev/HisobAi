@@ -10,6 +10,7 @@ import { MoneyInput } from '../../../components/money/money-input';
 import { Badge, Button, Field, Input, Select } from '../../../components/ui';
 import { useBatches, useInventoryItems } from '../../inventory/queries';
 import { Calculator } from './calculator';
+import { randomUuid } from '../../../lib/uuid';
 
 /**
  * Savat qatori (§7.11).
@@ -38,7 +39,7 @@ export interface CartRow {
 
 export function emptyCartRow(): CartRow {
   return {
-    key: crypto.randomUUID(),
+    key: randomUuid(),
     productId: '',
     inventoryItemId: '',
     batchId: '',

@@ -12,6 +12,7 @@ import { Badge, Button, Card, Field, Input, Select } from '../../../components/u
 import { CASH_ACCOUNT_KIND_LABEL } from '../../../lib/labels';
 import { errorMessage } from '../../../lib/messages';
 import { useCashBalances, useCreateCashAccount, useOpeningBalance } from '../queries';
+import { randomUuid } from '../../../lib/uuid';
 
 /**
  * Kassa hisoblari va qoldiqlari (§11.1–§11.4).
@@ -225,7 +226,7 @@ function OpeningBalanceForm({ account, onDone }: { account: CashBalanceDto; onDo
   const opening = useOpeningBalance();
   const [amount, setAmount] = useState('');
   // `API.md` §4.2 — kalit forma ochilganda; qayta bosish ikkinchi qoldiq yaratmaydi
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const [idempotencyKey] = useState(() => randomUuid());
 
   return (
     <form

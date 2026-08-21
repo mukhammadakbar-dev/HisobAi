@@ -26,6 +26,7 @@ import { INVENTORY_STATUS_LABEL } from '../../../lib/labels';
 import { errorMessage } from '../../../lib/messages';
 import { useProducts } from '../../catalog/queries';
 import { useReceiveInventory } from '../queries';
+import { randomUuid } from '../../../lib/uuid';
 
 /**
  * Qabul qilish formasi (§5.11).
@@ -107,7 +108,7 @@ export function ReceiveForm({ initialProductId }: { initialProductId?: string })
   const [issues, setIssues] = useState<Record<string, string>>({});
   const [result, setResult] = useState<ReceiveResultDto | null>(null);
   // `API.md` §4.2 — kalit forma ochilganda yaratiladi, qayta yuborishda o'zgarmaydi
-  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
+  const [idempotencyKey, setIdempotencyKey] = useState(() => randomUuid());
 
   const product = products.data?.data.find((candidate) => candidate.id === productId);
   const currency: Currency = product?.currency ?? 'UZS';
@@ -186,7 +187,7 @@ export function ReceiveForm({ initialProductId }: { initialProductId?: string })
           setNote('');
           // Yangi qabul — yangi kalit; aks holda ikkinchi qabul
           // birinchisining saqlangan javobini olardi
-          setIdempotencyKey(crypto.randomUUID());
+          setIdempotencyKey(randomUuid());
         },
         onError: (error) => {
           setIssues(serverIssues(error));

@@ -13,6 +13,7 @@ import { useTodayRate } from '../../exchange-rates/queries';
 import { PAYMENT_METHOD_LABEL } from '../../../lib/labels';
 import { useCloseContract, useCreatePayment, useRebuildSchedule } from '../queries';
 import { ScheduleRowsEditor } from './schedule-rows-editor';
+import { randomUuid } from '../../../lib/uuid';
 
 type Mode = 'payment' | 'rebuild' | 'close' | null;
 
@@ -128,7 +129,7 @@ function PaymentForm({
   const accounts = useCashAccounts();
   const todayRate = useTodayRate();
   const createPayment = useCreatePayment(contract.id);
-  const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
+  const idempotencyKey = useMemo(() => randomUuid(), []);
 
   const active = (accounts.data ?? []).filter((account) => account.isActive);
   const [accountId, setAccountId] = useState(() => active[0]?.id ?? '');
@@ -270,7 +271,7 @@ function RebuildForm({
   onClose: () => void;
 }) {
   const rebuild = useRebuildSchedule(contract.id);
-  const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
+  const idempotencyKey = useMemo(() => randomUuid(), []);
 
   const replaceable = contract.schedules.filter(
     (schedule) => schedule.status === ScheduleStatus.UNPAID,
@@ -380,7 +381,7 @@ function CloseForm({
 }) {
   const accounts = useCashAccounts();
   const close = useCloseContract(contract.id);
-  const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
+  const idempotencyKey = useMemo(() => randomUuid(), []);
 
   const active = (accounts.data ?? []).filter((account) => account.isActive);
   const [accountId, setAccountId] = useState(() => active[0]?.id ?? '');
