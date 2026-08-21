@@ -1,6 +1,6 @@
 'use client';
 
-import { formatMoneyWithCurrency } from '@hisobai/contracts';
+import { formatMoneyWithCurrency, formatPhone } from '@hisobai/contracts';
 import type {
   Currency,
   DashboardActivityDto,
@@ -8,6 +8,7 @@ import type {
   DashboardDto,
   DashboardDuePaymentDto,
   DashboardInventoryDto,
+  DashboardLowStockDto,
   DashboardOverdueDto,
   DashboardSalesDto,
 } from '@hisobai/contracts';
@@ -98,7 +99,11 @@ function DashboardBlocks({ data, canSeeCash }: { data: DashboardDto; canSeeCash:
 
       {/* §14.4 — pastroqda, lekin dashboard'da qoladi */}
       <div className="grid gap-4 md:grid-cols-2">
-        <OverdueBlock overdue={data.overdue} currency={data.currency} />
+        <AttentionBlock
+          overdue={data.overdue}
+          lowStock={data.inventory.lowStock}
+          currency={data.currency}
+        />
         <InventoryBlock inventory={data.inventory} currency={data.currency} />
       </div>
 
@@ -145,12 +150,27 @@ function DuePaymentsBlock({ payments }: { payments: DashboardDuePaymentDto[] }) 
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
         {payments.slice(0, 5).map((payment) => (
           <li key={payment.installmentId} className="flex items-center justify-between gap-2">
-            <Link
-              href={`/customers/${payment.customerId}`}
-              className="min-w-0 truncate text-sm font-medium text-link"
-            >
-              {payment.customerName}
-            </Link>
+            <span className="flex min-w-0 flex-col">
+              <Link
+                href={`/customers/${payment.customerId}`}
+                className="truncate text-sm font-medium text-link"
+              >
+                {payment.customerName}
+              </Link>
+              {/*
+                Raqam `tel:` havolasi: eslatma ko'rganda ega telefonni
+                qo'lda terib o'tirmaydi, bir bosishda qo'ng'iroq qiladi.
+                Bu maydon serverdan kelardi-yu, hech qayerda ko'rsatilmasdi.
+              */}
+              {payment.phone !== '' && (
+                <a
+                  href={`tel:${payment.phone}`}
+                  className="tabular truncate text-xs text-text-tertiary hover:text-link"
+                >
+                  {formatPhone(payment.phone)}
+                </a>
+              )}
+            </span>
             <span className="flex shrink-0 items-center gap-2 text-sm">
               {formatMoneyWithCurrency(payment.amount, payment.currency)}
               <Badge tone={isToday(payment.dueDate) ? 'warning' : 'info'}>
@@ -193,33 +213,91 @@ function CashBlock({ accounts }: { accounts: DashboardCashAccountDto[] }) {
 
 // ───────────────────────────── §14.4 bloklari ─────────────────────────────
 
-function OverdueBlock({ overdue, currency }: { overdue: DashboardOverdueDto; currency: Currency }) {
-  if (overdue.customersCount === 0) {
+/** Bitta ustuvor navbatdagi qator — qarz ham, ombor ham shu shaklga tushadi. */
+interface AttentionItem {
+  key: string;
+  href: string;
+  title: string;
+  /** Faqat qarzda bo'ladi; ombor qatorida pul yo'q. */
+  amount?: string;
+  badge: string;
+  tone: 'danger' | 'warning';
+}
+
+/** Telefonda kartani cheksiz cho'zmaslik uchun (eng yomon holat 5 + 5). */
+const ATTENTION_LIMIT = 6;
+
+/**
+ * §14.4 — "E'tibor talab qiladi".
+ *
+ * Ilgari bu ikkita alohida karta edi: "Muddati o'tgan qarzlar" va
+ * "Ombor" ichidagi kam qoldiq ro'yxati. Ega esa ikkalasini alohida
+ * o'qib, o'zi ustuvorlik qo'yishi kerak edi. Endi bitta navbat, va
+ * TARTIBNING O'ZI ustuvorlik: kechikkan pul birinchi, kam qolgan tovar
+ * keyin — birinchisi bugun yo'qotilayotgan pul, ikkinchisi ertaga
+ * yo'qotilishi mumkin bo'lgan savdo.
+ *
+ * Ma'lumot takrorlanmasligi uchun eski `OverdueBlock` olib tashlandi va
+ * kam qoldiq ro'yxati `InventoryBlock` dan chiqarildi.
+ */
+function AttentionBlock({
+  overdue,
+  lowStock,
+  currency,
+}: {
+  overdue: DashboardOverdueDto;
+  lowStock: DashboardLowStockDto[];
+  currency: Currency;
+}) {
+  const items: AttentionItem[] = [
+    ...overdue.top.map((row) => ({
+      key: `debt-${row.customerId}`,
+      href: `/customers/${row.customerId}`,
+      title: row.customerName,
+      amount: formatMoneyWithCurrency(row.amount, currency),
+      badge: `${row.daysOverdue} kun`,
+      tone: 'danger' as const,
+    })),
+    ...lowStock.map((row) => ({
+      key: `stock-${row.productId}`,
+      href: `/products/${row.productId}`,
+      title: row.productName,
+      badge: `${row.quantity} dona`,
+      // Tugagan tovar — kechikkan qarz bilan bir darajada shoshilinch
+      tone: row.quantity === 0 ? ('danger' as const) : ('warning' as const),
+    })),
+  ];
+
+  if (items.length === 0) {
     return (
-      <Block title="Muddati o'tgan qarzlar">
-        <EmptyState title="Muddati o'tgan qarz yo'q." />
+      <Block title="E'tibor talab qiladi">
+        <EmptyState title="Hammasi joyida — kechikkan qarz ham, kam qolgan mahsulot ham yo'q." />
       </Block>
     );
   }
 
   return (
-    <Block title="Muddati o'tgan qarzlar">
-      <p className="m-0 text-2xl font-semibold text-danger">
-        {formatMoneyWithCurrency(overdue.totalAmount, currency)}
-      </p>
-      <p className="m-0 text-sm text-text-secondary">{overdue.customersCount} ta mijoz</p>
+    <Block title="E'tibor talab qiladi" href="/reports/debts" linkLabel="Qarzdorlar">
+      {overdue.customersCount > 0 && (
+        <>
+          <p className="m-0 text-2xl font-semibold text-danger">
+            {formatMoneyWithCurrency(overdue.totalAmount, currency)}
+          </p>
+          <p className="m-0 text-sm text-text-secondary">
+            {overdue.customersCount} ta mijoz kechikkan
+          </p>
+        </>
+      )}
+
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
-        {overdue.top.map((row) => (
-          <li key={row.customerId} className="flex items-center justify-between gap-2">
-            <Link
-              href={`/customers/${row.customerId}`}
-              className="min-w-0 truncate text-sm font-medium text-link"
-            >
-              {row.customerName}
+        {items.slice(0, ATTENTION_LIMIT).map((item) => (
+          <li key={item.key} className="flex items-center justify-between gap-2">
+            <Link href={item.href} className="min-w-0 truncate text-sm font-medium text-link">
+              {item.title}
             </Link>
             <span className="flex shrink-0 items-center gap-2 text-sm">
-              {formatMoneyWithCurrency(row.amount, currency)}
-              <Badge tone="danger">{row.daysOverdue} kun</Badge>
+              {item.amount}
+              <Badge tone={item.tone}>{item.badge}</Badge>
             </span>
           </li>
         ))}
@@ -247,25 +325,11 @@ function InventoryBlock({
           />
         )}
       </dl>
-
-      <h3 className="m-0 text-sm font-semibold text-text-secondary">Kam qolgan mahsulotlar</h3>
-      {inventory.lowStock.length === 0 ? (
-        <p className="m-0 text-sm text-text-tertiary">Hammasi yetarli.</p>
-      ) : (
-        <ul className="m-0 flex list-none flex-col gap-2 p-0">
-          {inventory.lowStock.slice(0, 5).map((row) => (
-            <li key={row.productId} className="flex items-center justify-between gap-2">
-              <Link
-                href={`/products/${row.productId}`}
-                className="min-w-0 truncate text-sm font-medium text-link"
-              >
-                {row.productName}
-              </Link>
-              <Badge tone={row.quantity === 0 ? 'danger' : 'warning'}>{row.quantity} dona</Badge>
-            </li>
-          ))}
-        </ul>
-      )}
+      {/*
+        Kam qolgan mahsulotlar ro'yxati bu yerdan olib tashlandi — u endi
+        "E'tibor talab qiladi" navbatida, kechikkan qarz bilan birga.
+        Bir xil ma'lumot ikki joyda turmasligi kerak.
+      */}
     </Block>
   );
 }
