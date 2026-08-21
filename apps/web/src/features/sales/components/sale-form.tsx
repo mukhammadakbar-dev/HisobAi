@@ -550,19 +550,28 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
         )}
       </Card>
 
-      <Card className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <div className="text-sm text-text-secondary">Savdo summasi</div>
-          <div className="text-2xl font-semibold">
+      {/*
+        Telefonda tugmalar ustma-ust va to'liq kenglikda turadi, `sm:` dan
+        boshlab bir qatorda. `flex-col-reverse` — DOM tartibi saqlanadi
+        (Tab bilan kezish mantiqiy qoladi), lekin ekranda ASOSIY amal
+        tepaga chiqadi: bir qo'lda ishlayotgan sotuvchi bosh barmog'i
+        yetadigan joyda "Tasdiqlash" turadi, tasodifan bosiladigan
+        "O'chirish" esa eng pastda.
+      */}
+      <Card className="flex flex-col gap-4">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-sm text-text-secondary">Savdo summasi</span>
+          <span className="tabular text-2xl font-semibold">
             <Money amount={total} currency={form.currency} />
-          </div>
+          </span>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           {sale && (
             <Button
               type="button"
               variant="danger"
+              className="w-full sm:w-auto"
               disabled={pending || deleteDraft.isPending}
               onClick={() => {
                 // §7.7 — qoralamani o'chirish hech narsaga ta'sir qilmaydi
@@ -578,13 +587,14 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
             </Button>
           )}
 
-          <Button type="submit" disabled={pending}>
+          <Button type="submit" className="w-full sm:w-auto" disabled={pending}>
             {createDraft.isPending || updateDraft.isPending ? 'Saqlanmoqda…' : 'Qoralamani saqlash'}
           </Button>
 
           <Button
             type="button"
             variant="primary"
+            className="w-full sm:w-auto"
             // §17.10 — to'lovlar summasi savdo summasiga teng bo'lmasa
             // tasdiqlanmaydi; §7 — birliksiz qator tasdiqlanmaydi
             disabled={
