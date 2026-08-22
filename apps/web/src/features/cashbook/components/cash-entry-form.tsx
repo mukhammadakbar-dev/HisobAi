@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { MoneyInput } from '../../../components/money/money-input';
 import { ErrorState, TableSkeleton } from '../../../components/states';
 import { Button, Card, Field, Input, Select } from '../../../components/ui';
+import { useToast } from '../../../components/ui/toast';
 import { ApiError } from '../../../lib/api-error';
 import { CASH_DIRECTION_LABEL } from '../../../lib/labels';
 import { errorMessage } from '../../../lib/messages';
@@ -31,6 +32,7 @@ export function CashEntryForm() {
   const accounts = useCashAccounts();
   const categories = useCashCategories();
   const create = useCreateCashEntry();
+  const toast = useToast();
 
   const [direction, setDirection] = useState<CashDirection>(CashDirection.OUT);
   const [accountId, setAccountId] = useState('');
@@ -90,6 +92,7 @@ export function CashEntryForm() {
           { input: parsed.data, idempotencyKey },
           {
             onSuccess: () => {
+              toast.success('Kassa yozuvi saqlandi');
               router.push('/cashbook');
             },
             onError: (error) => {

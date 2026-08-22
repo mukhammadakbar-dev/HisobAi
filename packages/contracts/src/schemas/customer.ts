@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
+import type { CustomerDebtStatus } from '../enums';
 import { normalizePhone } from '../phone';
+import type { Page } from '../pagination';
 import { activeFilter, pageQueryFields } from './common';
 import { fileIdField } from './file';
 
@@ -150,6 +152,8 @@ export const customerQuerySchema = z
     isActive: activeFilter,
     /** §6.9 — belgilangan mijozlarni ajratib ko'rish. */
     isFlagged: z.enum(['true', 'false']).optional(),
+    /** §6.12 kengaytma — "Qarzi bor" filtri, joriy qoldiq bo'yicha. */
+    hasDebt: z.enum(['true', 'false']).optional(),
     sort: z.enum(['fullName', '-fullName', '-createdAt']).default('fullName'),
     ...pageQueryFields,
   })
@@ -167,6 +171,10 @@ export interface CustomerSummaryDto {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  /** §6.12 kengaytma — `CustomerDto.outstandingDebt` bilan bir mantiq. */
+  outstandingDebt: string;
+  /** §9.8 kengaytma — hisoblanadi, saqlanmaydi. Qarz yo'q bo'lsa `NONE`. */
+  debtStatus: CustomerDebtStatus;
 }
 
 export interface CustomerDto extends CustomerSummaryDto {
@@ -181,6 +189,30 @@ export interface CustomerDto extends CustomerSummaryDto {
    * emas — yuklab olish `GET /files/:id` orqali (§15.5).
    */
   passportFileId: string | null;
+  /**
+   * Joriy qarz — mijozning faol nasiya shartnomalari bo'yicha
+   * `outstanding` yig'indisi, **bazaviy valyutada** (`Installments`
+   * modulidan hisoblanadi, §6.12 bilan bir mantiq: ustun emas, so'rov
+   * paytida qayta hisoblanadi). Aylantirish bugungi do'kon kursida —
+   * ombor qiymati bilan bir mantiq (§5.9): qarz o'tmishdagi hodisa
+   * emas, bugungi da'vo. Shartnoma bo'yicha batafsil taqsimot
+   * `GET /installments?customerId=` da.
+   */
+  outstandingDebt: string;
+  /** §9.8 — hisoblanadi, saqlanmaydi. Qarz yo'q bo'lsa `NONE`. */
+  debtStatus: CustomerDebtStatus;
+}
+
+/**
+ * Ro'yxat javobi — `Page` ustiga `totalDebt` qo'shiladi.
+ *
+ * `InstallmentListResponse.overdueCount` bilan bir xil naqsh
+ * (`installment.ts`): son **butun filtrlangan to'plam** bo'yicha,
+ * sahifadagi emas — sarlavhadagi "N ta mijoz · jami qarz ..." banneri
+ * joriy sahifani emas, filtrlangan holatning umumini ko'rsatadi.
+ */
+export interface CustomerListResponse extends Page<CustomerSummaryDto> {
+  totalDebt: string;
 }
 
 /**

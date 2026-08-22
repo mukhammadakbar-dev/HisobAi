@@ -4,7 +4,6 @@ import {
   ErrorCode,
   ExchangeRateSource,
   RateStaleness,
-  computeStoreRate,
   rateStaleness,
 } from '@hisobai/contracts';
 import type {
@@ -23,7 +22,7 @@ import type { Env } from '../config/env';
 import { PrismaService } from '../database/prisma.service';
 import { runWithShopScope } from '../database/shop-context';
 import { ShopsService } from '../shops/shops.service';
-import { CbuRateProvider } from './cbu-rate.provider';
+import { CbuRateProvider, type CbuRate as ProviderCbuRate } from './cbu-rate.provider';
 
 export type SyncOutcome = 'WRITTEN' | 'MANUAL_PRESERVED';
 
@@ -253,7 +252,7 @@ export class ExchangeRatesService {
         );
       }
 
-      const storeRate = computeStoreRate(cbuRate.rate.toString(), shop.storeRateMarkupPercent);
+      const storeRate = cbuRate.rate.toString();
 
       const saved = await tx.shopExchangeRate.update({
         where: { id: before.id },
@@ -341,7 +340,7 @@ export class ExchangeRatesService {
    * (§14.6), shuning uchun HTTP so'rov ichidan ham (interaktiv sync),
    * konteksts CRON'dan ham xavfsiz chaqiriladi.
    */
-  private async fetchAndStoreCbuRate(): Promise<CbuRate> {
+  private async fetchAndStoreCbuRate(): Promise<ProviderCbuRate> {
     const fetched = await this.fetchOrFail();
     const todayDate = today(this.timeZone);
     const calendarDate = fromCalendarDate(todayDate);
@@ -357,7 +356,11 @@ export class ExchangeRatesService {
     });
 
     this.logger.log(`CBU kursi yozildi: ${saved.rate.toString()} (${todayDate})`);
-    return saved;
+    return {
+      rate: fetched.rate,
+      sellRate: fetched.sellRate,
+      date: todayDate,
+    };
   }
 
   /**
@@ -371,7 +374,7 @@ export class ExchangeRatesService {
    * vaqtinchalik).
    */
   private async applyCbuRateToShop(
-    cbuRate: CbuRate,
+    cbuRate: ProviderCbuRate,
     // Ikkita chaqiruvchi ikki xil shakl bilan keladi: `ShopDto` (satr,
     // `API.md` §2.1) va xom Prisma `Shop` (`Decimal`) — shu sabab bu yerda
     // faqat kerakli maydon, ikkalasi ham ishlata oladigan umumiy shaklda.
@@ -391,7 +394,7 @@ export class ExchangeRatesService {
         return { outcome: 'MANUAL_PRESERVED', rate: toDto(existing, cbuRate) };
       }
 
-      const storeRate = computeStoreRate(cbuRate.rate.toString(), shop.storeRateMarkupPercent);
+      const storeRate = cbuRate.sellRate ?? cbuRate.rate;
       const data: Prisma.ShopExchangeRateUncheckedUpdateInput = {
         storeRate: new Prisma.Decimal(storeRate),
         source: ExchangeRateSource.CBU,
@@ -420,7 +423,7 @@ export class ExchangeRatesService {
    * `Retry-After` bilan keladi (`API.md` §9) va §1.5 ga mos — oxirgi
    * ma'lum kurs o'z joyida qoladi, savdo to'xtamaydi.
    */
-  private async fetchOrFail(): Promise<{ rate: string }> {
+  private async fetchOrFail(): Promise<ProviderCbuRate> {
     try {
       return await this.cbu.fetchUsdRate();
     } catch (error) {
@@ -438,7 +441,7 @@ export class ExchangeRatesService {
     context: { actor: RequestUser; ip: string | null } | undefined,
     before: ShopExchangeRate | null,
     after: ShopExchangeRate,
-    cbuRate: CbuRate,
+    cbuRate: ProviderCbuRate | CbuRate,
   ): Promise<void> {
     if (!context) return;
 
@@ -473,15 +476,30 @@ function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function toDto(rate: ShopExchangeRate, cbuRate: CbuRate | null): ExchangeRateDto {
+function toDto(
+  rate: ShopExchangeRate,
+  cbuRate: CbuRate | ProviderCbuRate | null,
+): ExchangeRateDto {
+  const cbuRateStr =
+    cbuRate === null
+      ? null
+      : typeof cbuRate.rate === 'object' && cbuRate.rate !== null
+        ? cbuRate.rate.toString()
+        : String(cbuRate.rate);
+  const fetchedAtIso =
+    cbuRate === null
+      ? null
+      : 'fetchedAt' in cbuRate && cbuRate.fetchedAt instanceof Date
+        ? cbuRate.fetchedAt.toISOString()
+        : new Date().toISOString();
+
   return {
     id: rate.id,
-    // `@db.Date` — UTC bo'yicha o'qiladi, aks holda sana bir kun sakraydi
     date: toCalendarDate(rate.date),
-    cbuRate: cbuRate?.rate.toString() ?? null,
+    cbuRate: cbuRateStr,
     storeRate: rate.storeRate.toString(),
     source: rate.source,
-    fetchedAt: cbuRate?.fetchedAt.toISOString() ?? null,
+    fetchedAt: fetchedAtIso,
     updatedById: rate.updatedById,
     updatedAt: rate.updatedAt.toISOString(),
   };

@@ -47,6 +47,35 @@ export function todayInShopZone(): string {
   return DATE_ONLY.format(new Date());
 }
 
+const UZBEK_MONTHS = [
+  'yanvar',
+  'fevral',
+  'mart',
+  'aprel',
+  'may',
+  'iyun',
+  'iyul',
+  'avgust',
+  'sentabr',
+  'oktabr',
+  'noyabr',
+  'dekabr',
+];
+
+/** `"22-avgust"`, `"1-sentabr"` kabi ko'rinishda formatlaydi. */
+export function formatUzbekDate(isoStr: string | null | undefined): string {
+  if (!isoStr) return '—';
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(isoStr);
+  if (match && match[2] && match[3]) {
+    const day = parseInt(match[3], 10);
+    const monthIdx = parseInt(match[2], 10) - 1;
+    if (monthIdx >= 0 && monthIdx < 12) {
+      return `${day}-${UZBEK_MONTHS[monthIdx]}`;
+    }
+  }
+  return isoStr;
+}
+
 /**
  * `User-Agent` dan o'qiladigan qurilma nomi (§2.7 — "qurilma" ustuni).
  *

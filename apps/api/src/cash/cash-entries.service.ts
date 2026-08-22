@@ -61,24 +61,30 @@ export class CashEntriesService {
     const limit = normalizeLimit(query.limit);
     const occurredAt = dayRangeFilter(query.from, query.to, this.timeZone);
 
-    const rows = await this.prisma.cashEntry.findMany({
-      where: {
-        accountId: query.accountId,
-        direction: query.direction,
-        categoryId: query.categoryId,
-        sourceType: query.sourceType ? { in: query.sourceType } : undefined,
-        ...(occurredAt ? { occurredAt } : {}),
-      },
-      include: ENTRY_INCLUDE,
-      orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
-      ...toPrismaCursor(query.cursor, limit),
-    });
+    const where: Prisma.CashEntryWhereInput = {
+      accountId: query.accountId,
+      direction: query.direction,
+      categoryId: query.categoryId,
+      sourceType: query.sourceType ? { in: query.sourceType } : undefined,
+      ...(occurredAt ? { occurredAt } : {}),
+    };
+
+    const [rows, totalCount] = await Promise.all([
+      this.prisma.cashEntry.findMany({
+        where,
+        include: ENTRY_INCLUDE,
+        orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+        ...toPrismaCursor(query.cursor, limit),
+      }),
+      this.prisma.cashEntry.count({ where }),
+    ]);
 
     const now = new Date();
     return toPage(
       rows.map((row) => toEntryDto(row, this.timeZone, now)),
       limit,
       (dto) => dto.occurredAt,
+      totalCount,
     );
   }
 

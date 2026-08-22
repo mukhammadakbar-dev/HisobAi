@@ -9,6 +9,7 @@ import { useForm } from 'react-hook-form';
 import { Button, Field, Input } from '../../../components/ui';
 import { applyApiFieldErrors, isFieldOwnedError } from '../../../lib/form-errors';
 import { FormError } from '../../auth/components/form-error';
+import { useSyncRateFromCbu } from '../../exchange-rates/queries';
 import { useCreateShop } from '../queries';
 
 /**
@@ -51,6 +52,7 @@ const optionalText = (value: string): string | null => (value === '' ? null : va
 export function ShopSetupForm() {
   const router = useRouter();
   const createShop = useCreateShop();
+  const syncRate = useSyncRateFromCbu();
 
   const {
     register,
@@ -65,9 +67,13 @@ export function ShopSetupForm() {
   const onSubmit = handleSubmit((values) => {
     createShop.mutate(values, {
       onSuccess: () => {
-        // `replace` — "orqaga" tugmasi allaqachon Shop'i bor
-        // foydalanuvchini setup ekraniga qaytarmasin
-        router.replace('/dashboard');
+        syncRate.mutate(undefined, {
+          onSettled: () => {
+            // `replace` — "orqaga" tugmasi allaqachon Shop'i bor
+            // foydalanuvchini setup ekraniga qaytarmasin
+            router.replace('/dashboard');
+          },
+        });
       },
       onError: (error) => {
         applyApiFieldErrors(error, setError, FIELD_NAMES);
@@ -93,17 +99,32 @@ export function ShopSetupForm() {
       </Field>
 
       <Field label="Telefon" htmlFor="phone" error={errors.phone?.message}>
-        <Input
-          id="phone"
-          type="tel"
-          inputMode="tel"
-          autoComplete="tel"
-          {...register('phone', { setValueAs: optionalText })}
-        />
+        <div className="flex min-h-11 w-full rounded-md border border-border-default bg-surface-card">
+          <span className="flex select-none items-center border-r border-border-default px-3 text-text-secondary">
+            +998
+          </span>
+          <input
+            id="phone"
+            inputMode="numeric"
+            maxLength={9}
+            placeholder="90 123 45 67"
+            autoComplete="tel"
+            className="flex-1 bg-transparent px-3 text-base text-text-primary outline-none placeholder:text-text-tertiary"
+            {...register('phone', {
+              setValueAs: (v: string) => {
+                const digits = v.replace(/\D/g, '');
+                return digits === '' ? null : `+998${digits}`;
+              },
+            })}
+            onInput={(e) => {
+              e.currentTarget.value = e.currentTarget.value.replace(/\D/g, '');
+            }}
+          />
+        </div>
       </Field>
 
-      <Button type="submit" variant="primary" disabled={createShop.isPending}>
-        {createShop.isPending ? 'Yaratilmoqda…' : 'Do‘konni yaratish'}
+      <Button type="submit" variant="primary" disabled={createShop.isPending || syncRate.isPending}>
+        {createShop.isPending || syncRate.isPending ? 'Yaratilmoqda…' : 'Do‘konni yaratish'}
       </Button>
     </form>
   );

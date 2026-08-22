@@ -19,9 +19,8 @@ import {
 import type {
   CloseContractInput,
   InstallmentContractDto,
+  InstallmentListResponse,
   InstallmentQuery,
-  InstallmentSummaryDto,
-  Page,
   PaymentDto,
   RebuildScheduleInput,
 } from '@hisobai/contracts';
@@ -52,7 +51,7 @@ export class InstallmentsController {
   @ApiOperation({ summary: 'Shartnomalar (qarzdorlar) ro‘yxati' })
   list(
     @Query(new ZodValidationPipe(installmentQuerySchema)) query: InstallmentQuery,
-  ): Promise<Page<InstallmentSummaryDto>> {
+  ): Promise<InstallmentListResponse> {
     return this.installments.list(query);
   }
 

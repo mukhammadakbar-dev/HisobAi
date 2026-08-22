@@ -3,6 +3,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   UserRole,
   auditQuerySchema,
+  dashboardQuerySchema,
   reportPeriodSchema,
   reportSeriesQuerySchema,
   topProductsQuerySchema,
@@ -11,6 +12,7 @@ import type {
   AuditLogDto,
   AuditQuery,
   DashboardDto,
+  DashboardQuery,
   DebtorsReportDto,
   InventoryValueDto,
   Page,
@@ -51,8 +53,11 @@ export class ReportsController {
   @Get('dashboard')
   @Roles(UserRole.SHOP_ADMIN)
   @ApiOperation({ summary: 'Dashboard — bugungi holat (§14)' })
-  get(@CurrentUser() user: RequestUser): Promise<DashboardDto> {
-    return this.dashboard.get(user);
+  get(
+    @CurrentUser() user: RequestUser,
+    @Query(new ZodValidationPipe(dashboardQuerySchema)) query: DashboardQuery,
+  ): Promise<DashboardDto> {
+    return this.dashboard.get(user, query);
   }
 
   /** §13.3, §13.5 — KPI va oldingi davr bilan solishtiruv. */

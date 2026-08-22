@@ -1,16 +1,24 @@
 'use client';
 
+import { useState } from 'react';
+
 import { Field, Input } from '../../../components/ui';
+import { FilterChip } from '../../../components/ui/filters';
 import type { Period } from '../queries';
 
 /**
- * Davr tanlash (§13.9): kunlik, haftalik, oylik, yillik va ixtiyoriy
+ * Davr tanlash (§13.9): kunlik, haftalik, oylik, o'tgan oy va ixtiyoriy
  * oraliq.
  *
- * Tayyor tugmalar **sanani to'ldiradi**, alohida "rejim" saqlamaydi.
+ * Tayyor chiplar **95% holatda yetadi** — sotuvchi eng ko'p "bugun" yoki
+ * "shu oy" ni tanlaydi. Kalendar shuning uchun doim ochiq turmaydi:
+ * faqat "Oraliq…" bosilganda ko'rinadi, aks holda ekranni band qiladi.
+ *
+ * Tayyor tugma **sanani to'ldiradi**, alohida "rejim" saqlamaydi.
  * Sabab: "oylik" tugmasini bosib, keyin sanani bir kunga surgan
  * foydalanuvchi hali ham oylik rejimdami degan savol tug'ilardi. Bu
- * yerda esa javob aniq — davr har doim ikkita sanadan iborat.
+ * yerda esa javob aniq — davr har doim ikkita sanadan iborat va faol
+ * chip joriy davrga solishtirib topiladi.
  */
 export function PeriodPicker({
   period,
@@ -19,46 +27,66 @@ export function PeriodPicker({
   period: Period;
   onChange: (period: Period) => void;
 }) {
+  const activePreset = PRESETS.find((preset) => {
+    const built = preset.build();
+    return built.from === period.from && built.to === period.to;
+  });
+  const [customOpen, setCustomOpen] = useState(activePreset === undefined);
+
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      <div className="flex flex-wrap gap-1">
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap gap-2">
         {PRESETS.map((preset) => (
-          <button
+          <FilterChip
             key={preset.label}
-            type="button"
+            active={activePreset?.label === preset.label}
+            dismissable={false}
             onClick={() => {
+              setCustomOpen(false);
               onChange(preset.build());
             }}
-            className="inline-flex min-h-11 items-center rounded-md border border-border-default px-3 text-sm font-medium text-text-secondary hover:text-text-primary"
           >
             {preset.label}
-          </button>
+          </FilterChip>
         ))}
+        <FilterChip
+          active={customOpen}
+          dismissable={false}
+          onClick={() => {
+            setCustomOpen((open) => !open);
+          }}
+        >
+          Oraliq…
+        </FilterChip>
       </div>
 
-      <Field label="Boshlanish" htmlFor="period-from">
-        <Input
-          id="period-from"
-          type="date"
-          value={period.from}
-          max={period.to}
-          onChange={(event) => {
-            onChange({ ...period, from: event.target.value });
-          }}
-        />
-      </Field>
+      {customOpen && (
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label="Boshlanish" htmlFor="period-from">
+            <Input
+              id="period-from"
+              type="date"
+              value={period.from}
+              max={period.to}
+              onChange={(event) => {
+                onChange({ ...period, from: event.target.value });
+              }}
+            />
+          </Field>
 
-      <Field label="Tugash" htmlFor="period-to">
-        <Input
-          id="period-to"
-          type="date"
-          value={period.to}
-          min={period.from}
-          onChange={(event) => {
-            onChange({ ...period, to: event.target.value });
-          }}
-        />
-      </Field>
+          <Field label="Tugash" htmlFor="period-to">
+            <Input
+              id="period-to"
+              type="date"
+              value={period.to}
+              min={period.from}
+              onChange={(event) => {
+                onChange({ ...period, to: event.target.value });
+              }}
+            />
+          </Field>
+        </div>
+      )}
     </div>
   );
 }
@@ -81,10 +109,11 @@ export function defaultPeriod(): Period {
 const PRESETS = [
   { label: 'Bugun', build: (): Period => ({ from: iso(new Date()), to: iso(new Date()) }) },
   {
-    label: 'Hafta',
+    label: 'Shu hafta',
     build: (): Period => ({ from: shift(-6), to: iso(new Date()) }),
   },
   { label: 'Shu oy', build: defaultPeriod },
+  { label: 'Oldingi oy', build: previousMonth },
   {
     label: 'Yil',
     build: (): Period => ({
@@ -104,4 +133,15 @@ function shift(days: number): string {
 
 function startOfMonth(date: Date): string {
   return `${iso(date).slice(0, 7)}-01`;
+}
+
+function previousMonth(): Period {
+  const today = new Date();
+  const lastDayOfPreviousMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+  const firstDayOfPreviousMonth = new Date(
+    lastDayOfPreviousMonth.getFullYear(),
+    lastDayOfPreviousMonth.getMonth(),
+    1,
+  );
+  return { from: iso(firstDayOfPreviousMonth), to: iso(lastDayOfPreviousMonth) };
 }

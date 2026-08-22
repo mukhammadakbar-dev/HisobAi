@@ -4,21 +4,33 @@ import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env';
 
 export interface CbuRate {
-  /** 1 USD necha UZS — satr, float emas. */
+  /** Olish (Buy rate, e.g. 12700) */
   rate: string;
-  /** CBU e'lon qilgan sana, `YYYY-MM-DD`. */
+  /** Sotish (Sell rate, e.g. 12800) */
+  sellRate?: string;
+  /** YYYY-MM-DD */
   date: string;
 }
 
 /**
- * CBU kursi porti (§3.3, `ARCHITECTURE.md` §3).
+ * CBU / NBU kursi porti (§3.3, `ARCHITECTURE.md` §3).
  *
  * Adapter ortida turishining sababi: `DECISIONS.md` ochiq savollarida
- * CBU endpointining aniq formati hali tasdiqlanmagan. Format o'zgarsa
+ * CBU/NBU endpointining aniq formati hali tasdiqlanmagan. Format o'zgarsa
  * yoki boshqa manbaga o'tilsa, faqat shu fayl o'zgaradi.
  */
 export abstract class CbuRateProvider {
   abstract fetchUsdRate(): Promise<CbuRate>;
+}
+
+/** NBU javobidagi bitta valyuta yozuvi. */
+interface NbuEntry {
+  title?: unknown;
+  code?: unknown;
+  cb_price?: unknown;
+  nbu_buy_price?: unknown;
+  nbu_cell_price?: unknown;
+  date?: unknown;
 }
 
 /** CBU javobidagi bitta valyuta yozuvi — faqat kerakli maydonlar. */
@@ -29,6 +41,8 @@ interface CbuEntry {
 }
 
 const REQUEST_TIMEOUT_MS = 15_000;
+const NBU_API_URL = 'https://nbu.uz/uz/exchange-rates/json/';
+const CBU_FALLBACK_URL = 'https://cbu.uz/uz/arkhiv-kursov-valyut/json/';
 
 @Injectable()
 export class HttpCbuRateProvider extends CbuRateProvider {
@@ -39,16 +53,68 @@ export class HttpCbuRateProvider extends CbuRateProvider {
   }
 
   async fetchUsdRate(): Promise<CbuRate> {
-    const url = this.config.get('CBU_API_URL', { infer: true });
+    const userAgent =
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-    /**
-     * Timeout majburiy: javob bermayotgan tashqi servis fon jarayonini
-     * cheksiz ushlab turishi mumkin. §1.5 — kurs olinmasa ilova
-     * to'xtamaydi, shuning uchun tez taslim bo'lish to'g'ri xulq.
-     */
+    // 1. Try NBU exchange rates API first
+    try {
+      const response = await fetch(NBU_API_URL, {
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        headers: { accept: 'application/json', 'user-agent': userAgent },
+      });
+
+      if (response.ok) {
+        const payload: unknown = await response.json();
+        const entries: NbuEntry[] = Array.isArray(payload)
+          ? (payload as NbuEntry[])
+          : [payload as NbuEntry];
+
+        const usd = entries.find(
+          (entry) =>
+            String(entry.code).toUpperCase() === 'USD' ||
+            String(entry.title).toUpperCase() === 'USD',
+        );
+
+        if (usd) {
+          const buyPrice = String(usd.nbu_buy_price ?? '').trim();
+          const sellPrice = String(usd.nbu_cell_price ?? '').trim();
+          const date = parseDate(usd.date);
+
+          const buyNum = Number(buyPrice);
+          const sellNum = Number(sellPrice);
+
+          if (
+            buyPrice &&
+            sellPrice &&
+            !Number.isNaN(buyNum) &&
+            !Number.isNaN(sellNum) &&
+            buyNum > 0 &&
+            sellNum > 0 &&
+            buyNum !== sellNum
+          ) {
+            this.logger.debug(
+              `NBU kursi olindi: olish=${buyPrice}, sotish=${sellPrice} (${date ?? 'sanasiz'})`,
+            );
+            return {
+              rate: buyPrice,
+              sellRate: sellPrice,
+              date: date ?? '',
+            };
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.warn(
+        `NBU kursi olinmadi, CBU'ga o'tilmoqda: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    // 2. Fallback to CBU API
+    const url = this.config.get('CBU_API_URL', { infer: true }) || CBU_FALLBACK_URL;
+
     const response = await fetch(url, {
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      headers: { accept: 'application/json' },
+      headers: { accept: 'application/json', 'user-agent': userAgent },
     });
 
     if (!response.ok) {
@@ -65,27 +131,38 @@ export class HttpCbuRateProvider extends CbuRateProvider {
       throw new Error("CBU javobida USD kursi yo'q");
     }
 
-    const rate = String(usd.Rate ?? '').trim();
-    if (!/^\d+(\.\d+)?$/.test(rate) || Number(rate) <= 0) {
-      throw new Error(`CBU kursi noto'g'ri: ${rate}`);
+    const rawRate = String(usd.Rate ?? '').trim();
+    if (!/^\d+(\.\d+)?$/.test(rawRate) || Number(rawRate) <= 0) {
+      throw new Error(`CBU kursi noto'g'ri: ${rawRate}`);
     }
 
-    const date = parseCbuDate(usd.Date);
-    this.logger.debug(`CBU kursi olindi: ${rate} (${date ?? 'sanasiz'})`);
+    const baseNum = Number(rawRate);
+    // Realistik tijorat spredi (Olish: -50 so'm, Sotish: +50 so'm)
+    const buyRate = Math.floor(baseNum - 50).toString();
+    const sellRate = Math.ceil(baseNum + 50).toString();
 
-    return { rate, date: date ?? '' };
+    const date = parseDate(usd.Date);
+    this.logger.debug(
+      `CBU asosida kurslar shakllantirildi: olish=${buyRate}, sotish=${sellRate} (${date ?? 'sanasiz'})`,
+    );
+
+    return {
+      rate: buyRate,
+      sellRate,
+      date: date ?? '',
+    };
   }
 }
 
 /**
- * CBU sanani `dd.mm.yyyy` ko'rinishida beradi. Boshqa formatga o'tsa
- * `null` qaytariladi — sana ikkinchi darajali ma'lumot, uning yo'qligi
- * kursni yozishga to'sqinlik qilmaydi.
+ * Sanani `YYYY-MM-DD` ko'rinishiga keltiradi.
+ * `dd.mm.yyyy`, `dd.mm.yyyy hh:mm:ss`, yoki `yyyy-mm-dd` formatlarini qabul qiladi.
  */
-function parseCbuDate(value: unknown): string | null {
+function parseDate(value: unknown): string | null {
   const text = String(value ?? '').trim();
-  const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(text);
+  const match = /^(\d{2})\.(\d{2})\.(\d{4})/.exec(text);
   if (match) return `${match[3] ?? ''}-${match[2] ?? ''}-${match[1] ?? ''}`;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(text);
+  if (isoMatch) return `${isoMatch[1] ?? ''}-${isoMatch[2] ?? ''}-${isoMatch[3] ?? ''}`;
   return null;
 }

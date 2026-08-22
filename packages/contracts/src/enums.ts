@@ -259,3 +259,19 @@ export const NotificationStatus = {
   SKIPPED: 'SKIPPED',
 } as const;
 export type NotificationStatus = (typeof NotificationStatus)[keyof typeof NotificationStatus];
+
+/**
+ * Mijozning qarz holati (§6, §9.8) — **hisoblanadi, saqlanmaydi**.
+ *
+ * Faol nasiya shartnomalarining to'lov jadvalidan olinadi: `OVERDUE` —
+ * kechikkan qator bor, `DUE_SOON` — muddati o'tmagan, lekin yaqin
+ * kunda to'lov bor, `ON_SCHEDULE` — qarz bor, hammasi jadval bo'yicha,
+ * `NONE` — faol qarz yo'q.
+ */
+export const CustomerDebtStatus = {
+  OVERDUE: 'OVERDUE',
+  DUE_SOON: 'DUE_SOON',
+  ON_SCHEDULE: 'ON_SCHEDULE',
+  NONE: 'NONE',
+} as const;
+export type CustomerDebtStatus = (typeof CustomerDebtStatus)[keyof typeof CustomerDebtStatus];

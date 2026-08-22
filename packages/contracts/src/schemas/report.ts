@@ -197,6 +197,8 @@ export interface InventoryValueDto {
   totalCost: string;
   serializedCount: number;
   batchQuantity: number;
+  /** Zaxirasi 0 dan katta bo'lgan noyob mahsulot soni ("N ta pozitsiya"). */
+  positionCount: number;
   /** Kurs yo'q bo'lsa valyutali qism baholanmaydi — bu ochiq aytiladi. */
   rateMissing: boolean;
 }

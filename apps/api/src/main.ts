@@ -80,12 +80,14 @@ async function bootstrap(): Promise<void> {
    * Mass assignment'dan himoya sxemadagi `.strict()` bilan ta'minlanadi.
    */
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('HisobAI CRM API')
-    .setDescription('Ombor, savdo, nasiya, kassa va AI tahlil uchun REST API')
-    .setVersion('0.2.1')
-    .build();
-  SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, swaggerConfig));
+  if (env.NODE_ENV !== 'production') {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('HisobAI CRM API')
+      .setDescription('Ombor, savdo, nasiya, kassa va AI tahlil uchun REST API')
+      .setVersion('0.2.1')
+      .build();
+    SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, swaggerConfig));
+  }
 
   // `0.0.0.0` — telefon LAN orqali `apps/web` proksisiga, u esa bu yerga uradi.
   await app.listen(env.PORT, '0.0.0.0');

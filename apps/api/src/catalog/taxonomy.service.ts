@@ -67,16 +67,24 @@ export class TaxonomyService {
     const where = buildWhere(query);
     const [column, direction] = parseSort(query.sort);
 
-    const rows = await this.delegate(kind).findMany({
-      where,
-      // `id` ikkilamchi tartib — bir xil nomli qatorlarda sahifa
-      // chegarasi beqaror bo'lib, yozuv ikki marta chiqmasin
-      orderBy: [{ [column]: direction }, { id: direction }],
-      include: { _count: { select: { products: true } } },
-      ...toPrismaCursor(query.cursor, limit),
-    });
+    const [rows, totalCount] = await Promise.all([
+      this.delegate(kind).findMany({
+        where,
+        // `id` ikkilamchi tartib — bir xil nomli qatorlarda sahifa
+        // chegarasi beqaror bo'lib, yozuv ikki marta chiqmasin
+        orderBy: [{ [column]: direction }, { id: direction }],
+        include: { _count: { select: { products: true } } },
+        ...toPrismaCursor(query.cursor, limit),
+      }),
+      this.delegate(kind).count({ where }),
+    ]);
 
-    return toPage(rows.map(toDto), limit, (dto) => (column === 'name' ? dto.name : dto.createdAt));
+    return toPage(
+      rows.map(toDto),
+      limit,
+      (dto) => (column === 'name' ? dto.name : dto.createdAt),
+      totalCount,
+    );
   }
 
   async requireById(kind: TaxonomyKind, id: string): Promise<TaxonomyDto> {
@@ -419,6 +427,8 @@ interface TaxonomyDelegate {
     skip?: number;
     cursor?: { id: string };
   }): Promise<TaxonomyRowWithCount[]>;
+
+  count(args: { where?: TaxonomyWhere }): Promise<number>;
 
   findUnique(args: {
     where: { id: string } | { slug: string };

@@ -57,14 +57,18 @@ export class ProductService {
     const limit = normalizeLimit(query.limit);
     const [column, direction] = parseSort(query.sort);
 
-    const rows = await this.prisma.product.findMany({
-      where: buildWhere(query),
-      // `id` ikkilamchi tartib — bir xil nomli qatorlarda sahifa chegarasi
-      // beqaror bo'lib, yozuv ikki marta chiqmasin
-      orderBy: [{ [column]: direction }, { id: direction }],
-      include: WITH_TAXONOMY,
-      ...toPrismaCursor(query.cursor, limit),
-    });
+    const where = buildWhere(query);
+    const [rows, totalCount] = await Promise.all([
+      this.prisma.product.findMany({
+        where,
+        // `id` ikkilamchi tartib — bir xil nomli qatorlarda sahifa chegarasi
+        // beqaror bo'lib, yozuv ikki marta chiqmasin
+        orderBy: [{ [column]: direction }, { id: direction }],
+        include: WITH_TAXONOMY,
+        ...toPrismaCursor(query.cursor, limit),
+      }),
+      this.prisma.product.count({ where }),
+    ]);
 
     const stock = await this.stockOf(rows);
 
@@ -72,6 +76,7 @@ export class ProductService {
       rows.map((row) => toDto(row, stock.get(row.id) ?? EMPTY_STOCK)),
       limit,
       (dto) => (column === 'displayName' ? dto.displayName : dto.createdAt),
+      totalCount,
     );
   }
 

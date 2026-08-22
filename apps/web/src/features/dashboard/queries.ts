@@ -2,22 +2,24 @@
 
 import { useQuery } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
-import type { DashboardDto } from '@hisobai/contracts';
+import type { DashboardDto, DashboardPeriod } from '@hisobai/contracts';
 
 import { api } from '../../lib/api-client';
 import type { ApiError } from '../../lib/api-error';
 
 export const dashboardKeys = {
   all: ['dashboard'] as const,
-  today: () => [...dashboardKeys.all, 'today'] as const,
+  byPeriod: (period: DashboardPeriod) => [...dashboardKeys.all, period] as const,
 };
 
 export const dashboardApi = {
-  today: (): Promise<DashboardDto> => api.get('/dashboard'),
+  get: (period: DashboardPeriod): Promise<DashboardDto> =>
+    api.get('/dashboard', { query: { period } }),
 };
 
 /**
- * Dashboard ma'lumoti — **bitta so'rov** (§14.1).
+ * Dashboard ma'lumoti — **bitta so'rov** (§14.1), davr bo'yicha
+ * (`DashboardPeriod` kengaytmasi — `today`/`week`/`month`).
  *
  * §14.7: avtomatik yangilanish yo'q. Global konfiguratsiya
  * `refetchOnWindowFocus` ni allaqachon o'chirgan (`query-client.ts`),
@@ -30,10 +32,10 @@ export const dashboardApi = {
  * raqamni ko'rsatib qo'yish esa savdo raqamida yo'l qo'yib
  * bo'lmaydigan xato.
  */
-export function useDashboard(): UseQueryResult<DashboardDto, ApiError> {
+export function useDashboard(period: DashboardPeriod): UseQueryResult<DashboardDto, ApiError> {
   return useQuery<DashboardDto, ApiError>({
-    queryKey: dashboardKeys.today(),
-    queryFn: dashboardApi.today,
+    queryKey: dashboardKeys.byPeriod(period),
+    queryFn: () => dashboardApi.get(period),
     staleTime: 0,
     refetchOnMount: 'always',
   });

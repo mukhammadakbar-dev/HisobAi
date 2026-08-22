@@ -7,8 +7,9 @@ import { useState } from 'react';
 
 import { Money } from '../../../components/money/money';
 import { EmptyState, ErrorState, TableSkeleton } from '../../../components/states';
-import { Badge, Card, Select } from '../../../components/ui';
+import { Badge, Card } from '../../../components/ui';
 import { DataList } from '../../../components/ui/data-list';
+import { FilterBar, FilterChip } from '../../../components/ui/filters';
 import { formatDate } from '../../../lib/format';
 import { CONTRACT_STATUS_LABEL, CONTRACT_STATUS_TONE } from '../../../lib/labels';
 import { useInstallments, type InstallmentFilters } from '../../../features/installments/queries';
@@ -22,60 +23,73 @@ import { useInstallments, type InstallmentFilters } from '../../../features/inst
  *
  * §9.9 — jarima yo'q: kechikish faqat belgi bilan ko'rsatiladi.
  */
+const STATUS_FILTERS: { value: string; label: string }[] = [
+  { value: ContractStatus.ACTIVE, label: 'Faol' },
+  { value: ContractStatus.CLOSED, label: 'Yopilgan' },
+  { value: ContractStatus.CANCELLED, label: 'Bekor qilingan' },
+  { value: '', label: 'Hammasi' },
+];
+
 export default function InstallmentsPage() {
   const router = useRouter();
   const [filters, setFilters] = useState<InstallmentFilters>({ status: ContractStatus.ACTIVE });
   const contracts = useInstallments(filters);
 
   const rows = contracts.data?.data ?? [];
-  const overdue = rows.filter((row) => row.isOverdue).length;
+  // §9.8 — butun filtrlangan to'plam bo'yicha, joriy sahifadagi emas
+  const overdue = contracts.data?.overdueCount ?? 0;
+  const isFiltered = (filters.status ?? '') !== ContractStatus.ACTIVE || filters.overdue !== undefined;
+
+  const resetFilters = (): void => {
+    setFilters({ status: ContractStatus.ACTIVE });
+  };
 
   return (
     <div className="flex flex-col gap-4">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <h1 className="m-0 text-2xl font-semibold">Nasiya</h1>
-          <p className="m-0 text-sm text-text-secondary">
-            Shartnomalar va qarz qoldig‘i. Kechikish ogohlantirish sifatida ko‘rsatiladi (§9.9).
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Select
-            id="status-filter"
-            aria-label="Holat"
-            value={filters.status ?? ''}
-            onChange={(event) => {
-              setFilters((current) => ({
-                ...current,
-                status: event.target.value === '' ? undefined : event.target.value,
-              }));
-            }}
-          >
-            <option value={ContractStatus.ACTIVE}>Faol</option>
-            <option value={ContractStatus.CLOSED}>Yopilgan</option>
-            <option value={ContractStatus.CANCELLED}>Bekor qilingan</option>
-            <option value="">Hammasi</option>
-          </Select>
-
-          <Select
-            id="overdue-filter"
-            aria-label="Kechikish"
-            value={filters.overdue ?? ''}
-            onChange={(event) => {
-              const value = event.target.value;
-              setFilters((current) => ({
-                ...current,
-                overdue: value === '' ? undefined : (value as 'true' | 'false'),
-              }));
-            }}
-          >
-            <option value="">Kechikishdan qat‘i nazar</option>
-            <option value="true">Faqat kechikkanlar</option>
-            <option value="false">Kechikmaganlar</option>
-          </Select>
-        </div>
+      <header className="flex flex-col gap-1">
+        <h1 className="m-0 text-2xl font-semibold">Nasiya</h1>
+        <p className="m-0 text-sm text-text-secondary">
+          Shartnomalar va qarz qoldig‘i. Kechikish ogohlantirish sifatida ko‘rsatiladi (§9.9).
+        </p>
       </header>
+
+      <Card>
+        <FilterBar
+          count={contracts.isPending ? undefined : `${rows.length} ta shartnoma`}
+          onReset={isFiltered ? resetFilters : undefined}
+          chips={
+            <>
+              {STATUS_FILTERS.map((filter) => (
+                <FilterChip
+                  key={filter.value}
+                  active={(filters.status ?? '') === filter.value}
+                  dismissable={false}
+                  onClick={() => {
+                    setFilters((current) => ({
+                      ...current,
+                      status: filter.value === '' ? undefined : filter.value,
+                    }));
+                  }}
+                >
+                  {filter.label}
+                </FilterChip>
+              ))}
+
+              <FilterChip
+                active={filters.overdue === 'true'}
+                onClick={() => {
+                  setFilters((current) => ({
+                    ...current,
+                    overdue: current.overdue === 'true' ? undefined : 'true',
+                  }));
+                }}
+              >
+                Faqat kechikkanlar
+              </FilterChip>
+            </>
+          }
+        />
+      </Card>
 
       {overdue > 0 && (
         <p className="m-0 rounded-md bg-warning-bg p-3 text-sm text-warning" role="status">

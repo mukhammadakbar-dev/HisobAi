@@ -1,20 +1,28 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
+  BASE_CURRENCY,
+  ContractStatus,
+  CustomerDebtStatus,
   ErrorCode,
   FileKind,
+  ScheduleStatus,
   UserRole,
+  sumMoney,
   type CreateCustomerInput,
   type CustomerDto,
+  type CustomerListResponse,
   type CustomerQuery,
   type CustomerSummaryDto,
-  type Page,
   type UpdateCustomerInput,
 } from '@hisobai/contracts';
-import type { Customer, Prisma } from '@prisma/client';
+import { Prisma, type Customer } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 import { AppException } from '../common/app.exception';
 import { auditDiff, hasChanges } from '../common/audit-diff';
+import { businessDay, toCalendarDate } from '../common/dates';
+import type { Env } from '../config/env';
 import { requireFileRef } from '../common/file-ref';
 import { staleResource, type Precondition } from '../common/optimistic-lock';
 import { normalizeLimit, toPage, toPrismaCursor } from '../common/pagination';
@@ -22,6 +30,12 @@ import { isRecordNotFound, isUniqueViolation } from '../common/prisma-errors';
 import type { RequestUser } from '../common/request-user';
 import { containsInsensitive } from '../common/search';
 import { PrismaService } from '../database/prisma.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { outstandingOfRows } from '../payments/allocation.service';
+import { convert } from '../sales/sales.service';
+
+/** §6.12, §9.8 kengaytma — muddati yaqin deb hisoblanadigan kunlar soni. */
+const DUE_SOON_DAYS = 3;
 
 /**
  * Mijozlar (§6).
@@ -43,32 +57,155 @@ export class CustomersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly rates: ExchangeRatesService,
+    private readonly config: ConfigService<Env, true>,
   ) {}
+
+  private get timeZone(): string {
+    return this.config.get('TIMEZONE', { infer: true });
+  }
 
   // ──────────────────────────── O'qish ────────────────────────────
 
-  /** §6.4 — qidiruv ism va **ikkala** telefon bo'yicha ishlaydi. */
-  async list(query: CustomerQuery): Promise<Page<CustomerSummaryDto>> {
+  /**
+   * §6.4 — qidiruv ism va **ikkala** telefon bo'yicha ishlaydi.
+   *
+   * §6.12, §9.8 kengaytma — "Qarzi bor" filtri va sarlavhadagi "jami
+   * qarz". Qarz **saqlanmaydi**, shuning uchun filtr bevosita `Customer`
+   * ustida qurilmaydi: avval do'kon ichidagi FAOL shartnomalar
+   * `sale.customer` orqali joriy filtrga mos mijozlar bo'yicha
+   * guruhlanadi (`debtsByCustomer`), shu to'plamdan `hasDebt` va
+   * `totalDebt` chiqariladi. Do'kon miqyosi yuzlab mijoz (`ARCHITECTURE.md`)
+   * — bu ikkinchi so'rov arzon, keshlanadigan ustunga hojat yo'q.
+   */
+  async list(query: CustomerQuery): Promise<CustomerListResponse> {
     const limit = normalizeLimit(query.limit);
     const [column, direction] = parseSort(query.sort);
 
-    const rows = await this.prisma.customer.findMany({
-      where: buildWhere(query),
-      // `id` ikkilamchi tartib — bir xil ismli mijozlarda sahifa
-      // chegarasi beqaror bo'lib, yozuv ikki marta chiqmasin
-      orderBy: [{ [column]: direction }, { id: direction }],
-      ...toPrismaCursor(query.cursor, limit),
-    });
+    const baseWhere = buildWhere(query);
+    const debts = await this.debtsByCustomer(baseWhere);
 
-    return toPage(rows.map(toSummaryDto), limit, (dto) =>
-      column === 'fullName' ? dto.fullName : dto.createdAt,
-    );
+    let where = baseWhere;
+    let totalDebt = '0.00';
+    if (query.hasDebt === 'true') {
+      where = { ...baseWhere, id: { in: [...debts.keys()] } };
+      totalDebt = sumMoney([...debts.values()].map((debt) => debt.outstandingDebt), BASE_CURRENCY);
+    } else if (query.hasDebt === 'false') {
+      where = { ...baseWhere, id: { notIn: [...debts.keys()] } };
+    } else {
+      totalDebt = sumMoney([...debts.values()].map((debt) => debt.outstandingDebt), BASE_CURRENCY);
+    }
+
+    const [rows, totalCount] = await Promise.all([
+      this.prisma.customer.findMany({
+        where,
+        // `id` ikkilamchi tartib — bir xil ismli mijozlarda sahifa
+        // chegarasi beqaror bo'lib, yozuv ikki marta chiqmasin
+        orderBy: [{ [column]: direction }, { id: direction }],
+        ...toPrismaCursor(query.cursor, limit),
+      }),
+      this.prisma.customer.count({ where }),
+    ]);
+
+    const summaries = rows.map((row) => ({
+      ...toSummaryDto(row),
+      ...(debts.get(row.id) ?? { outstandingDebt: '0.00', debtStatus: CustomerDebtStatus.NONE }),
+    }));
+
+    return {
+      ...toPage(
+        summaries,
+        limit,
+        (dto) => (column === 'fullName' ? dto.fullName : dto.createdAt),
+        totalCount,
+      ),
+      totalDebt,
+    };
   }
 
   async requireById(id: string, actor: RequestUser): Promise<CustomerDto> {
     const row = await this.prisma.customer.findUnique({ where: { id } });
     if (!row) throw AppException.notFound(ErrorCode.NOT_FOUND, 'Mijoz topilmadi.');
-    return toDto(row, canSeePassport(actor));
+
+    const debt = await this.debtOf(id);
+    return { ...toDto(row, canSeePassport(actor)), ...debt };
+  }
+
+  /**
+   * §9.8, §6 kengaytma — mijozning joriy qarzi va holati.
+   *
+   * `Installments` jadvalidan **to'g'ridan-to'g'ri Prisma bilan**
+   * o'qiladi — yozish emas, `Reports`/`Dashboard` modullarida ham xuddi
+   * shu naqsh (`ARCHITECTURE.md` §5: faqat boshqa modul jadvaliga
+   * **yozish** taqiqlangan). Hisob **saqlanmaydi**: har so'rovda faol
+   * shartnomalarning to'lov jadvalidan qayta yig'iladi.
+   */
+  private async debtOf(
+    customerId: string,
+  ): Promise<Pick<CustomerDto, 'outstandingDebt' | 'debtStatus'>> {
+    const contracts = await this.prisma.installmentContract.findMany({
+      where: { status: ContractStatus.ACTIVE, sale: { customerId } },
+      select: DEBT_CONTRACT_SELECT,
+    });
+
+    if (contracts.length === 0) {
+      return { outstandingDebt: '0.00', debtStatus: CustomerDebtStatus.NONE };
+    }
+
+    const { today, soonBoundary, storeRate } = await this.debtContext();
+    return computeDebt(contracts, today, soonBoundary, storeRate);
+  }
+
+  /**
+   * §6.12, §9.8 kengaytma — ro'yxat uchun qarzni **bitta so'rovda**
+   * mijoz bo'yicha guruhlab hisoblaydi (N+1 emas).
+   *
+   * `sale: { customer: customerWhere }` — qarz joriy filtrga mos
+   * mijozlar doirasida hisoblanadi, ya'ni "jami qarz" ham `hasDebt`
+   * to'plami ham xuddi shu filtrlangan holatga tegishli bo'ladi.
+   * Qarzi yo'q (yoki 0 gacha to'langan) mijozlar xaritada umuman
+   * qatnashmaydi — chaqiruvchi tomonda yo'qlik `NONE`/`0.00` degani.
+   */
+  private async debtsByCustomer(
+    customerWhere: Prisma.CustomerWhereInput,
+  ): Promise<Map<string, Pick<CustomerDto, 'outstandingDebt' | 'debtStatus'>>> {
+    const contracts = await this.prisma.installmentContract.findMany({
+      where: { status: ContractStatus.ACTIVE, sale: { customer: customerWhere } },
+      select: { ...DEBT_CONTRACT_SELECT, sale: { select: { customerId: true } } },
+    });
+
+    const grouped = new Map<string, typeof contracts>();
+    for (const contract of contracts) {
+      const customerId = contract.sale.customerId;
+      if (!customerId) continue;
+      const group = grouped.get(customerId);
+      if (group) group.push(contract);
+      else grouped.set(customerId, [contract]);
+    }
+
+    const result = new Map<string, Pick<CustomerDto, 'outstandingDebt' | 'debtStatus'>>();
+    if (grouped.size === 0) return result;
+
+    const { today, soonBoundary, storeRate } = await this.debtContext();
+    for (const [customerId, group] of grouped) {
+      const debt = computeDebt(group, today, soonBoundary, storeRate);
+      if (Number(debt.outstandingDebt) > 0) result.set(customerId, debt);
+    }
+    return result;
+  }
+
+  /** Qarz hisobi uchun bugungi kun va kurs — bir marta olinadi. */
+  private async debtContext(): Promise<{
+    today: string;
+    soonBoundary: string;
+    storeRate: Prisma.Decimal | null;
+  }> {
+    const today = businessDay(new Date(), this.timeZone);
+    const soonBoundary = toCalendarDate(
+      new Date(new Date(`${today}T00:00:00.000Z`).getTime() + DUE_SOON_DAYS * 86_400_000),
+    );
+    const rate = await this.rates.getForDate(today);
+    return { today, soonBoundary, storeRate: rate?.storeRate ?? null };
   }
 
   // ──────────────────────────── Yozish ────────────────────────────
@@ -113,7 +250,8 @@ export class CustomersService {
       ip,
     });
 
-    return toDto(created, canSeePassport(actor));
+    // Yangi mijozda nasiya shartnomasi bo'lishi mumkin emas — qarz har doim yo'q
+    return { ...toDto(created, canSeePassport(actor)), outstandingDebt: '0.00', debtStatus: CustomerDebtStatus.NONE };
   }
 
   /**
@@ -148,7 +286,9 @@ export class CustomersService {
      * bu yerda boyitiladi.
      */
     try {
-      return await this.updateInTransaction(id, input, precondition, actor, ip);
+      const dto = await this.updateInTransaction(id, input, precondition, actor, ip);
+      const debt = await this.debtOf(id);
+      return { ...dto, ...debt };
     } catch (error) {
       if (isUniqueViolation(error) && input.phonePrimary) {
         throw await this.phoneTaken(input.phonePrimary);
@@ -163,7 +303,7 @@ export class CustomersService {
     precondition: Precondition,
     actor: RequestUser,
     ip: string | null,
-  ): Promise<CustomerDto> {
+  ): Promise<Omit<CustomerDto, 'outstandingDebt' | 'debtStatus'>> {
     return this.prisma.$transaction(async (tx) => {
       const before = await tx.customer.findUnique({ where: { id } });
       if (!before) throw AppException.notFound(ErrorCode.NOT_FOUND, 'Mijoz topilmadi.');
@@ -273,6 +413,68 @@ function parseSort(sort: CustomerQuery['sort']): ['fullName' | 'createdAt', 'asc
   return ['fullName', sort === '-fullName' ? 'desc' : 'asc'];
 }
 
+/** `debtOf()`/`debtsByCustomer()` uchun umumiy tanlov — ikkalasida ham bir xil. */
+const DEBT_CONTRACT_SELECT = {
+  currency: true,
+  schedules: {
+    select: { dueDate: true, amountDue: true, amountPaid: true, status: true },
+    orderBy: { sequence: 'asc' },
+  },
+} satisfies Prisma.InstallmentContractSelect;
+
+type DebtContractRow = Prisma.InstallmentContractGetPayload<{ select: typeof DEBT_CONTRACT_SELECT }>;
+
+/**
+ * §9.8, §6 kengaytma — bitta mijoz(lar) guruhi uchun qarz va holat.
+ *
+ * `debtOf()` va `debtsByCustomer()` bir xil mantiqni ishlatadi — bu
+ * yerda ajratilgan, aks holda ikkovi asta-sekin bir-biridan chetga
+ * chiqib ketardi (chegara qiymatlari, valyuta aylantirish va h.k.).
+ */
+function computeDebt(
+  contracts: readonly DebtContractRow[],
+  today: string,
+  soonBoundary: string,
+  storeRate: Prisma.Decimal | null,
+): Pick<CustomerDto, 'outstandingDebt' | 'debtStatus'> {
+  const parts: string[] = [];
+  let hasOverdue = false;
+  let hasDueSoon = false;
+
+  for (const contract of contracts) {
+    const outstanding = outstandingOfRows(contract.schedules);
+    if (Number(outstanding) <= 0) continue;
+
+    parts.push(
+      contract.currency === BASE_CURRENCY
+        ? outstanding
+        : storeRate
+          ? convert(new Prisma.Decimal(outstanding), contract.currency, BASE_CURRENCY, storeRate)
+          : '0',
+    );
+
+    const unpaid = contract.schedules.filter((row) => row.status !== ScheduleStatus.PAID);
+    for (const row of unpaid) {
+      const due = toCalendarDate(row.dueDate);
+      if (due < today) hasOverdue = true;
+      else if (due <= soonBoundary) hasDueSoon = true;
+    }
+  }
+
+  const outstandingDebt = sumMoney(parts, BASE_CURRENCY);
+  if (Number(outstandingDebt) <= 0) {
+    return { outstandingDebt, debtStatus: CustomerDebtStatus.NONE };
+  }
+
+  const debtStatus = hasOverdue
+    ? CustomerDebtStatus.OVERDUE
+    : hasDueSoon
+      ? CustomerDebtStatus.DUE_SOON
+      : CustomerDebtStatus.ON_SCHEDULE;
+
+  return { outstandingDebt, debtStatus };
+}
+
 function toCreateData(input: CreateCustomerInput): Prisma.CustomerUncheckedCreateInput {
   return {
     fullName: input.fullName,
@@ -364,7 +566,8 @@ function auditView(row: Customer): Record<string, unknown> {
   };
 }
 
-function toSummaryDto(row: Customer): CustomerSummaryDto {
+/** Qarz maydonlarisiz — chaqiruvchi `debtOf()`/`debtsByCustomer()` natijasini qo'shadi. */
+function toSummaryDto(row: Customer): Omit<CustomerSummaryDto, 'outstandingDebt' | 'debtStatus'> {
   return {
     id: row.id,
     fullName: row.fullName,
@@ -378,7 +581,11 @@ function toSummaryDto(row: Customer): CustomerSummaryDto {
   };
 }
 
-function toDto(row: Customer, withPassport: boolean): CustomerDto {
+/** Qarz maydonlarisiz — chaqiruvchi `debtOf()` natijasini qo'shadi. */
+function toDto(
+  row: Customer,
+  withPassport: boolean,
+): Omit<CustomerDto, 'outstandingDebt' | 'debtStatus'> {
   return {
     ...toSummaryDto(row),
     address: row.address,

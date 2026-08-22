@@ -51,6 +51,7 @@ function makeService(initial: User[] = []) {
   const model = {
     user: {
       findMany: () => Promise.resolve(world.users),
+      count: () => Promise.resolve(world.users.length),
       findUnique: ({ where }: { where: { id: string } }) =>
         Promise.resolve(world.users.find((u) => u.id === where.id) ?? null),
       create: ({ data }: { data: Partial<User> }) => {

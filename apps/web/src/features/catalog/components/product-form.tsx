@@ -9,6 +9,7 @@ import { useForm } from 'react-hook-form';
 import { FileUpload } from '../../../components/files';
 import { MoneyInput } from '../../../components/money/money-input';
 import { Button, Card, Field, Input, Select } from '../../../components/ui';
+import { useToast } from '../../../components/ui/toast';
 import { applyApiFieldErrors, isFieldOwnedError } from '../../../lib/form-errors';
 import { PRODUCT_TYPE_LABEL } from '../../../lib/labels';
 import { FormError } from '../../auth/components/form-error';
@@ -98,6 +99,7 @@ export function ProductForm({ product }: { product?: ProductDto }) {
   const createBrand = useCreateBrand();
   const create = useCreateProduct();
   const update = useUpdateProduct(product?.id ?? '');
+  const toast = useToast();
 
   const mutation = product ? update : create;
 
@@ -147,6 +149,7 @@ export function ProductForm({ product }: { product?: ProductDto }) {
         { ...input, expectedUpdatedAt: product.updatedAt },
         {
           onSuccess: () => {
+            toast.success('Mahsulot saqlandi');
             router.push(`/products/${product.id}`);
           },
           onError,
@@ -157,6 +160,7 @@ export function ProductForm({ product }: { product?: ProductDto }) {
 
     create.mutate(input, {
       onSuccess: (created) => {
+        toast.success('Mahsulot qo‘shildi');
         router.push(`/products/${created.id}`);
       },
       onError,

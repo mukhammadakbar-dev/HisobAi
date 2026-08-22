@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { ContractStatus, PaymentMethod } from '../enums';
 import type { Currency, ScheduleStatus } from '../enums';
+import type { Page } from '../pagination';
 import {
   calendarDate,
   decimalInRange,
@@ -177,6 +178,18 @@ export interface PaymentScheduleDto {
    * aniqlanadi (§1.3) va brauzer zonasi undan farq qilishi mumkin.
    */
   isOverdue: boolean;
+}
+
+/**
+ * Ro'yxat javobi — `Page` ustiga `overdueCount` qo'shiladi.
+ *
+ * `DebtorsReportDto.overdueCount` bilan bir xil naqsh (`report.ts`):
+ * son **butun filtrlangan to'plam** bo'yicha, sahifadagi emas — chunki
+ * "N ta shartnomada muddati o'tgan" bannerida foydalanuvchi yuklangan
+ * sahifani emas, umumiy holatni ko'radi.
+ */
+export interface InstallmentListResponse extends Page<InstallmentSummaryDto> {
+  overdueCount: number;
 }
 
 export interface InstallmentContractDto {

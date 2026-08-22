@@ -1,17 +1,19 @@
 'use client';
 
-import { formatPhone } from '@hisobai/contracts';
+import { BASE_CURRENCY, formatMoneyWithCurrency, formatPhone } from '@hisobai/contracts';
 import type { CustomerSummaryDto } from '@hisobai/contracts';
 import { Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
+import { Money } from '../../../components/money/money';
 import { EmptyState, ErrorState, TableSkeleton } from '../../../components/states';
-import { Badge, Card } from '../../../components/ui';
+import { Badge, Button, Card } from '../../../components/ui';
 import { DataList } from '../../../components/ui/data-list';
 import { FilterBar, FilterChip, SearchInput } from '../../../components/ui/filters';
-import { useCustomers } from '../../../features/customers/queries';
+import { useCustomersInfinite } from '../../../features/customers/queries';
+import { CUSTOMER_DEBT_STATUS_LABEL, CUSTOMER_DEBT_STATUS_TONE } from '../../../lib/labels';
 import { EMPTY_MESSAGES } from '../../../lib/messages';
 
 /**
@@ -21,9 +23,10 @@ import { EMPTY_MESSAGES } from '../../../lib/messages';
  * telefon esa raqamlar bo'yicha — ajratgichlar server tomonida
  * tozalanadi, ya'ni "90 123" ham, "901234567" ham topadi.
  *
- * Qarz ustuni yo'q (§6.11, §6.12): u savdo va to'lovlardan
- * hisoblanadi va alohida bosqichda qo'shiladi. Bo'sh "0 so'm" ustuni
- * bo'lmagan raqamni haqiqatdek ko'rsatardi.
+ * Qarz ustuni — `CustomerListResponse` (§6.12, §9.8 kengaytma):
+ * `totalDebt` sarlavhada, har qatorda `outstandingDebt`/`debtStatus`.
+ * Sahifalash kursor bilan — "Yana yuklash" haqiqiy keyingi sahifani
+ * so'raydi.
  */
 type ActiveFilter = 'active' | 'archived' | 'all';
 
@@ -39,20 +42,25 @@ export default function CustomersPage() {
   const [q, setQ] = useState('');
   const [isActive, setIsActive] = useState<ActiveFilter>('active');
   const [onlyFlagged, setOnlyFlagged] = useState(false);
+  const [onlyDebt, setOnlyDebt] = useState(false);
 
-  const customers = useCustomers({
+  const customers = useCustomersInfinite({
     q: q.trim() === '' ? undefined : q.trim(),
     isActive,
     isFlagged: onlyFlagged ? 'true' : undefined,
+    hasDebt: onlyDebt ? 'true' : undefined,
   });
 
-  const rows = customers.data?.data ?? [];
-  const isFiltered = q.trim() !== '' || isActive !== 'active' || onlyFlagged;
+  const pages = customers.data ?? [];
+  const rows = pages.flatMap((page) => page.data);
+  const firstPage = pages[0];
+  const isFiltered = q.trim() !== '' || isActive !== 'active' || onlyFlagged || onlyDebt;
 
   const resetFilters = (): void => {
     setQ('');
     setIsActive('active');
     setOnlyFlagged(false);
+    setOnlyDebt(false);
   };
 
   return (
@@ -75,9 +83,9 @@ export default function CustomersPage() {
       <Card>
         <FilterBar
           count={
-            customers.isPending
+            customers.isPending || !firstPage
               ? undefined
-              : `${rows.length} ta mijoz${customers.data?.hasMore === true ? ' (birinchi sahifa)' : ''}`
+              : `${firstPage.totalCount} ta mijoz · jami qarz ${formatMoneyWithCurrency(firstPage.totalDebt, BASE_CURRENCY)}`
           }
           onReset={isFiltered ? resetFilters : undefined}
           chips={
@@ -103,6 +111,16 @@ export default function CustomersPage() {
                 }}
               >
                 Belgilangan
+              </FilterChip>
+
+              {/* §6.12 kengaytma — joriy qoldiq bo'yicha filtr */}
+              <FilterChip
+                active={onlyDebt}
+                onClick={() => {
+                  setOnlyDebt((value) => !value);
+                }}
+              >
+                Qarzi bor
               </FilterChip>
             </>
           }
@@ -160,6 +178,7 @@ export default function CustomersPage() {
           }}
           accent={(customer) => {
             if (!customer.isActive) return 'muted';
+            if (customer.debtStatus === 'OVERDUE') return 'danger';
             return customer.isFlagged ? 'warning' : undefined;
           }}
           columns={[
@@ -183,11 +202,28 @@ export default function CustomersPage() {
               ),
             },
             {
+              header: 'Qarz',
+              mobile: 'amount',
+              numeric: true,
+              className: 'w-36',
+              cell: (customer) => (
+                <Money
+                  amount={customer.outstandingDebt}
+                  currency={BASE_CURRENCY}
+                  withCurrency={false}
+                  className={customer.debtStatus === 'OVERDUE' ? 'text-danger' : ''}
+                />
+              ),
+            },
+            {
               header: 'Holat',
               mobile: 'status',
               className: 'w-56',
               cell: (customer) => (
                 <span className="flex flex-wrap gap-2">
+                  <Badge tone={CUSTOMER_DEBT_STATUS_TONE[customer.debtStatus] ?? 'muted'}>
+                    {CUSTOMER_DEBT_STATUS_LABEL[customer.debtStatus] ?? customer.debtStatus}
+                  </Badge>
                   {customer.isFlagged && <Badge tone="warning">Ehtiyot bo‘ling</Badge>}
                   {!customer.isActive && <Badge tone="muted">Arxivda</Badge>}
                 </span>
@@ -197,16 +233,18 @@ export default function CustomersPage() {
         />
       )}
 
-      {/*
-        Bu yerda "yana yuklash" tugmasi ATAYLAB yo'q: ro'yxat so'rovi
-        kursor qaytarmaydi, ya'ni keyingi sahifani so'rashning yo'li yo'q.
-        Soxta tugma qo'yish ishlamaydigan narsani ishlaydigandek
-        ko'rsatardi — o'rniga nima qilish kerakligi aytiladi.
-      */}
-      {customers.data?.hasMore === true && (
-        <p className="m-0 text-sm text-text-tertiary">
-          Birinchi {rows.length} ta ko‘rsatildi — qidiruv bilan toraytiring.
-        </p>
+      {customers.hasNextPage && (
+        <Button
+          type="button"
+          onClick={() => {
+            void customers.fetchNextPage();
+          }}
+          disabled={customers.isFetchingNextPage}
+        >
+          {customers.isFetchingNextPage
+            ? 'Yuklanmoqda…'
+            : `Yana ${(firstPage?.totalCount ?? rows.length) - rows.length} tasini yuklash`}
+        </Button>
       )}
     </div>
   );

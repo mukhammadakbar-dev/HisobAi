@@ -62,14 +62,17 @@ export class InventoryService {
       ];
     }
 
-    const rows = await this.prisma.inventoryItem.findMany({
-      where,
-      orderBy: [{ receivedAt: direction }, { id: direction }],
-      include: ITEM_INCLUDE,
-      ...toPrismaCursor(query.cursor, limit),
-    });
+    const [rows, totalCount] = await Promise.all([
+      this.prisma.inventoryItem.findMany({
+        where,
+        orderBy: [{ receivedAt: direction }, { id: direction }],
+        include: ITEM_INCLUDE,
+        ...toPrismaCursor(query.cursor, limit),
+      }),
+      this.prisma.inventoryItem.count({ where }),
+    ]);
 
-    return toPage(rows.map(toItemDto), limit, (dto) => dto.receivedAt);
+    return toPage(rows.map(toItemDto), limit, (dto) => dto.receivedAt, totalCount);
   }
 
   /** §5.10 — birlik va uning butun tarixi; harakatlar hech qachon o'chirilmaydi. */
@@ -93,14 +96,21 @@ export class InventoryService {
     const limit = normalizeLimit(query.limit);
     const direction = query.sort === 'receivedAt' ? 'asc' : 'desc';
 
-    const rows = await this.prisma.inventoryBatch.findMany({
-      where: query.productId ? { productId: query.productId } : {},
-      orderBy: [{ receivedAt: direction }, { id: direction }],
-      include: BATCH_INCLUDE,
-      ...toPrismaCursor(query.cursor, limit),
-    });
+    const where: Prisma.InventoryBatchWhereInput = query.productId
+      ? { productId: query.productId }
+      : {};
 
-    return toPage(rows.map(toBatchDto), limit, (dto) => dto.receivedAt);
+    const [rows, totalCount] = await Promise.all([
+      this.prisma.inventoryBatch.findMany({
+        where,
+        orderBy: [{ receivedAt: direction }, { id: direction }],
+        include: BATCH_INCLUDE,
+        ...toPrismaCursor(query.cursor, limit),
+      }),
+      this.prisma.inventoryBatch.count({ where }),
+    ]);
+
+    return toPage(rows.map(toBatchDto), limit, (dto) => dto.receivedAt, totalCount);
   }
 
   async listMovements(query: MovementQuery): Promise<Page<StockMovementDto>> {
@@ -118,14 +128,17 @@ export class InventoryService {
     const occurredAt = dayRangeFilter(query.from, query.to, this.timeZone);
     if (occurredAt) where.occurredAt = occurredAt;
 
-    const rows = await this.prisma.stockMovement.findMany({
-      where,
-      orderBy: [{ occurredAt: direction }, { id: direction }],
-      include: MOVEMENT_INCLUDE,
-      ...toPrismaCursor(query.cursor, limit),
-    });
+    const [rows, totalCount] = await Promise.all([
+      this.prisma.stockMovement.findMany({
+        where,
+        orderBy: [{ occurredAt: direction }, { id: direction }],
+        include: MOVEMENT_INCLUDE,
+        ...toPrismaCursor(query.cursor, limit),
+      }),
+      this.prisma.stockMovement.count({ where }),
+    ]);
 
-    return toPage(rows.map(toMovementDto), limit, (dto) => dto.occurredAt);
+    return toPage(rows.map(toMovementDto), limit, (dto) => dto.occurredAt, totalCount);
   }
 
   private get timeZone(): string {

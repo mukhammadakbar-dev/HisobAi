@@ -7,6 +7,7 @@ import { useMemo, useState } from 'react';
 import { Money } from '../../../components/money/money';
 import { MoneyInput } from '../../../components/money/money-input';
 import { Button, Card, Field, Input, Select } from '../../../components/ui';
+import { useToast } from '../../../components/ui/toast';
 import { FormError } from '../../auth/components/form-error';
 import { useCashAccounts } from '../../cashbook/queries';
 import { useTodayRate } from '../../exchange-rates/queries';
@@ -129,6 +130,7 @@ function PaymentForm({
   const accounts = useCashAccounts();
   const todayRate = useTodayRate();
   const createPayment = useCreatePayment(contract.id);
+  const toast = useToast();
   const idempotencyKey = useMemo(() => randomUuid(), []);
 
   const active = (accounts.data ?? []).filter((account) => account.isActive);
@@ -166,7 +168,12 @@ function PaymentForm({
           note: null,
         },
       },
-      { onSuccess: onClose },
+      {
+        onSuccess: () => {
+          toast.success('To‘lov qabul qilindi');
+          onClose();
+        },
+      },
     );
   };
 
@@ -271,6 +278,7 @@ function RebuildForm({
   onClose: () => void;
 }) {
   const rebuild = useRebuildSchedule(contract.id);
+  const toast = useToast();
   const idempotencyKey = useMemo(() => randomUuid(), []);
 
   const replaceable = contract.schedules.filter(
@@ -352,7 +360,12 @@ function RebuildForm({
             onClick={() => {
               rebuild.mutate(
                 { idempotencyKey, input: { schedule: rows, reason: reason.trim() } },
-                { onSuccess: onClose },
+                {
+                  onSuccess: () => {
+                    toast.success('Jadval qayta tuzildi');
+                    onClose();
+                  },
+                },
               );
             }}
           >
@@ -381,6 +394,7 @@ function CloseForm({
 }) {
   const accounts = useCashAccounts();
   const close = useCloseContract(contract.id);
+  const toast = useToast();
   const idempotencyKey = useMemo(() => randomUuid(), []);
 
   const active = (accounts.data ?? []).filter((account) => account.isActive);
@@ -450,7 +464,12 @@ function CloseForm({
                   note: null,
                 },
               },
-              { onSuccess: onClose },
+              {
+                onSuccess: () => {
+                  toast.success('Shartnoma yopildi');
+                  onClose();
+                },
+              },
             );
           }}
         >

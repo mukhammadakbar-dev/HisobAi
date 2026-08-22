@@ -17,6 +17,8 @@ import {
   type DashboardDuePaymentDto,
   type DashboardLowStockDto,
   type DashboardOverdueCustomerDto,
+  type DashboardPeriod,
+  type DashboardQuery,
 } from '@hisobai/contracts';
 import { Prisma } from '@prisma/client';
 
@@ -34,11 +36,10 @@ import type { RequestUser } from '../common/request-user';
 import type { Env } from '../config/env';
 import { PrismaService } from '../database/prisma.service';
 import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
+import { metric } from './reports.service';
 import { convert } from '../sales/sales.service';
 import { ShopsService } from '../shops/shops.service';
 
-/** §14.4 — grafik shuncha kunni ko'rsatadi. */
-const CHART_DAYS = 14;
 /** So'nggi amallar ro'yxati uzunligi. */
 const ACTIVITY_LIMIT = 8;
 /** "Kam qolgan" ro'yxatida ko'rsatiladigan mahsulotlar soni. */
@@ -85,10 +86,10 @@ export class DashboardService {
     return this.config.get('TIMEZONE', { infer: true });
   }
 
-  async get(actor: RequestUser): Promise<DashboardDto> {
+  async get(actor: RequestUser, query: DashboardQuery): Promise<DashboardDto> {
     const day = today(this.timeZone);
-    const dayStart = dayStartInstant(day, this.timeZone);
-    const dayEnd = new Date(dayStart.getTime() + 86_400_000);
+    const range = periodRange(query.period, day);
+    const previous = previousRange(range);
     const showCost = actor.role === UserRole.SHOP_ADMIN;
 
     // §1.5 — kurs bo'lmasa ham dashboard ochilishi kerak; USD qiymatlar
@@ -97,18 +98,20 @@ export class DashboardService {
     const storeRate = rate?.storeRate ?? null;
 
     const [sales, cashAccounts, inventory, chart, activity, installments] = await Promise.all([
-      this.todaySales(dayStart, dayEnd, storeRate, showCost),
+      this.periodSales(range, previous, showCost),
       showCost ? this.cash() : Promise.resolve(null),
       this.inventory(storeRate, showCost),
-      this.chart(day, storeRate),
+      this.chart(query.period, day, storeRate),
       this.activity(),
-      // `day` va `storeRate` uzatiladi: hamma blok bitta "bugun" va bitta
-      // kursga tayanishi kerak, aks holda bir sahifada ikki haqiqat bo'lardi
-      this.installments(day, storeRate),
+      // `day`, `previous.to` va `storeRate` uzatiladi: hamma blok bitta
+      // "bugun" va bitta kursga tayanishi kerak, aks holda bir sahifada
+      // ikki haqiqat bo'lardi
+      this.installments(day, previous.to, storeRate),
     ]);
 
     return {
       date: day,
+      period: query.period,
       currency: BASE_CURRENCY,
       sales,
       duePayments: installments.duePayments,
@@ -123,19 +126,43 @@ export class DashboardService {
   // ──────────────────────────── §14.3 ────────────────────────────
 
   /**
-   * Bugungi savdo va foyda.
+   * Davr savdosi va foydasi, oldingi davr bilan solishtiruvda (§14.3,
+   * kengaytma — `DashboardPeriod`).
    *
    * Savdo o'z valyutasida yozilgan, dashboard esa bazaviy valyutada
    * (§1.1) — aylantirish **savdoning o'z kurs snapshoti** bilan
    * (§1.7), bugungi kurs bilan emas: o'tgan savdo bugun kurs
    * o'zgargani uchun boshqa raqam ko'rsatmasligi kerak.
+   *
+   * Foyda faqat JORIY davr uchun hisoblanadi — DTO'da oldingi davr
+   * foydasi yo'q, faqat aylanma va son solishtiriladi (§14 kengaytma
+   * talabi shunday).
    */
-  private async todaySales(
-    from: Date,
-    to: Date,
-    _storeRate: Prisma.Decimal | null,
+  private async periodSales(
+    range: { from: string; to: string },
+    previous: { from: string; to: string },
     showCost: boolean,
   ): Promise<DashboardDto['sales']> {
+    const [current, before] = await Promise.all([
+      this.salesFigures(range),
+      this.salesFigures(previous),
+    ]);
+
+    const profit = showCost ? this.profitOf(current.sales) : null;
+
+    return {
+      count: metric(String(current.sales.length), String(before.sales.length)),
+      revenue: metric(current.revenue, before.revenue),
+      profit,
+    };
+  }
+
+  private async salesFigures(
+    range: { from: string; to: string },
+  ): Promise<{ sales: PeriodSaleRow[]; revenue: string }> {
+    const from = dayStartInstant(range.from, this.timeZone);
+    const to = dayStartInstant(addDays(range.to, 1), this.timeZone);
+
     const sales = await this.prisma.sale.findMany({
       where: { status: { in: CONFIRMED_STATUSES }, soldAt: { gte: from, lt: to } },
       select: {
@@ -158,10 +185,10 @@ export class DashboardService {
       BASE_CURRENCY,
     );
 
-    if (!showCost) {
-      return { count: sales.length, revenue, profit: null };
-    }
+    return { sales, revenue };
+  }
 
+  private profitOf(sales: PeriodSaleRow[]): string {
     const profits = sales.map((sale) => {
       const parts: string[] = [];
       for (const item of sale.items) {
@@ -182,7 +209,7 @@ export class DashboardService {
       );
     });
 
-    return { count: sales.length, revenue, profit: sumMoney(profits, BASE_CURRENCY) };
+    return sumMoney(profits, BASE_CURRENCY);
   }
 
   /** §14.3 — kassadagi pul; `SELLER` uchun bu blok umuman chaqirilmaydi. */
@@ -192,6 +219,7 @@ export class DashboardService {
       id: account.id,
       name: account.name,
       currency: account.currency,
+      kind: account.kind,
       balance: account.balance,
     }));
   }
@@ -280,13 +308,23 @@ export class DashboardService {
       .slice(0, LOW_STOCK_LIMIT);
   }
 
-  /** §14.4 — kunlik tushum dinamikasi, bazaviy valyutada. */
+  /**
+   * §14.4 — kunlik tushum dinamikasi, bazaviy valyutada.
+   *
+   * Uzunlik `period` ga bog'liq: `today`/`week` — 7 kunlik trend
+   * (bitta kunlik grafik ma'nosiz bo'lardi, shuning uchun qisqa
+   * kontekst beriladi), `month` — joriy oyning boshidan bugungacha
+   * (`periodRange` dagi "oy" ta'rifi bilan bir xil).
+   */
   private async chart(
+    period: DashboardPeriod,
     day: string,
     _storeRate: Prisma.Decimal | null,
   ): Promise<DashboardChartPointDto[]> {
+    const chartDays = period === 'month' ? daysBetween(`${day.slice(0, 7)}-01`, day) + 1 : 7;
+
     const start = new Date(
-      dayStartInstant(day, this.timeZone).getTime() - (CHART_DAYS - 1) * 86_400_000,
+      dayStartInstant(day, this.timeZone).getTime() - (chartDays - 1) * 86_400_000,
     );
 
     const sales = await this.prisma.sale.findMany({
@@ -303,7 +341,7 @@ export class DashboardService {
     }
 
     const points: DashboardChartPointDto[] = [];
-    for (let offset = CHART_DAYS - 1; offset >= 0; offset -= 1) {
+    for (let offset = chartDays - 1; offset >= 0; offset -= 1) {
       const date = businessDay(
         new Date(dayStartInstant(day, this.timeZone).getTime() - offset * 86_400_000),
         this.timeZone,
@@ -368,6 +406,7 @@ export class DashboardService {
    */
   private async installments(
     day: string,
+    previousDay: string,
     storeRate: Prisma.Decimal | null,
   ): Promise<Pick<DashboardDto, 'duePayments' | 'overdue'>> {
     const contracts = await this.prisma.installmentContract.findMany({
@@ -388,6 +427,33 @@ export class DashboardService {
       },
     });
 
+    const duePayments = this.duePaymentsOf(contracts, day);
+
+    /**
+     * "Oldingi" qiymat — qarz yig'indisi shu haqiqat manbaidan
+     * (`amountDue`/`amountPaid`), lekin chegara sanasi bir davr orqaga
+     * suriladi (§9.8 bilan bir mantiq, faqat chegara boshqa). Bu
+     * to'lovlar tarixini qayta qurmaydi — hozirgi holatga tayanadi,
+     * shuning uchun haqiqiy "o'sha kundagi" holat emas, balki "hozirgi
+     * qarzdan qaysi qismi allaqachon o'sha kunga kechikkan edi" degan
+     * savolga javob.
+     */
+    const current = this.overdueOf(contracts, day, storeRate);
+    const previous = this.overdueOf(contracts, previousDay, storeRate);
+
+    return {
+      duePayments,
+      overdue: {
+        // Son va jami HAMMA qarzdor bo'yicha; `top` esa qisqartirilgan —
+        // to'liq ro'yxat `/reports/debts` da (DTO izohiga qarang)
+        customersCount: current.rows.length,
+        totalAmount: metric(current.total, previous.total),
+        top: current.rows.slice(0, OVERDUE_TOP_LIMIT),
+      },
+    };
+  }
+
+  private duePaymentsOf(contracts: DashboardContractRow[], day: string): DashboardDuePaymentDto[] {
     /**
      * "Ertaga" kalendar SATRIDA hisoblanadi. `fromCalendarDate` UTC yarim
      * tunga bog'lanadi, UTC'da esa yozgi vaqt yo'q — ya'ni `+24 soat`
@@ -396,47 +462,57 @@ export class DashboardService {
      * bu esa "Bugun" va "Ertaga" yorliqlarini almashtirib yuborardi.
      */
     const tomorrow = toCalendarDate(new Date(fromCalendarDate(day).getTime() + 86_400_000));
-
     const duePayments: DashboardDuePaymentDto[] = [];
+
+    for (const contract of contracts) {
+      const { customerId, customer } = contract.sale;
+      // Nasiyada mijoz majburiy (§9); ustunning nullable bo'lishi sxema izi
+      if (customerId === null) continue;
+
+      const nextUnpaid = contract.schedules.find((row) => row.status !== ScheduleStatus.PAID);
+      if (!nextUnpaid) continue;
+
+      const due = toCalendarDate(nextUnpaid.dueDate);
+      if (due !== day && due !== tomorrow) continue;
+
+      duePayments.push({
+        installmentId: contract.id,
+        customerId,
+        customerName: customer?.fullName ?? '',
+        phone: customer?.phonePrimary ?? '',
+        dueDate: due,
+        // Qatorning QOLDIG'I: qisman to'langan qatorda to'liq summa
+        // emas, hali to'lanmagani ko'rsatiladi
+        amount: roundMoney(outstandingOfRows([nextUnpaid]), contract.currency),
+        currency: contract.currency,
+      });
+    }
+
+    duePayments.sort((left, right) => left.dueDate.localeCompare(right.dueDate));
+    return duePayments;
+  }
+
+  /**
+   * **Faqat muddati o'tgan qism** — shartnomaning butun qoldig'i emas.
+   * 12 oylik shartnoma bir oy kechikkanida butun qoldiqni "kechikkan"
+   * deb ko'rsatish raqamni o'nlab marta shishirardi va u hech nimaga
+   * mos kelmasdi: na jami qarzga (`/reports/debts`), na haqiqatan
+   * kechikkan summaga. Bu blok "bugun kassada bo'lishi kerak edi"
+   * degan savolga javob beradi.
+   */
+  private overdueOf(
+    contracts: DashboardContractRow[],
+    thresholdDay: string,
+    storeRate: Prisma.Decimal | null,
+  ): { rows: DashboardOverdueCustomerDto[]; total: string } {
     const byCustomer = new Map<string, { name: string; parts: string[]; daysOverdue: number }>();
 
     for (const contract of contracts) {
       const { customerId, customer } = contract.sale;
-      /**
-       * Nasiyada mijoz majburiy (§9); ustunning nullable bo'lishi sxema
-       * izi. DTO'da esa `customerId` null bo'lolmaydi, shuning uchun
-       * bunday shartnoma ikkala blokka ham kirmaydi.
-       */
       if (customerId === null) continue;
 
-      const nextUnpaid = contract.schedules.find((row) => row.status !== ScheduleStatus.PAID);
-      if (nextUnpaid) {
-        const due = toCalendarDate(nextUnpaid.dueDate);
-        if (due === day || due === tomorrow) {
-          duePayments.push({
-            installmentId: contract.id,
-            customerId,
-            customerName: customer?.fullName ?? '',
-            phone: customer?.phonePrimary ?? '',
-            dueDate: due,
-            // Qatorning QOLDIG'I: qisman to'langan qatorda to'liq summa
-            // emas, hali to'lanmagani ko'rsatiladi
-            amount: roundMoney(outstandingOfRows([nextUnpaid]), contract.currency),
-            currency: contract.currency,
-          });
-        }
-      }
-
-      /**
-       * **Faqat muddati o'tgan qism** — shartnomaning butun qoldig'i emas.
-       * 12 oylik shartnoma bir oy kechikkanida butun qoldiqni "kechikkan"
-       * deb ko'rsatish raqamni o'nlab marta shishirardi va u hech nimaga
-       * mos kelmasdi: na jami qarzga (`/reports/debts`), na haqiqatan
-       * kechikkan summaga. Bu blok "bugun kassada bo'lishi kerak edi"
-       * degan savolga javob beradi.
-       */
       const late = contract.schedules.filter(
-        (row) => row.status !== ScheduleStatus.PAID && toCalendarDate(row.dueDate) < day,
+        (row) => row.status !== ScheduleStatus.PAID && toCalendarDate(row.dueDate) < thresholdDay,
       );
       if (late.length === 0) continue;
 
@@ -447,7 +523,7 @@ export class DashboardService {
       // Jadval `sequence` bo'yicha saralangan, ya'ni birinchi kechikkan
       // qator eng eskisi — kechikish shundan hisoblanadi
       const oldest = late[0];
-      const daysOverdue = oldest ? daysBetween(toCalendarDate(oldest.dueDate), day) : 0;
+      const daysOverdue = oldest ? daysBetween(toCalendarDate(oldest.dueDate), thresholdDay) : 0;
 
       const existing = byCustomer.get(customerId);
       if (existing) {
@@ -462,7 +538,7 @@ export class DashboardService {
       }
     }
 
-    const overdueRows: DashboardOverdueCustomerDto[] = [...byCustomer.entries()].map(
+    const rows: DashboardOverdueCustomerDto[] = [...byCustomer.entries()].map(
       ([customerId, row]) => ({
         customerId,
         customerName: row.name,
@@ -473,28 +549,14 @@ export class DashboardService {
       }),
     );
 
-    overdueRows.sort(
+    rows.sort(
       (left, right) =>
         // `Number(...)` bu yerda SARALASH KALITI, arifmetika emas: pul
         // hisobi yuqorida `sumMoney` bilan Decimal ustida bajarilgan
         right.daysOverdue - left.daysOverdue || Number(right.amount) - Number(left.amount),
     );
 
-    duePayments.sort((left, right) => left.dueDate.localeCompare(right.dueDate));
-
-    return {
-      duePayments,
-      overdue: {
-        // Son va jami HAMMA qarzdor bo'yicha; `top` esa qisqartirilgan —
-        // to'liq ro'yxat `/reports/debts` da (DTO izohiga qarang)
-        customersCount: overdueRows.length,
-        totalAmount: sumMoney(
-          overdueRows.map((row) => row.amount),
-          BASE_CURRENCY,
-        ),
-        top: overdueRows.slice(0, OVERDUE_TOP_LIMIT),
-      },
-    };
+    return { rows, total: sumMoney(rows.map((row) => row.amount), BASE_CURRENCY) };
   }
 
   /**
@@ -523,3 +585,55 @@ const CONFIRMED_STATUSES: SaleStatus[] = [
   SaleStatus.PARTIALLY_RETURNED,
   SaleStatus.RETURNED,
 ];
+
+type PeriodSaleRow = {
+  currency: Currency;
+  total: Prisma.Decimal;
+  exchangeRate: Prisma.Decimal;
+  items: {
+    quantity: number;
+    unitPrice: Prisma.Decimal;
+    costSnapshot: Prisma.Decimal;
+    costCurrency: Currency;
+  }[];
+};
+
+type DashboardContractRow = {
+  id: string;
+  currency: Currency;
+  sale: {
+    customerId: string | null;
+    customer: { fullName: string; phonePrimary: string } | null;
+  };
+  schedules: {
+    dueDate: Date;
+    amountDue: Prisma.Decimal;
+    amountPaid: Prisma.Decimal;
+    status: ScheduleStatus;
+  }[];
+};
+
+/** `"2026-08-10"` + N kun → kalendar sana (`reports.service.ts` dagi bilan bir mantiq). */
+function addDays(date: string, days: number): string {
+  return toCalendarDate(new Date(fromCalendarDate(date).getTime() + days * 86_400_000));
+}
+
+/**
+ * §14 kengaytma — davr chegaralari, do'kon zonasidagi bugungi kunga
+ * nisbatan.
+ *
+ *  - `today` — bitta kun;
+ *  - `week` — bugundan oldingi 7 kun (bugun bilan);
+ *  - `month` — joriy oyning 1-kunidan bugungacha.
+ */
+function periodRange(period: DashboardPeriod, day: string): { from: string; to: string } {
+  if (period === 'today') return { from: day, to: day };
+  if (period === 'week') return { from: addDays(day, -6), to: day };
+  return { from: `${day.slice(0, 7)}-01`, to: day };
+}
+
+/** Oldingi davr — shu uzunlikdagi, bevosita oldin turgan oraliq (`reports.service.ts` bilan bir naqsh). */
+function previousRange(range: { from: string; to: string }): { from: string; to: string } {
+  const length = daysBetween(range.from, range.to) + 1;
+  return { from: addDays(range.from, -length), to: addDays(range.to, -length) };
+}

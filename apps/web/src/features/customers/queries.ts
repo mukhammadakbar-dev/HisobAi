@@ -4,12 +4,22 @@ import { normalizePhone } from '@hisobai/contracts';
 import type {
   CreateCustomerInput,
   CustomerDto,
+  CustomerListResponse,
   CustomerSummaryDto,
   Page,
   UpdateCustomerInput,
 } from '@hisobai/contracts';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import type {
+  UseInfiniteQueryResult,
+  UseMutationResult,
+  UseQueryResult,
+} from '@tanstack/react-query';
 
 import { api } from '../../lib/api-client';
 import type { ApiError } from '../../lib/api-error';
@@ -17,26 +27,31 @@ import type { ApiError } from '../../lib/api-error';
 /**
  * Mijoz so'rovlari (§6).
  *
- * Qarz so'rovi yo'q: u savdo va to'lovlardan hisoblanadi (§6.12) va
- * mijoz kartasiga 5-bosqichda qo'shiladi.
+ * Qarz `CustomerSummaryDto.outstandingDebt`/`debtStatus` orqali keladi
+ * (§6.12, §9.8 kengaytma) — server tranzaksiyalardan hisoblaydi,
+ * client hech qanday arifmetika qilmaydi.
  */
 
 export interface CustomerFilters {
   q?: string;
   isActive?: 'active' | 'archived' | 'all';
   isFlagged?: 'true';
+  /** §6.12 kengaytma — "Qarzi bor" chipi. */
+  hasDebt?: 'true';
 }
 
 export const customerKeys = {
   all: ['customers'] as const,
   list: (filters: CustomerFilters) => [...customerKeys.all, 'list', filters] as const,
+  infiniteList: (filters: CustomerFilters) =>
+    [...customerKeys.all, 'infinite-list', filters] as const,
   detail: (id: string) => [...customerKeys.all, 'detail', id] as const,
   duplicate: (phone: string) => [...customerKeys.all, 'duplicate', phone] as const,
 };
 
 export const customersApi = {
-  list: (filters: CustomerFilters): Promise<Page<CustomerSummaryDto>> =>
-    api.get('/customers', { query: { ...filters, limit: 50 } }),
+  list: (filters: CustomerFilters, cursor?: string): Promise<CustomerListResponse> =>
+    api.get('/customers', { query: { ...filters, cursor, limit: 50 } }),
   detail: (id: string): Promise<CustomerDto> => api.get(`/customers/${id}`),
   create: (input: CreateCustomerInput): Promise<CustomerDto> => api.post('/customers', input),
   update: (id: string, input: UpdateCustomerInput): Promise<CustomerDto> =>
@@ -45,12 +60,31 @@ export const customersApi = {
 
 export function useCustomers(
   filters: CustomerFilters,
-): UseQueryResult<Page<CustomerSummaryDto>, ApiError> {
-  return useQuery<Page<CustomerSummaryDto>, ApiError>({
+): UseQueryResult<CustomerListResponse, ApiError> {
+  return useQuery<CustomerListResponse, ApiError>({
     queryKey: customerKeys.list(filters),
     queryFn: () => customersApi.list(filters),
     // Filtr o'zgarganda eski ro'yxat ko'rinib tursin — jadval sakramaydi
     placeholderData: (previous) => previous,
+  });
+}
+
+/**
+ * Ro'yxat sahifasi uchun — kursor bilan "Yana yuklash" (§6.4).
+ *
+ * `totalCount`/`totalDebt` har bir sahifada bir xil qaytadi (butun
+ * filtrlangan to'plam bo'yicha), shuning uchun banner uchun birinchi
+ * sahifa yetarli.
+ */
+export function useCustomersInfinite(
+  filters: CustomerFilters,
+): UseInfiniteQueryResult<CustomerListResponse[], ApiError> {
+  return useInfiniteQuery<CustomerListResponse, ApiError, CustomerListResponse[]>({
+    queryKey: customerKeys.infiniteList(filters),
+    queryFn: ({ pageParam }) => customersApi.list(filters, pageParam as string | undefined),
+    initialPageParam: undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    select: (data) => data.pages,
   });
 }
 

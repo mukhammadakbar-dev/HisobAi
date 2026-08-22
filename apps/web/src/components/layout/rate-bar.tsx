@@ -6,6 +6,7 @@ import { AlertTriangle, ChevronDown, RefreshCw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { useSyncRateFromCbu } from '../../features/exchange-rates/queries';
+import { formatUzbekDate } from '../../lib/format';
 
 export function RateBar({ data }: { data: TodayExchangeRateDto | undefined }) {
   const syncNow = useSyncRateFromCbu();
@@ -26,7 +27,7 @@ export function RateBar({ data }: { data: TodayExchangeRateDto | undefined }) {
     };
   }, [open]);
 
-  if (!data || !data.rate) return null;
+  if (!data) return null;
 
   const { rate, staleness, staleDays } = data;
 
@@ -38,13 +39,21 @@ export function RateBar({ data }: { data: TodayExchangeRateDto | undefined }) {
         aria-expanded={open}
         aria-haspopup="true"
         title="Valyuta kursi ma'lumotlari"
-        className="inline-flex min-h-9 sm:min-h-11 items-center gap-1 sm:gap-1.5 rounded-md border border-border-default bg-surface-card px-2 sm:px-3 py-1 text-xs sm:text-sm font-medium text-text-primary whitespace-nowrap transition-colors hover:bg-surface-raised"
+        className="inline-flex min-h-9 items-center gap-1 rounded-lg bg-surface-raised px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-text-primary transition-opacity hover:opacity-80 sm:gap-1.5 md:min-h-[38px] md:gap-2 md:border md:border-border-default md:bg-transparent md:px-3 md:text-sm md:font-medium md:hover:bg-surface-raised"
       >
-        {staleness !== RateStaleness.FRESH && (
+        {(!rate || staleness !== RateStaleness.FRESH) && (
           <AlertTriangle size={14} aria-hidden="true" className="shrink-0 text-warning" />
         )}
         <span className="whitespace-nowrap">
-          Kurs: <strong className="tabular">{formatRate(rate.storeRate)}</strong> so‘m
+          {rate ? (
+            <>
+              Kurs: <strong className="tabular">{formatRate(rate.storeRate)}</strong> so‘m
+            </>
+          ) : (
+            <>
+              Kurs: <strong className="tabular text-warning">Belgilanmagan</strong>
+            </>
+          )}
         </span>
         <ChevronDown
           size={13}
@@ -72,48 +81,73 @@ export function RateBar({ data }: { data: TodayExchangeRateDto | undefined }) {
             <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
               Valyuta kursi
             </span>
-            <span className="text-xs text-text-tertiary">{rate.date}</span>
+            <span className="text-xs text-text-tertiary">{formatUzbekDate(rate ? rate.date : data.today)}</span>
           </div>
 
-          <div className="flex flex-col gap-2 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-text-secondary">Do‘kon kursi:</span>
-              <span className="font-semibold text-text-primary">
-                <strong className="tabular">{formatRate(rate.storeRate)}</strong> so‘m
-              </span>
-            </div>
+          {rate ? (
+            <>
+              <div className="flex flex-col gap-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-text-secondary">Sotish:</span>
+                  <span className="font-semibold text-text-primary">
+                    <strong className="tabular">{formatRate(rate.storeRate)}</strong> so‘m
+                  </span>
+                </div>
 
-            <div className="flex items-center justify-between">
-              <span className="text-text-secondary">CBU kursi:</span>
-              <span className="tabular text-text-secondary">
-                {rate.cbuRate ? `${formatRate(rate.cbuRate)} so‘m` : '—'}
-              </span>
-            </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-text-secondary">Olish:</span>
+                  <span className="tabular text-text-secondary">
+                    {rate.cbuRate ? `${formatRate(rate.cbuRate)} so‘m` : '—'}
+                  </span>
+                </div>
 
-            {staleness !== RateStaleness.FRESH && (
-              <div className="flex items-start gap-1.5 rounded-md bg-warning-bg p-2 text-xs font-medium text-warning">
-                <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-                <span>
-                  Kurs {staleDays} kun eskirgan ({rate.date})</span>
+                {staleness !== RateStaleness.FRESH && (
+                  <div className="flex items-start gap-1.5 rounded-md bg-warning-bg p-2 text-xs font-medium text-warning">
+                    <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+                    <span>
+                      Kurs {staleDays} kun eskirgan ({formatUzbekDate(rate.date)})
+                    </span>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              syncNow.mutate();
-            }}
-            disabled={syncNow.isPending}
-            className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-md border border-border-default bg-surface-card px-3 text-xs font-semibold text-text-primary transition-colors hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <RefreshCw
-              size={14}
-              aria-hidden="true"
-              className={syncNow.isPending ? 'animate-spin' : undefined}
-            />
-            <span>{syncNow.isPending ? 'Yangilanmoqda…' : 'Kursni yangilash'}</span>
-          </button>
+              <button
+                type="button"
+                onClick={() => {
+                  syncNow.mutate();
+                }}
+                disabled={syncNow.isPending}
+                className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-md border border-border-default bg-surface-card px-3 text-xs font-semibold text-text-primary transition-colors hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RefreshCw
+                  size={14}
+                  aria-hidden="true"
+                  className={syncNow.isPending ? 'animate-spin' : undefined}
+                />
+                <span>{syncNow.isPending ? 'Yangilanmoqda…' : 'Kursni yangilash'}</span>
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 rounded-md bg-warning-bg p-2.5 text-xs font-medium text-warning">
+                <AlertTriangle size={14} className="shrink-0" />
+                <span>Valyuta kursi hali belgilanmagan.</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => syncNow.mutate()}
+                disabled={syncNow.isPending}
+                className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-md bg-action px-3 text-xs font-semibold text-action-text transition-colors hover:opacity-90 disabled:opacity-50"
+              >
+                <RefreshCw
+                  size={14}
+                  className={syncNow.isPending ? 'animate-spin' : undefined}
+                />
+                <span>{syncNow.isPending ? 'Olinmoqda…' : 'CBU’dan olingan kursni o‘rnatish'}</span>
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

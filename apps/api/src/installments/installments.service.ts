@@ -9,9 +9,9 @@ import {
   sumMoney,
   type CloseContractInput,
   type InstallmentContractDto,
+  type InstallmentListResponse,
   type InstallmentQuery,
   type InstallmentSummaryDto,
-  type Page,
   type PaymentDto,
   type RebuildScheduleInput,
 } from '@hisobai/contracts';
@@ -69,29 +69,42 @@ export class InstallmentsService {
    * shart esa `dueDate` indeksidan foydalana olmasdi. Sahifa hajmi
    * cheklangani uchun (`limit`) bu qimmat emas.
    */
-  async list(query: InstallmentQuery): Promise<Page<InstallmentSummaryDto>> {
+  async list(query: InstallmentQuery): Promise<InstallmentListResponse> {
     const limit = normalizeLimit(query.limit);
+    const where: Prisma.InstallmentContractWhereInput = {
+      status: query.status ? { in: query.status } : undefined,
+      ...(query.customerId ? { sale: { customerId: query.customerId } } : {}),
+    };
+    const orderBy = [
+      { createdAt: query.sort === 'createdAt' ? ('asc' as const) : ('desc' as const) },
+      { id: 'desc' as const },
+    ];
 
-    const rows = await this.prisma.installmentContract.findMany({
-      where: {
-        status: query.status ? { in: query.status } : undefined,
-        ...(query.customerId ? { sale: { customerId: query.customerId } } : {}),
-      },
-      include: CONTRACT_INCLUDE,
-      orderBy: [{ createdAt: query.sort === 'createdAt' ? 'asc' : 'desc' }, { id: 'desc' }],
-      ...toPrismaCursor(query.cursor, limit),
-    });
+    /**
+     * `overdue` xotirada hisoblanadi (izoh yuqorida), shuning uchun
+     * `totalCount` va `overdueCount` ham **butun filtrlangan to'plam**
+     * bo'yicha aniqlanishi uchun barcha mos qatorlar (kursorsiz)
+     * alohida o'qiladi.
+     */
+    const [rows, allRows] = await Promise.all([
+      this.prisma.installmentContract.findMany({
+        where,
+        include: CONTRACT_INCLUDE,
+        orderBy,
+        ...toPrismaCursor(query.cursor, limit),
+      }),
+      this.prisma.installmentContract.findMany({ where, include: CONTRACT_INCLUDE, orderBy }),
+    ]);
 
     const today = this.today;
     const summaries = rows.map((row) => toSummaryDto(row, today));
-    const filtered =
-      query.overdue === 'true'
-        ? summaries.filter((row) => row.isOverdue)
-        : query.overdue === 'false'
-          ? summaries.filter((row) => !row.isOverdue)
-          : summaries;
+    const filtered = applyOverdueFilter(summaries, query.overdue);
 
-    return toPage(filtered, limit, (dto) => dto.createdAt);
+    const allSummaries = allRows.map((row) => toSummaryDto(row, today));
+    const totalFiltered = applyOverdueFilter(allSummaries, query.overdue);
+    const overdueCount = allSummaries.filter((row) => row.isOverdue).length;
+
+    return { ...toPage(filtered, limit, (dto) => dto.createdAt, totalFiltered.length), overdueCount };
   }
 
   async requireById(id: string): Promise<InstallmentContractDto> {
@@ -321,4 +334,14 @@ function assertActive(contract: ContractRow): void {
 
 function contractNotFound(): AppException {
   return AppException.notFound(ErrorCode.NOT_FOUND, 'Shartnoma topilmadi.');
+}
+
+/** §9.8 — `overdue` filtri xotirada, izoh `list()` da. */
+function applyOverdueFilter(
+  rows: InstallmentSummaryDto[],
+  overdue: InstallmentQuery['overdue'],
+): InstallmentSummaryDto[] {
+  if (overdue === 'true') return rows.filter((row) => row.isOverdue);
+  if (overdue === 'false') return rows.filter((row) => !row.isOverdue);
+  return rows;
 }

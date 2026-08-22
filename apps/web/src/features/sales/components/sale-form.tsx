@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  BASE_CURRENCY,
   Currency,
   SaleKind,
   confirmSaleSchema,
@@ -24,6 +25,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Money } from '../../../components/money/money';
 import { ErrorState, TableSkeleton } from '../../../components/states';
 import { Button, Card, Field, Input, Select } from '../../../components/ui';
+import { useToast } from '../../../components/ui/toast';
 import { ApiError } from '../../../lib/api-error';
 import { SHOP_TIME_ZONE, todayInShopZone } from '../../../lib/format';
 import { errorMessage } from '../../../lib/messages';
@@ -132,10 +134,14 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
   const updateDraft = useUpdateSaleDraft(sale?.id ?? '');
   const deleteDraft = useDeleteSaleDraft();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState<ApiError | null>(null);
 
   const [form, setForm] = useState<FormState>(() => initialState(sale));
+  const selectedCustomer = customers.data?.data.find(
+    (customer) => customer.id === form.customerId,
+  );
   const [payments, setPayments] = useState<PaymentRow[]>([emptyPaymentRow()]);
   const [plan, setPlan] = useState<PlanState>(() => emptyPlan());
   const [issues, setIssues] = useState<Record<string, string>>({});
@@ -323,10 +329,12 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
         void queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
         void queryClient.invalidateQueries({ queryKey: customerKeys.all });
         setDirty(false);
+        toast.success('Savdo tasdiqlandi');
         router.push(`/sales/${confirmed.id}`);
       } catch (error) {
         setConfirmError(error instanceof ApiError ? error : null);
         setIssues(serverIssues(error));
+        toast.danger(errorMessage(error));
       } finally {
         setConfirming(false);
       }
@@ -423,6 +431,20 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
                   </option>
                 ))}
               </Select>
+              {/* §6.12 kengaytma — tanlangan mijozning joriy qarzi,
+                  ro'yxat so'rovida allaqachon kelgan `outstandingDebt` */}
+              {selectedCustomer && (
+                <p
+                  className={`m-0 mt-1.5 text-sm ${selectedCustomer.debtStatus === 'OVERDUE' ? 'text-danger' : 'text-text-secondary'}`}
+                >
+                  Qarzi:{' '}
+                  <Money
+                    amount={selectedCustomer.outstandingDebt}
+                    currency={BASE_CURRENCY}
+                    className="text-inherit"
+                  />
+                </p>
+              )}
             </Field>
           </div>
 
@@ -552,66 +574,74 @@ export function SaleForm({ sale }: { sale?: SaleDto }) {
       </Card>
 
       {/*
-        Telefonda tugmalar ustma-ust va to'liq kenglikda turadi, `sm:` dan
-        boshlab bir qatorda. `flex-col-reverse` — DOM tartibi saqlanadi
-        (Tab bilan kezish mantiqiy qoladi), lekin ekranda ASOSIY amal
-        tepaga chiqadi: bir qo'lda ishlayotgan sotuvchi bosh barmog'i
-        yetadigan joyda "Tasdiqlash" turadi, tasodifan bosiladigan
-        "O'chirish" esa eng pastda.
+        Ikkilamchi amallar oddiy oqimda: qoralamani saqlash/o'chirish
+        kunda bir necha marta emas, holat almashganda bosiladi. Asosiy
+        amal — "Tasdiqlash" — pastda yopishqoq panelda, doimo ko'rinadi
+        (`app-shell.tsx` dagi izohda ilgari ham shu mo'ljallangan edi).
       */}
-      <Card className="flex flex-col gap-4">
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-sm text-text-secondary">Savdo summasi</span>
-          <span className="tabular text-2xl font-semibold">
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        {sale && (
+          <Button
+            type="button"
+            variant="danger"
+            className="w-full sm:w-auto"
+            disabled={pending || deleteDraft.isPending}
+            onClick={() => {
+              // §7.7 — qoralamani o'chirish hech narsaga ta'sir qilmaydi
+              deleteDraft.mutate(sale.id, {
+                onSuccess: () => {
+                  setDirty(false);
+                  router.push('/sales');
+                },
+              });
+            }}
+          >
+            Qoralamani o‘chirish
+          </Button>
+        )}
+
+        <Button type="submit" className="w-full sm:w-auto" disabled={pending}>
+          {createDraft.isPending || updateDraft.isPending ? 'Saqlanmoqda…' : 'Qoralamani saqlash'}
+        </Button>
+      </div>
+
+      {/*
+        Doimiy amal paneli (dizayn kanvasi — "Yangi savdo"). Telefonda
+        pastga yopishadi va sahifa oqimidan chiqadi; noutbukda oddiy
+        karta bo'lib qoladi — ekran keng, tepaga qaytish qiyin emas.
+      */}
+      <div className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-30 flex items-center gap-3 border-t border-border-default bg-surface-card p-3.5 shadow-[0_-4px_16px_rgba(2,13,31,0.08)] md:static md:inset-auto md:z-auto md:rounded-lg md:border md:p-4 md:shadow-none">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[10px] font-semibold tracking-[0.06em] text-text-tertiary uppercase">
+            To‘lanadi
+          </span>
+          <span className="tabular text-lg font-semibold md:text-2xl">
             <Money amount={total} currency={form.currency} />
           </span>
         </div>
 
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          {sale && (
-            <Button
-              type="button"
-              variant="danger"
-              className="w-full sm:w-auto"
-              disabled={pending || deleteDraft.isPending}
-              onClick={() => {
-                // §7.7 — qoralamani o'chirish hech narsaga ta'sir qilmaydi
-                deleteDraft.mutate(sale.id, {
-                  onSuccess: () => {
-                    setDirty(false);
-                    router.push('/sales');
-                  },
-                });
-              }}
-            >
-              Qoralamani o‘chirish
-            </Button>
-          )}
+        <Button
+          type="button"
+          variant="primary"
+          className="min-h-[52px] flex-1 md:min-h-11 md:flex-none"
+          // §17.10 — to'lovlar summasi savdo summasiga teng bo'lmasa
+          // tasdiqlanmaydi; §7 — birliksiz qator tasdiqlanmaydi
+          disabled={
+            pending ||
+            !isSettled ||
+            !planReady ||
+            hasIncompleteRow ||
+            total === roundMoney('0', form.currency) ||
+            activeAccounts.length === 0
+          }
+          onClick={handleConfirm}
+        >
+          {confirming ? 'Tasdiqlanmoqda…' : 'Tasdiqlash'}
+        </Button>
+      </div>
 
-          <Button type="submit" className="w-full sm:w-auto" disabled={pending}>
-            {createDraft.isPending || updateDraft.isPending ? 'Saqlanmoqda…' : 'Qoralamani saqlash'}
-          </Button>
-
-          <Button
-            type="button"
-            variant="primary"
-            className="w-full sm:w-auto"
-            // §17.10 — to'lovlar summasi savdo summasiga teng bo'lmasa
-            // tasdiqlanmaydi; §7 — birliksiz qator tasdiqlanmaydi
-            disabled={
-              pending ||
-              !isSettled ||
-              !planReady ||
-              hasIncompleteRow ||
-              total === roundMoney('0', form.currency) ||
-              activeAccounts.length === 0
-            }
-            onClick={handleConfirm}
-          >
-            {confirming ? 'Tasdiqlanmoqda…' : 'Tasdiqlash'}
-          </Button>
-        </div>
-      </Card>
+      {/* Yopishqoq panel joyni egallamasin — mobil skroll oxirida bo'shliq qoldiriladi */}
+      <div className="h-[76px] md:hidden" aria-hidden="true" />
     </form>
   );
 }

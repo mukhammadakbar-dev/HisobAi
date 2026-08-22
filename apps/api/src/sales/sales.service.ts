@@ -66,18 +66,23 @@ export class SalesService {
     const soldAt = dayRangeFilter(query.from, query.to, this.timeZone);
     const direction = query.sort === 'soldAt' ? 'asc' : 'desc';
 
-    const rows = await this.prisma.sale.findMany({
-      where: {
-        status: query.status ? { in: query.status } : undefined,
-        customerId: query.customerId,
-        ...(soldAt ? { soldAt } : {}),
-      },
-      include: SALE_SUMMARY_INCLUDE,
-      orderBy: [{ soldAt: direction }, { id: direction }],
-      ...toPrismaCursor(query.cursor, limit),
-    });
+    const where: Prisma.SaleWhereInput = {
+      status: query.status ? { in: query.status } : undefined,
+      customerId: query.customerId,
+      ...(soldAt ? { soldAt } : {}),
+    };
 
-    return toPage(rows.map(toSummaryDto), limit, (dto) => dto.soldAt);
+    const [rows, totalCount] = await Promise.all([
+      this.prisma.sale.findMany({
+        where,
+        include: SALE_SUMMARY_INCLUDE,
+        orderBy: [{ soldAt: direction }, { id: direction }],
+        ...toPrismaCursor(query.cursor, limit),
+      }),
+      this.prisma.sale.count({ where }),
+    ]);
+
+    return toPage(rows.map(toSummaryDto), limit, (dto) => dto.soldAt, totalCount);
   }
 
   async requireById(id: string, actor: RequestUser): Promise<SaleDto> {

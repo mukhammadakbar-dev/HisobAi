@@ -272,11 +272,11 @@ export class ReportsService {
     const [items, batches, rate] = await Promise.all([
       this.prisma.inventoryItem.findMany({
         where: { status: { in: [InventoryStatus.AVAILABLE, InventoryStatus.RETURNED] } },
-        select: { costPrice: true, costCurrency: true },
+        select: { costPrice: true, costCurrency: true, productId: true },
       }),
       this.prisma.inventoryBatch.findMany({
         where: { quantityRemaining: { gt: 0 } },
-        select: { quantityRemaining: true, unitCost: true, costCurrency: true },
+        select: { quantityRemaining: true, unitCost: true, costCurrency: true, productId: true },
       }),
       this.latestStoreRate(),
     ]);
@@ -308,11 +308,19 @@ export class ReportsService {
       parts.push(multiplyMoney(perUnit, batch.quantityRemaining, BASE_CURRENCY));
     }
 
+    // "N ta pozitsiya" — zaxirasi bor noyob mahsulotlar soni, seriyali
+    // birlik ham, partiya ham bitta mahsulotga tegishli bo'lishi mumkin
+    const positions = new Set<string>([
+      ...items.map((item) => item.productId),
+      ...batches.map((batch) => batch.productId),
+    ]);
+
     return {
       currency: BASE_CURRENCY,
       totalCost: sumMoney(parts, BASE_CURRENCY),
       serializedCount: items.length,
       batchQuantity: batches.reduce((sum, batch) => sum + batch.quantityRemaining, 0),
+      positionCount: positions.size,
       // Kurs yo'qligi JIMGINA nolga aylanmaydi: ekran buni aytadi,
       // aks holda ombor qiymati sababsiz kamayib ko'rinardi
       rateMissing,
@@ -418,17 +426,22 @@ export class ReportsService {
     const limit = normalizeLimit(query.limit);
     const createdAt = dayRangeFilter(query.from, query.to, this.timeZone);
 
-    const rows = await this.prisma.auditLog.findMany({
-      where: {
-        action: query.action,
-        entityType: query.entityType,
-        entityId: query.entityId,
-        actorId: query.actorId,
-        ...(createdAt ? { createdAt } : {}),
-      },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      ...toPrismaCursor(query.cursor, limit),
-    });
+    const where: Prisma.AuditLogWhereInput = {
+      action: query.action,
+      entityType: query.entityType,
+      entityId: query.entityId,
+      actorId: query.actorId,
+      ...(createdAt ? { createdAt } : {}),
+    };
+
+    const [rows, totalCount] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        ...toPrismaCursor(query.cursor, limit),
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
 
     // Aktyor nomi alohida so'rov bilan: `actor_id` da FK YO'Q (§21.3 —
     // ustunga ikki xil aktyor yoziladi, business `User` va
@@ -455,6 +468,7 @@ export class ReportsService {
       })),
       limit,
       (dto) => dto.createdAt,
+      totalCount,
     );
   }
 
@@ -708,7 +722,8 @@ function negate(amount: string): string {
  * aniqlanmagan va uni `100%` deb ko'rsatish yolg'on bo'lardi (noldan
  * o'sish har doim "cheksiz"). Ekran bunday holatda "—" chizadi.
  */
-function metric(value: string, previous: string): ReportMetricDto {
+/** Boshqa hisobot servislari (masalan dashboard) ham shu naqshdan foydalanadi. */
+export function metric(value: string, previous: string): ReportMetricDto {
   const current = Number(value);
   const before = Number(previous);
 

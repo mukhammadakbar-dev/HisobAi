@@ -39,13 +39,17 @@ export class ShopAdminsService {
   async list(query: ShopAdminQuery): Promise<Page<ShopAdminDto>> {
     const limit = normalizeLimit(query.limit);
 
-    const rows = await this.prisma.user.findMany({
-      where: { role: UserRole.SHOP_ADMIN },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      ...toPrismaCursor(query.cursor, limit),
-    });
+    const where = { role: UserRole.SHOP_ADMIN };
+    const [rows, totalCount] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        ...toPrismaCursor(query.cursor, limit),
+      }),
+      this.prisma.user.count({ where }),
+    ]);
 
-    return toPage(rows.map(toDto), limit, (dto) => dto.createdAt);
+    return toPage(rows.map(toDto), limit, (dto) => dto.createdAt, totalCount);
   }
 
   async getById(id: string): Promise<ShopAdminDto> {

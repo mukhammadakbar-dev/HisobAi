@@ -1,10 +1,11 @@
 'use client';
 
 import type { TopProductsDto } from '@hisobai/contracts';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 import { Money } from '../../../components/money/money';
 import { Card } from '../../../components/ui';
+import { DataList } from '../../../components/ui/data-list';
 
 /**
  * Mahsulot bo'yicha foyda (§13.7).
@@ -19,6 +20,8 @@ import { Card } from '../../../components/ui';
  * ega buni ko'rishi kerak.
  */
 export function TopProductsTable({ report }: { report: TopProductsDto }) {
+  const router = useRouter();
+
   if (report.products.length === 0) {
     return (
       <Card>
@@ -28,38 +31,47 @@ export function TopProductsTable({ report }: { report: TopProductsDto }) {
   }
 
   return (
-    <Card className="flex flex-col gap-3 p-0">
-      <h2 className="m-0 px-4 pt-4 text-lg font-semibold">Mahsulot bo‘yicha foyda</h2>
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-border-default text-left text-text-secondary">
-              <th className="p-3 font-medium">Mahsulot</th>
-              <th className="p-3 font-medium">Soni</th>
-              <th className="p-3 font-medium">Aylanma</th>
-              <th className="p-3 font-medium">Foyda</th>
-            </tr>
-          </thead>
-          <tbody>
-            {report.products.map((product) => (
-              <tr key={product.productId} className="border-b border-border-default last:border-0">
-                <td className="p-3">
-                  <Link href={`/products/${product.productId}`} className="text-link">
-                    {product.productName}
-                  </Link>
-                </td>
-                <td className="tabular p-3">{product.quantity}</td>
-                <td className="tabular p-3">
-                  <Money amount={product.revenue} currency={report.currency} withCurrency={false} />
-                </td>
-                <td className="tabular p-3 font-medium">
-                  <Money amount={product.profit} currency={report.currency} withCurrency={false} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
+    <div className="flex flex-col gap-3">
+      <h2 className="m-0 text-lg font-semibold">Mahsulot bo‘yicha foyda</h2>
+      <DataList<TopProductsDto['products'][number]>
+        label="Mahsulot bo‘yicha foyda"
+        rows={report.products}
+        rowKey={(product) => product.productId}
+        onRowClick={(product) => {
+          router.push(`/products/${product.productId}`);
+        }}
+        columns={[
+          {
+            header: 'Mahsulot',
+            mobile: 'primary',
+            cell: (product) => product.productName,
+          },
+          {
+            header: 'Soni',
+            mobile: 'secondary',
+            numeric: true,
+            className: 'w-28',
+            cell: (product) => product.quantity,
+          },
+          {
+            header: 'Aylanma',
+            numeric: true,
+            className: 'w-40',
+            cell: (product) => (
+              <Money amount={product.revenue} currency={report.currency} withCurrency={false} />
+            ),
+          },
+          {
+            header: 'Foyda',
+            mobile: 'amount',
+            numeric: true,
+            className: 'w-40',
+            cell: (product) => (
+              <Money amount={product.profit} currency={report.currency} withCurrency={false} />
+            ),
+          },
+        ]}
+      />
+    </div>
   );
 }

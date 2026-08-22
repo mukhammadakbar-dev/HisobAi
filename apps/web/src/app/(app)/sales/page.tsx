@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { EmptyState, ErrorState, TableSkeleton } from '../../../components/states';
 import { Badge, Card, Input, Select } from '../../../components/ui';
 import { DataList } from '../../../components/ui/data-list';
+import { FilterBar } from '../../../components/ui/filters';
 import { useSales } from '../../../features/sales/queries';
 import { formatDate } from '../../../lib/format';
 import { SALE_STATUS_LABEL, SALE_STATUS_TONE } from '../../../lib/labels';
@@ -39,6 +40,12 @@ export default function SalesPage() {
   const rows = sales.data?.data ?? [];
   const isFiltered = status !== '' || from !== '' || to !== '';
 
+  const resetFilters = (): void => {
+    setStatus('');
+    setFrom('');
+    setTo('');
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -59,54 +66,61 @@ export default function SalesPage() {
         </Link>
       </header>
 
-      <Card className="flex flex-wrap items-center gap-3">
-        <div className="min-w-40 flex-1">
-          <label htmlFor="status" className="sr-only">
-            Holat
-          </label>
-          <Select
-            id="status"
-            value={status}
-            onChange={(event) => {
-              setStatus(event.target.value);
-            }}
-          >
-            <option value="">Barcha holatlar</option>
-            {Object.values(SaleStatus).map((value) => (
-              <option key={value} value={value}>
-                {SALE_STATUS_LABEL[value]}
-              </option>
-            ))}
-          </Select>
-        </div>
+      <Card>
+        <FilterBar
+          count={sales.isPending ? undefined : `${rows.length} ta savdo`}
+          onReset={isFiltered ? resetFilters : undefined}
+        >
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="min-w-40 flex-1">
+              <label htmlFor="status" className="sr-only">
+                Holat
+              </label>
+              <Select
+                id="status"
+                value={status}
+                onChange={(event) => {
+                  setStatus(event.target.value);
+                }}
+              >
+                <option value="">Barcha holatlar</option>
+                {Object.values(SaleStatus).map((value) => (
+                  <option key={value} value={value}>
+                    {SALE_STATUS_LABEL[value]}
+                  </option>
+                ))}
+              </Select>
+            </div>
 
-        <div className="min-w-36 flex-1">
-          <label htmlFor="from" className="sr-only">
-            Boshlanish sanasi
-          </label>
-          <Input
-            id="from"
-            type="date"
-            value={from}
-            onChange={(event) => {
-              setFrom(event.target.value);
-            }}
-          />
-        </div>
+            <div className="min-w-36 flex-1">
+              <label htmlFor="from" className="sr-only">
+                Boshlanish sanasi
+              </label>
+              <Input
+                id="from"
+                type="date"
+                value={from}
+                onChange={(event) => {
+                  setFrom(event.target.value);
+                }}
+              />
+            </div>
 
-        <div className="min-w-36 flex-1">
-          <label htmlFor="to" className="sr-only">
-            Tugash sanasi
-          </label>
-          <Input
-            id="to"
-            type="date"
-            value={to}
-            onChange={(event) => {
-              setTo(event.target.value);
-            }}
-          />
-        </div>
+            <div className="min-w-36 flex-1">
+              <label htmlFor="to" className="sr-only">
+                Tugash sanasi
+              </label>
+              <Input
+                id="to"
+                type="date"
+                value={to}
+                onChange={(event) => {
+                  setTo(event.target.value);
+                }}
+              />
+            </div>
+          </div>
+        </FilterBar>
       </Card>
 
       {sales.isPending && (
@@ -133,9 +147,7 @@ export default function SalesPage() {
               router.push('/sales/new');
               return;
             }
-            setStatus('');
-            setFrom('');
-            setTo('');
+            resetFilters();
           }}
         />
       )}

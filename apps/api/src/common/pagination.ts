@@ -42,6 +42,7 @@ export function toPage<T extends { id: string }>(
   rows: T[],
   limit: number,
   sortValue: (row: T) => string,
+  totalCount: number,
 ): Page<T> {
   const hasMore = rows.length > limit;
   const data = hasMore ? rows.slice(0, limit) : rows;
@@ -51,5 +52,6 @@ export function toPage<T extends { id: string }>(
     data,
     hasMore,
     nextCursor: hasMore && last ? encodeCursor({ value: sortValue(last), id: last.id }) : null,
+    totalCount,
   };
 }

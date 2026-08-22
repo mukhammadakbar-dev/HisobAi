@@ -7,8 +7,9 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { EmptyState, ErrorState, TableSkeleton } from '../../../components/states';
-import { Badge, Card, Input, Select } from '../../../components/ui';
+import { Badge, Card, Select } from '../../../components/ui';
 import { DataList } from '../../../components/ui/data-list';
+import { FilterBar, FilterChip, SearchInput } from '../../../components/ui/filters';
 import { Money } from '../../../components/money/money';
 import { useBrands, useCategories, useProducts } from '../../../features/catalog/queries';
 import { PRODUCT_TYPE_LABEL } from '../../../lib/labels';
@@ -40,6 +41,13 @@ export default function ProductsPage() {
   const isFiltered =
     q.trim() !== '' || categoryId !== '' || brandId !== '' || isActive !== 'active';
 
+  const resetFilters = (): void => {
+    setQ('');
+    setCategoryId('');
+    setBrandId('');
+    setIsActive('active');
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -68,78 +76,85 @@ export default function ProductsPage() {
         </div>
       </header>
 
-      <Card className="flex flex-wrap gap-3">
-        <div className="min-w-48 flex-2 basis-64">
-          <label htmlFor="q" className="sr-only">
-            Qidiruv
-          </label>
-          <Input
-            id="q"
-            type="search"
-            placeholder="Nomi bo‘yicha qidirish"
-            value={q}
-            onChange={(event) => {
-              setQ(event.target.value);
-            }}
-          />
-        </div>
+      <Card>
+        <FilterBar
+          count={products.isPending ? undefined : `${rows.length} ta mahsulot`}
+          onReset={isFiltered ? resetFilters : undefined}
+          chips={
+            <>
+              {(
+                [
+                  { value: 'active', label: 'Faol' },
+                  { value: 'archived', label: 'Arxivda' },
+                  { value: 'all', label: 'Hammasi' },
+                ] as const
+              ).map((filter) => (
+                <FilterChip
+                  key={filter.value}
+                  active={isActive === filter.value}
+                  dismissable={false}
+                  onClick={() => {
+                    setIsActive(filter.value);
+                  }}
+                >
+                  {filter.label}
+                </FilterChip>
+              ))}
+            </>
+          }
+        >
+          <div className="flex flex-wrap gap-3">
+            <div className="min-w-48 flex-2 basis-64">
+              <SearchInput
+                id="products-q"
+                label="Mahsulot qidirish"
+                value={q}
+                onChange={setQ}
+                placeholder="Nomi bo‘yicha qidirish"
+              />
+            </div>
 
-        <div className="min-w-40 flex-1">
-          <label htmlFor="categoryId" className="sr-only">
-            Kategoriya
-          </label>
-          <Select
-            id="categoryId"
-            value={categoryId}
-            onChange={(event) => {
-              setCategoryId(event.target.value);
-            }}
-          >
-            <option value="">Barcha kategoriya</option>
-            {(categories.data?.data ?? []).map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </Select>
-        </div>
+            <div className="min-w-40 flex-1">
+              <label htmlFor="categoryId" className="sr-only">
+                Kategoriya
+              </label>
+              <Select
+                id="categoryId"
+                value={categoryId}
+                onChange={(event) => {
+                  setCategoryId(event.target.value);
+                }}
+              >
+                <option value="">Barcha kategoriya</option>
+                {(categories.data?.data ?? []).map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
 
-        <div className="min-w-40 flex-1">
-          <label htmlFor="brandId" className="sr-only">
-            Brend
-          </label>
-          <Select
-            id="brandId"
-            value={brandId}
-            onChange={(event) => {
-              setBrandId(event.target.value);
-            }}
-          >
-            <option value="">Barcha brend</option>
-            {(brands.data?.data ?? []).map((brand) => (
-              <option key={brand.id} value={brand.id}>
-                {brand.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-
-        <div className="min-w-36 flex-1">
-          <label htmlFor="isActive" className="sr-only">
-            Holat
-          </label>
-          <Select
-            id="isActive"
-            value={isActive}
-            onChange={(event) => {
-              setIsActive(event.target.value as 'active' | 'archived' | 'all');
-            }}
-          >
-            <option value="active">Faol</option>
-            <option value="archived">Arxivda</option>
-            <option value="all">Hammasi</option>
-          </Select>
-        </div>
+            <div className="min-w-40 flex-1">
+              <label htmlFor="brandId" className="sr-only">
+                Brend
+              </label>
+              <Select
+                id="brandId"
+                value={brandId}
+                onChange={(event) => {
+                  setBrandId(event.target.value);
+                }}
+              >
+                <option value="">Barcha brend</option>
+                {(brands.data?.data ?? []).map((brand) => (
+                  <option key={brand.id} value={brand.id}>
+                    {brand.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+        </FilterBar>
       </Card>
 
       {products.isPending && (
@@ -161,16 +176,7 @@ export default function ProductsPage() {
         <EmptyState
           title={isFiltered ? 'Bu filtr bo‘yicha topilmadi' : 'Hali mahsulot yo‘q'}
           actionLabel={isFiltered ? 'Filtrni tozalash' : undefined}
-          onAction={
-            isFiltered
-              ? () => {
-                  setQ('');
-                  setCategoryId('');
-                  setBrandId('');
-                  setIsActive('active');
-                }
-              : undefined
-          }
+          onAction={isFiltered ? resetFilters : undefined}
         />
       )}
 

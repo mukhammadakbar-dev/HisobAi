@@ -31,11 +31,12 @@ describe('normalizeLimit', () => {
 
 describe('toPage', () => {
   it("limitdan ortiq qator bo'lsa hasMore va kursor beradi", () => {
-    const page = toPage(rows(11), 10, (row) => row.soldAt);
+    const page = toPage(rows(11), 10, (row) => row.soldAt, 11);
 
     expect(page.data).toHaveLength(10);
     expect(page.hasMore).toBe(true);
     expect(page.nextCursor).not.toBeNull();
+    expect(page.totalCount).toBe(11);
 
     const decoded = decodeCursor(page.nextCursor as string);
     // Kursor OXIRGI qaytarilgan qatorni ko'rsatadi, 11-chisini emas
@@ -43,15 +44,16 @@ describe('toPage', () => {
   });
 
   it('oxirgi sahifada kursor null', () => {
-    const page = toPage(rows(4), 10, (row) => row.soldAt);
+    const page = toPage(rows(4), 10, (row) => row.soldAt, 4);
     expect(page.data).toHaveLength(4);
     expect(page.hasMore).toBe(false);
     expect(page.nextCursor).toBeNull();
+    expect(page.totalCount).toBe(4);
   });
 
   it("bo'sh ro'yxat", () => {
-    const page = toPage([], 10, (row: Row) => row.soldAt);
-    expect(page).toEqual({ data: [], hasMore: false, nextCursor: null });
+    const page = toPage([], 10, (row: Row) => row.soldAt, 0);
+    expect(page).toEqual({ data: [], hasMore: false, nextCursor: null, totalCount: 0 });
   });
 });
 
@@ -61,7 +63,7 @@ describe('toPrismaCursor', () => {
   });
 
   it("kursor bilan — o'zini o'tkazib yuboradi", () => {
-    const cursor = toPage(rows(11), 10, (row) => row.soldAt).nextCursor as string;
+    const cursor = toPage(rows(11), 10, (row) => row.soldAt, 11).nextCursor as string;
     expect(toPrismaCursor(cursor, 10)).toEqual({
       take: 11,
       skip: 1,

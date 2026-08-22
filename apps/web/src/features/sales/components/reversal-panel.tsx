@@ -12,6 +12,7 @@ import { useMemo, useState } from 'react';
 
 import { Money } from '../../../components/money/money';
 import { Button, Card, Field, Input, Select } from '../../../components/ui';
+import { useToast } from '../../../components/ui/toast';
 import { FormError } from '../../auth/components/form-error';
 import { REVERSAL_REASON_LABEL } from '../../../lib/labels';
 import { useCancelSale, useReturnSale } from '../queries';
@@ -125,6 +126,7 @@ function ActionChoice({
  */
 function ReturnForm({ sale, onClose }: { sale: SaleDto; onClose: () => void }) {
   const returnSale = useReturnSale(sale.id);
+  const toast = useToast();
   const idempotencyKey = useMemo(() => randomUuid(), []);
 
   const returnable = sale.items
@@ -165,7 +167,12 @@ function ReturnForm({ sale, onClose }: { sale: SaleDto; onClose: () => void }) {
           note: note.trim() === '' ? null : note.trim(),
         },
       },
-      { onSuccess: onClose },
+      {
+        onSuccess: () => {
+          toast.success('Qaytarish rasmiylashtirildi');
+          onClose();
+        },
+      },
     );
   };
 
@@ -242,6 +249,7 @@ function ReturnForm({ sale, onClose }: { sale: SaleDto; onClose: () => void }) {
  */
 function CancelForm({ sale, onClose }: { sale: SaleDto; onClose: () => void }) {
   const cancelSale = useCancelSale(sale.id);
+  const toast = useToast();
   const idempotencyKey = useMemo(() => randomUuid(), []);
 
   const [reason, setReason] = useState<ReversalReason>(ReversalReason.ENTRY_ERROR);
@@ -255,7 +263,12 @@ function CancelForm({ sale, onClose }: { sale: SaleDto; onClose: () => void }) {
         idempotencyKey,
         input: { reason, note: note.trim() === '' ? null : note.trim() },
       },
-      { onSuccess: onClose },
+      {
+        onSuccess: () => {
+          toast.success('Savdo bekor qilindi');
+          onClose();
+        },
+      },
     );
   };
 

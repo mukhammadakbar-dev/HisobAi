@@ -21,6 +21,7 @@ import { Money } from '../../../components/money/money';
 import { MoneyInput } from '../../../components/money/money-input';
 import { ErrorState, TableSkeleton } from '../../../components/states';
 import { Badge, Button, Card, Field, Input, Select } from '../../../components/ui';
+import { useToast } from '../../../components/ui/toast';
 import { ApiError } from '../../../lib/api-error';
 import { INVENTORY_STATUS_LABEL } from '../../../lib/labels';
 import { errorMessage } from '../../../lib/messages';
@@ -99,6 +100,7 @@ function serverIssues(error: unknown): Record<string, string> {
 export function ReceiveForm({ initialProductId }: { initialProductId?: string }) {
   const products = useProducts({ isActive: 'active', limit: 200 });
   const receive = useReceiveInventory();
+  const toast = useToast();
 
   const [productId, setProductId] = useState(initialProductId ?? '');
   const [rows, setRows] = useState<ItemRow[]>([emptyRow()]);
@@ -185,6 +187,7 @@ export function ReceiveForm({ initialProductId }: { initialProductId?: string })
           setRows([emptyRow()]);
           setQuantity('1');
           setNote('');
+          toast.success('Qabul rasmiylashtirildi');
           // Yangi qabul — yangi kalit; aks holda ikkinchi qabul
           // birinchisining saqlangan javobini olardi
           setIdempotencyKey(randomUuid());

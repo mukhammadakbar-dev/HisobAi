@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { ThemeSystemReset, ThemeToggle } from '../../../components/layout/theme-toggle';
 import { Card } from '../../../components/ui';
 import { useCurrentUser } from '../../../features/auth/queries';
-import { RateCard } from '../../../features/exchange-rates/components/rate-card';
 import { ShopForm } from '../../../features/shops/components/shop-form';
 import { can } from '../../../lib/permissions';
 
@@ -28,7 +27,7 @@ export default function SettingsPage() {
       <header className="flex flex-col gap-1">
         <h1 className="m-0 text-2xl font-semibold">Sozlamalar</h1>
         <p className="m-0 text-text-secondary">
-          Do‘kon ma’lumotlari, savdo qoidalari va valyuta kursi.
+          Do‘kon ma’lumotlari va savdo qoidalari.
         </p>
       </header>
 
@@ -87,13 +86,6 @@ export default function SettingsPage() {
       </Card>
 
       {can(user.data, 'settings.editShop') && <ShopForm />}
-
-      {can(user.data, 'exchangeRate.edit') && (
-        <section className="flex flex-col gap-4">
-          <h2 className="m-0 text-xl font-semibold">Valyuta</h2>
-          <RateCard />
-        </section>
-      )}
     </div>
   );
 }

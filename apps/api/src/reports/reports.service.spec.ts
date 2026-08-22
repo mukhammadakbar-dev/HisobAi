@@ -178,6 +178,7 @@ function makeService(options: Options = {}) {
           })),
         ),
       ),
+      count: vi.fn(() => Promise.resolve((options.audit ?? []).length)),
     },
     user: {
       findMany: vi.fn(() => Promise.resolve([{ id: 'user-1', displayName: "Do'kon egasi" }])),

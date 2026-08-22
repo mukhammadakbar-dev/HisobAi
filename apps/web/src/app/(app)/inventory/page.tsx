@@ -9,10 +9,12 @@ import { useState } from 'react';
 
 import { Money } from '../../../components/money/money';
 import { EmptyState, ErrorState, TableSkeleton } from '../../../components/states';
-import { Badge, Card, Input, Select } from '../../../components/ui';
+import { Badge, Card } from '../../../components/ui';
 import { DataList } from '../../../components/ui/data-list';
+import { FilterBar, FilterChip, SearchInput } from '../../../components/ui/filters';
 import { useCurrentUser } from '../../../features/auth/queries';
 import { useBatches, useInventoryItems } from '../../../features/inventory/queries';
+import { useInventoryValue } from '../../../features/reports/queries';
 import { formatDateTime } from '../../../lib/format';
 import { EMPTY_MESSAGES } from '../../../lib/messages';
 import { INVENTORY_STATUS_LABEL, INVENTORY_STATUS_TONE } from '../../../lib/labels';
@@ -26,6 +28,14 @@ import { can } from '../../../lib/permissions';
  * bor". Ular ikki ekranga bo'linsa, ega qaysi biriga qarashni har safar
  * o'ylab ko'rishi kerak bo'lardi.
  */
+const STATUS_FILTERS: { value: string; label: string }[] = [
+  ...Object.values(InventoryStatus).map((value) => ({
+    value,
+    label: INVENTORY_STATUS_LABEL[value] ?? value,
+  })),
+  { value: 'all', label: 'Hammasi' },
+];
+
 export default function InventoryPage() {
   const router = useRouter();
   const [q, setQ] = useState('');
@@ -37,10 +47,17 @@ export default function InventoryPage() {
     status: status === 'all' ? undefined : status,
   });
   const batches = useBatches();
+  const value = useInventoryValue();
 
   const rows = items.data?.data ?? [];
   const batchRows = batches.data?.data ?? [];
   const showCost = can(user.data, 'cost.view');
+  const isFiltered = q.trim() !== '' || status !== InventoryStatus.AVAILABLE;
+
+  const resetFilters = (): void => {
+    setQ('');
+    setStatus(InventoryStatus.AVAILABLE);
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -61,42 +78,42 @@ export default function InventoryPage() {
         </Link>
       </header>
 
-      <Card className="flex flex-wrap gap-3">
-        <div className="min-w-48 flex-2 basis-64">
-          <label htmlFor="q" className="sr-only">
-            Qidiruv
-          </label>
-          <Input
-            id="q"
-            type="search"
-            inputMode="search"
-            placeholder="IMEI, seriya raqami yoki nom"
-            value={q}
-            onChange={(event) => {
-              setQ(event.target.value);
-            }}
-          />
-        </div>
+      {/* §5.9 — bugungi do'kon kursida baholanadi, ro'yxat filtridan mustaqil */}
+      {showCost && value.isSuccess && (
+        <p className="m-0 text-sm text-text-secondary">
+          {value.data.positionCount} ta pozitsiya · ombor qiymati{' '}
+          <Money amount={value.data.totalCost} currency={value.data.currency} className="font-medium" />
+          {value.data.rateMissing && (
+            <span className="ml-2 text-warning">valyuta kursi yo‘q — to‘liq emas</span>
+          )}
+        </p>
+      )}
 
-        <div className="min-w-40 flex-1">
-          <label htmlFor="status" className="sr-only">
-            Holat
-          </label>
-          <Select
-            id="status"
-            value={status}
-            onChange={(event) => {
-              setStatus(event.target.value);
-            }}
-          >
-            {Object.values(InventoryStatus).map((value) => (
-              <option key={value} value={value}>
-                {INVENTORY_STATUS_LABEL[value]}
-              </option>
-            ))}
-            <option value="all">Barcha holat</option>
-          </Select>
-        </div>
+      <Card>
+        <FilterBar
+          count={items.isPending ? undefined : `${rows.length} ta birlik`}
+          onReset={isFiltered ? resetFilters : undefined}
+          chips={STATUS_FILTERS.map((filter) => (
+            <FilterChip
+              key={filter.value}
+              active={status === filter.value}
+              dismissable={false}
+              onClick={() => {
+                setStatus(filter.value);
+              }}
+            >
+              {filter.label}
+            </FilterChip>
+          ))}
+        >
+          <SearchInput
+            id="inventory-q"
+            label="Ombor qidirish"
+            value={q}
+            onChange={setQ}
+            placeholder="IMEI, seriya raqami yoki nom"
+          />
+        </FilterBar>
       </Card>
 
       {items.isPending && (

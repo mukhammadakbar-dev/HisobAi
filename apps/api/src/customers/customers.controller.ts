@@ -19,9 +19,8 @@ import {
 import type {
   CreateCustomerInput,
   CustomerDto,
+  CustomerListResponse,
   CustomerQuery,
-  CustomerSummaryDto,
-  Page,
   UpdateCustomerInput,
 } from '@hisobai/contracts';
 
@@ -50,7 +49,7 @@ export class CustomersController {
   @ApiOperation({ summary: 'Mijozlar ro‘yxati — ism va telefon bo‘yicha qidiruv (§6.4)' })
   list(
     @Query(new ZodValidationPipe(customerQuerySchema)) query: CustomerQuery,
-  ): Promise<Page<CustomerSummaryDto>> {
+  ): Promise<CustomerListResponse> {
     return this.customers.list(query);
   }
 

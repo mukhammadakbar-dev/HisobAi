@@ -20,6 +20,8 @@ export interface Page<T> {
   /** `null` bo'lsa — ro'yxat tugadi. */
   nextCursor: string | null;
   hasMore: boolean;
+  /** Filtr bo'yicha to'liq natija soni — joriy sahifadagi emas. */
+  totalCount: number;
 }
 
 /**

@@ -78,6 +78,10 @@ function makeService(rows: Row[] = [], files: Record<string, { kind: string }> =
       queries.push(where ?? {});
       return Promise.resolve([...store.values()].slice(0, take));
     },
+    count: ({ where }: { where?: Prisma.CustomerWhereInput }) => {
+      queries.push(where ?? {});
+      return Promise.resolve(store.size);
+    },
     findUnique: ({ where }: { where: { id?: string; phonePrimary?: string } }) => {
       const found = where.id
         ? store.get(where.id)
@@ -166,15 +170,28 @@ function makeService(rows: Row[] = [], files: Record<string, { kind: string }> =
       Promise.resolve(files[where.id] ?? null),
   };
 
+  // §9 — mijozda faol nasiya shartnomasi yo'q deb faraz qilinadi
+  // (`debtOf()` bo'sh ro'yxat qaytaradi, qarz doim `NONE`)
+  const installmentContract = { findMany: () => Promise.resolve([]) };
+
   const prisma = {
     customer: delegate,
     fileAsset,
+    installmentContract,
     $transaction: <T>(
       fn: (tx: { customer: typeof delegate; fileAsset: typeof fileAsset }) => Promise<T>,
     ) => fn({ customer: delegate, fileAsset }),
   };
 
-  const service = new CustomersService(prisma as never, audit as never);
+  const rates = { getForDate: () => Promise.resolve(null) };
+  const config = { get: () => 'Asia/Tashkent' };
+
+  const service = new CustomersService(
+    prisma as never,
+    audit as never,
+    rates as never,
+    config as never,
+  );
   return { service, store, audit, queries };
 }
 

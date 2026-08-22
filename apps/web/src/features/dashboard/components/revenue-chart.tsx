@@ -27,16 +27,18 @@ export function RevenueChart({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex h-32 items-end gap-1" aria-hidden="true">
-        {points.map((point) => {
+      <div className="flex h-32 items-end gap-1.5" aria-hidden="true">
+        {points.map((point, index) => {
           const value = Number(point.revenue) || 0;
           // Nolinchi kun ham ko'rinsin: 2% — "kun bor, savdo yo'q" belgisi
           const height = max > 0 ? Math.max((value / max) * 100, 2) : 2;
+          // Oxirgi ustun — bugun: dizayn kanvasidagi kabi ajratib ko'rsatiladi
+          const isToday = index === points.length - 1;
 
           return (
             <div key={point.date} className="flex flex-1 items-end self-stretch">
               <div
-                className={`w-full rounded-sm ${value > 0 ? 'bg-action' : 'bg-surface-raised'}`}
+                className={`w-full rounded-t-md ${isToday ? 'bg-action' : 'bg-surface-raised'}`}
                 style={{ height: `${height}%` }}
               />
             </div>

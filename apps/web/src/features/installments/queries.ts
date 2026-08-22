@@ -8,7 +8,7 @@ import type {
   DocumentGenerateDto,
   DocumentVersionDto,
   InstallmentContractDto,
-  InstallmentSummaryDto,
+  InstallmentListResponse,
   Page,
   PaymentDto,
   RebuildScheduleInput,
@@ -56,7 +56,7 @@ export const documentKeys = {
 };
 
 export const installmentsApi = {
-  list: (filters: InstallmentFilters): Promise<Page<InstallmentSummaryDto>> =>
+  list: (filters: InstallmentFilters): Promise<InstallmentListResponse> =>
     api.get('/installments', { query: { ...filters, limit: 50 } }),
   detail: (id: string): Promise<InstallmentContractDto> => api.get(`/installments/${id}`),
   rebuildSchedule: (
@@ -91,8 +91,8 @@ export const documentsApi = {
 
 export function useInstallments(
   filters: InstallmentFilters,
-): UseQueryResult<Page<InstallmentSummaryDto>, ApiError> {
-  return useQuery<Page<InstallmentSummaryDto>, ApiError>({
+): UseQueryResult<InstallmentListResponse, ApiError> {
+  return useQuery<InstallmentListResponse, ApiError>({
     queryKey: installmentKeys.list(filters),
     queryFn: () => installmentsApi.list(filters),
     placeholderData: (previous) => previous,

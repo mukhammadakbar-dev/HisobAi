@@ -3,6 +3,7 @@ import {
   CashAccountKind,
   CashDirection,
   CashSourceType,
+  CustomerDebtStatus,
   InventoryStatus,
   PaymentMethod,
   PaymentStatus,
@@ -117,6 +118,21 @@ export const CONTRACT_STATUS_TONE: Record<string, 'success' | 'muted' | 'warning
   [ContractStatus.ACTIVE]: 'success',
   [ContractStatus.CLOSED]: 'muted',
   [ContractStatus.CANCELLED]: 'warning',
+};
+
+/** §6.12, §9.8 kengaytma — mijoz qarz holati (`CustomerSummaryDto.debtStatus`). */
+export const CUSTOMER_DEBT_STATUS_LABEL: Record<string, string> = {
+  [CustomerDebtStatus.OVERDUE]: 'Muddati o‘tgan',
+  [CustomerDebtStatus.DUE_SOON]: 'Muddat yaqin',
+  [CustomerDebtStatus.ON_SCHEDULE]: 'Jadval bo‘yicha',
+  [CustomerDebtStatus.NONE]: 'Qarzsiz',
+};
+
+export const CUSTOMER_DEBT_STATUS_TONE: Record<string, 'success' | 'warning' | 'danger' | 'muted'> = {
+  [CustomerDebtStatus.OVERDUE]: 'danger',
+  [CustomerDebtStatus.DUE_SOON]: 'warning',
+  [CustomerDebtStatus.ON_SCHEDULE]: 'success',
+  [CustomerDebtStatus.NONE]: 'muted',
 };
 
 /** §9.8 — "muddati o'tgan" holat sifatida yo'q; u alohida belgi. */

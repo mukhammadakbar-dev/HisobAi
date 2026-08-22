@@ -5,6 +5,7 @@ import { useState } from 'react';
 
 import { EmptyState, ErrorState, TableSkeleton } from '../../../components/states';
 import { Badge, Button, Card, Input, Select } from '../../../components/ui';
+import { useToast } from '../../../components/ui/toast';
 import { errorMessage } from '../../../lib/messages';
 import {
   useCreateTaxonomy,
@@ -48,6 +49,7 @@ export function TaxonomyManager({ kind, canEdit }: { kind: TaxonomyKind; canEdit
   const create = useCreateTaxonomy(kind);
   const update = useUpdateTaxonomy(kind);
   const merge = useMergeTaxonomy(kind);
+  const toast = useToast();
 
   const rows = list.data?.data ?? [];
   const activeRows = rows.filter((row) => row.isActive);
@@ -59,6 +61,7 @@ export function TaxonomyManager({ kind, canEdit }: { kind: TaxonomyKind; canEdit
     create.mutate(trimmed, {
       onSuccess: () => {
         setNewName('');
+        toast.success(`${label.one} qo‘shildi`);
       },
     });
   };
@@ -195,6 +198,7 @@ function TaxonomyRow({
 }) {
   const [name, setName] = useState(row.name);
   const [targetId, setTargetId] = useState('');
+  const toast = useToast();
 
   /**
    * Xato faqat **shu** qatorda ko'rsatiladi.
@@ -243,6 +247,7 @@ function TaxonomyRow({
         onSuccess: () => {
           setTargetId('');
           onMerge(false);
+          toast.success(`${row.name} birlashtirildi`);
         },
       },
     );

@@ -33,7 +33,6 @@ interface ShopFormValues {
   lowStockThreshold?: number;
   defaultInstallmentMonths?: number;
   defaultDownPaymentPercent?: string | number;
-  storeRateMarkupPercent?: string | number;
   reminderHour?: number;
   expectedUpdatedAt?: string;
 }
@@ -56,7 +55,6 @@ const FIELDS = [
   'lowStockThreshold',
   'defaultInstallmentMonths',
   'defaultDownPaymentPercent',
-  'storeRateMarkupPercent',
   'reminderHour',
 ] as const;
 
@@ -91,14 +89,13 @@ function toFormValues(settings: ShopDto): ShopFormValues {
     name: settings.name,
     logoFileId: settings.logoFileId,
     address: settings.address,
-    phone: settings.phone,
+    phone: settings.phone?.replace(/^\+998/, '') ?? null,
     workStart: settings.workStart,
     workEnd: settings.workEnd,
     weekendDays: settings.weekendDays,
     lowStockThreshold: settings.lowStockThreshold,
     defaultInstallmentMonths: settings.defaultInstallmentMonths,
     defaultDownPaymentPercent: settings.defaultDownPaymentPercent,
-    storeRateMarkupPercent: settings.storeRateMarkupPercent,
     reminderHour: settings.reminderHour,
   };
 }
@@ -214,13 +211,29 @@ export function ShopForm() {
         </Field>
 
         <Field label="Telefon" htmlFor="phone" error={errors.phone?.message}>
-          <Input
+        <div className="flex min-h-11 w-full rounded-md border border-border-default bg-surface-card">
+          <span className="flex select-none items-center border-r border-border-default px-3 text-text-secondary">
+            +998
+          </span>
+          <input
             id="phone"
-            inputMode="tel"
-            placeholder="+998 90 123 45 67"
-            {...register('phone', { setValueAs: optionalText })}
+            inputMode="numeric"
+            maxLength={9}
+            placeholder="90 123 45 67"
+            autoComplete="tel"
+            className="flex-1 bg-transparent px-3 text-base text-text-primary outline-none placeholder:text-text-tertiary"
+            {...register('phone', {
+              setValueAs: (v: string) => {
+                const digits = v.replace(/\D/g, '');
+                return digits === '' ? null : `+998${digits}`;
+              },
+            })}
+            onInput={(e) => {
+              e.currentTarget.value = e.currentTarget.value.replace(/\D/g, '');
+            }}
           />
-        </Field>
+        </div>
+      </Field>
       </Card>
 
       <Card className="flex flex-col gap-4">
@@ -331,23 +344,7 @@ export function ShopForm() {
       </Card>
 
       <Card className="flex flex-col gap-4">
-        <h2 className="m-0 text-lg font-semibold">Kurs ustamasi va eslatma</h2>
-
-        <Field
-          label="Do‘kon kursi ustamasi (%)"
-          htmlFor="storeRateMarkupPercent"
-          error={errors.storeRateMarkupPercent?.message}
-        >
-          <Input
-            id="storeRateMarkupPercent"
-            inputMode="decimal"
-            {...register('storeRateMarkupPercent', { setValueAs: optionalDecimal })}
-          />
-        </Field>
-        <p className="m-0 text-sm text-text-tertiary">
-          Do‘kon kursi = CBU × (1 + ustama / 100), butun so‘mgacha yaxlitlanadi (§16.2). Ustama
-          foizda, chunki absolyut qo‘shimcha kurs o‘sishi bilan jimgina siqilib borardi.
-        </p>
+        <h2 className="m-0 text-lg font-semibold">Eslatma</h2>
 
         <Field label="Eslatma soati" htmlFor="reminderHour" error={errors.reminderHour?.message}>
           <Input

@@ -74,19 +74,24 @@ export class PaymentsService {
     const limit = normalizeLimit(query.limit);
     const paidAt = dayRangeFilter(query.from, query.to, this.timeZone);
 
-    const rows = await this.prisma.payment.findMany({
-      where: {
-        contractId: query.contractId,
-        status: query.status ? { in: query.status } : undefined,
-        ...(query.customerId ? { contract: { sale: { customerId: query.customerId } } } : {}),
-        ...(paidAt ? { paidAt } : {}),
-      },
-      include: PAYMENT_INCLUDE,
-      orderBy: [{ paidAt: query.sort === 'paidAt' ? 'asc' : 'desc' }, { id: 'desc' }],
-      ...toPrismaCursor(query.cursor, limit),
-    });
+    const where: Prisma.PaymentWhereInput = {
+      contractId: query.contractId,
+      status: query.status ? { in: query.status } : undefined,
+      ...(query.customerId ? { contract: { sale: { customerId: query.customerId } } } : {}),
+      ...(paidAt ? { paidAt } : {}),
+    };
 
-    return toPage(rows.map(toPaymentDto), limit, (dto) => dto.paidAt);
+    const [rows, totalCount] = await Promise.all([
+      this.prisma.payment.findMany({
+        where,
+        include: PAYMENT_INCLUDE,
+        orderBy: [{ paidAt: query.sort === 'paidAt' ? 'asc' : 'desc' }, { id: 'desc' }],
+        ...toPrismaCursor(query.cursor, limit),
+      }),
+      this.prisma.payment.count({ where }),
+    ]);
+
+    return toPage(rows.map(toPaymentDto), limit, (dto) => dto.paidAt, totalCount);
   }
 
   async requireById(id: string): Promise<PaymentDto> {

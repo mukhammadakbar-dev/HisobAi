@@ -1,4 +1,24 @@
-import type { Currency } from '../enums';
+import { z } from 'zod';
+
+import type { Currency, CashAccountKind } from '../enums';
+import type { ReportMetricDto } from './report';
+
+/**
+ * Dashboard davri (§14, kengaytma).
+ *
+ * `today` — sxema asl §14.2 talabi (bitta kun). `week`/`month`
+ * qo'shildi: ekran haftalik/oylik ko'rinishni ham talab qiladi, lekin
+ * "faqat bugun" chegarasi buzilmaydi — davr faqat qaysi oraliq
+ * hisoblanishini bildiradi, dashboard baribir **joriy** oraliqni
+ * ko'rsatadi (o'tmishdagi ixtiyoriy davr emas, `/reports` kabi).
+ */
+export const dashboardPeriodSchema = z.enum(['today', 'week', 'month']).default('today');
+export type DashboardPeriod = z.infer<typeof dashboardPeriodSchema>;
+
+export const dashboardQuerySchema = z
+  .object({ period: dashboardPeriodSchema })
+  .strict();
+export type DashboardQuery = z.infer<typeof dashboardQuerySchema>;
 
 /**
  * Dashboard javobi (§14).
@@ -19,12 +39,18 @@ import type { Currency } from '../enums';
  *  - bo'sh massiv — ma'lumot bor, lekin bugun hech narsa bo'lmagan.
  */
 
-/** §14.3 — bugungi savdo va foyda. */
+/**
+ * §14.3 — davr savdosi va foydasi.
+ *
+ * `count` va `revenue` `ReportMetricDto` shaklida — oldingi (bevosita
+ * undan avvalgi, xuddi shu uzunlikdagi) davr bilan solishtiruv uchun
+ * (`report.ts` dagi naqsh, ikkinchisi ixtiro qilinmagan).
+ */
 export interface DashboardSalesDto {
-  /** Bugun tasdiqlangan savdolar soni. */
-  count: number;
+  /** Davrda tasdiqlangan savdolar soni; `value`/`previous` — son satr sifatida. */
+  count: ReportMetricDto;
   /** Tushum, bazaviy valyutada. */
-  revenue: string;
+  revenue: ReportMetricDto;
   /** `PERMISSIONS.md` P7 — `SELLER` uchun `null`. */
   profit: string | null;
 }
@@ -46,13 +72,15 @@ export interface DashboardCashAccountDto {
   id: string;
   name: string;
   currency: Currency;
+  /** Naqd/karta — `CashAccountDto` bilan bir xil maydon (`cash.ts`). */
+  kind: CashAccountKind;
   balance: string;
 }
 
 /** §14.4 — muddati o'tgan qarzlar. */
 export interface DashboardOverdueDto {
   customersCount: number;
-  totalAmount: string;
+  totalAmount: ReportMetricDto;
   /** Eng katta bir nechtasi — to'liq ro'yxat `/reports/debts` da. */
   top: DashboardOverdueCustomerDto[];
 }
@@ -100,6 +128,8 @@ export interface DashboardChartPointDto {
 export interface DashboardDto {
   /** Do'kon zonasidagi bugungi sana (§14.2) — javob qaysi kunga tegishli. */
   date: string;
+  /** So'ralgan davr — `sales`/`overdue.totalAmount` shu oraliqqa tegishli. */
+  period: DashboardPeriod;
   /** Bazaviy valyuta (§1.1) — pul maydonlarining aksariyati shunda. */
   currency: Currency;
   sales: DashboardSalesDto;
@@ -109,6 +139,6 @@ export interface DashboardDto {
   overdue: DashboardOverdueDto;
   inventory: DashboardInventoryDto;
   recentActivity: DashboardActivityDto[];
-  /** So'nggi 14 kun — grafik uchun (§14.4). */
+  /** `period` ga mos oraliq — `today` 1 nuqta, `week` 7, `month` joriy oy kunlari. */
   chart: DashboardChartPointDto[];
 }

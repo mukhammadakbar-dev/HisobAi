@@ -10,17 +10,22 @@ import type {
   DashboardInventoryDto,
   DashboardLowStockDto,
   DashboardOverdueDto,
-  DashboardSalesDto,
+  DashboardPeriod,
 } from '@hisobai/contracts';
 import { RefreshCw } from 'lucide-react';
 import Link from 'next/link';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { Badge, Button, Card } from '../../../components/ui';
 import { EmptyState, ErrorState, Skeleton } from '../../../components/states';
 import { useCurrentUser } from '../../../features/auth/queries';
+import { MetricDelta } from '../../../features/dashboard/components/metric-delta';
+import { DashboardPeriodPicker } from '../../../features/dashboard/components/period-picker';
 import { RevenueChart } from '../../../features/dashboard/components/revenue-chart';
 import { useDashboard } from '../../../features/dashboard/queries';
+import { comparisonLabel, revenueTileLabel, summarizeCash } from '../../../features/dashboard/utils';
+import { CASH_ACCOUNT_KIND_LABEL } from '../../../lib/labels';
 import { formatDate, formatDateTime, todayInShopZone } from '../../../lib/format';
 import { can } from '../../../lib/permissions';
 
@@ -45,7 +50,11 @@ import { can } from '../../../lib/permissions';
  */
 export default function DashboardPage() {
   const user = useCurrentUser();
-  const dashboard = useDashboard();
+  // §14 kengaytma — davr URL emas, mahalliy holat (`/reports` dagi
+  // `PeriodPicker` bilan bir naqsh): davr faqat shu sahifada ishlatiladi
+  // va boshqa ekrandan havola qilinmaydi.
+  const [period, setPeriod] = useState<DashboardPeriod>('today');
+  const dashboard = useDashboard(period);
   const data = dashboard.data;
 
   return (
@@ -54,8 +63,7 @@ export default function DashboardPage() {
         <div className="flex flex-col gap-1">
           <h1 className="m-0 text-2xl font-semibold">Boshqaruv</h1>
           <p className="m-0 text-sm text-text-secondary">
-            {/* §14.2 — faqat bugungi kun; kengroq davr `/reports` da */}
-            Bugun, {formatDate(data?.date ?? new Date().toISOString())}
+            {formatDate(data?.date ?? new Date().toISOString())}
           </p>
         </div>
 
@@ -74,65 +82,170 @@ export default function DashboardPage() {
         </Button>
       </header>
 
+      <DashboardPeriodPicker period={period} onChange={setPeriod} />
+
       {dashboard.isPending && <DashboardSkeleton />}
 
       {dashboard.isError && (
         <ErrorState error={dashboard.error} onRetry={() => void dashboard.refetch()} />
       )}
 
-      {data && <DashboardBlocks data={data} canSeeCash={can(user.data, 'cashbook.view')} />}
+      {data && (
+        <DashboardBlocks data={data} period={period} canSeeCash={can(user.data, 'cashbook.view')} />
+      )}
     </div>
   );
 }
 
-function DashboardBlocks({ data, canSeeCash }: { data: DashboardDto; canSeeCash: boolean }) {
+function DashboardBlocks({
+  data,
+  period,
+  canSeeCash,
+}: {
+  data: DashboardDto;
+  period: DashboardPeriod;
+  canSeeCash: boolean;
+}) {
   const showCash = canSeeCash && data.cashAccounts !== null;
+  const cashGroups = showCash ? summarizeCash(data.cashAccounts ?? []) : [];
+  // Bosh KPI plitasi — bazaviy valyutadagi (dashboard valyutasi) guruh,
+  // aks holda birinchi mavjud guruh
+  const primaryCash = cashGroups.find((group) => group.currency === data.currency) ?? cashGroups[0];
 
   return (
     <>
-      {/* §14.3 — birinchi ekran */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <SalesBlock sales={data.sales} currency={data.currency} />
-        <DuePaymentsBlock payments={data.duePayments} />
-        {showCash && <CashBlock accounts={data.cashAccounts ?? []} />}
+      {/* §14.3 — birinchi ekran: kompakt KPI plitalari */}
+      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-4">
+        <KpiTile
+          label={revenueTileLabel(period)}
+          value={formatMoneyWithCurrency(data.sales.revenue.value, data.currency)}
+          delta={
+            <span className="flex flex-col gap-0.5">
+              <MetricDelta metric={data.sales.revenue} comparisonLabel={comparisonLabel(period)} />
+              {data.sales.profit !== null && (
+                <span className="text-xs text-text-tertiary">
+                  Foyda {formatMoneyWithCurrency(data.sales.profit, data.currency)}
+                </span>
+              )}
+            </span>
+          }
+        />
+        <KpiTile
+          label="Savdolar"
+          value={data.sales.count.value}
+          delta={<MetricDelta metric={data.sales.count} comparisonLabel={comparisonLabel(period)} />}
+        />
+        {showCash && primaryCash && (
+          <KpiTile
+            label="Kassa qoldig'i"
+            value={formatMoneyWithCurrency(primaryCash.total, primaryCash.currency)}
+            delta={
+              <span className="text-xs text-text-tertiary">
+                {primaryCash.byKind
+                  .map((row) => `${row.label} ${formatMoneyWithCurrency(row.total, primaryCash.currency)}`)
+                  .join(' · ')}
+              </span>
+            }
+          />
+        )}
+        <KpiTile
+          label="Muddati o'tgan qarz"
+          value={
+            data.overdue.customersCount > 0
+              ? formatMoneyWithCurrency(data.overdue.totalAmount.value, data.currency)
+              : '0'
+          }
+          delta={
+            data.overdue.customersCount > 0 ? (
+              <span className="flex flex-col gap-0.5">
+                <span>{data.overdue.customersCount} ta mijoz</span>
+                <MetricDelta metric={data.overdue.totalAmount} comparisonLabel={comparisonLabel(period)} />
+              </span>
+            ) : (
+              <span className="text-xs text-text-tertiary">Yo‘q</span>
+            )
+          }
+          tone={data.overdue.customersCount > 0 ? 'danger' : undefined}
+        />
       </div>
 
-      {/* §14.4 — pastroqda, lekin dashboard'da qoladi */}
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* Grafik va e'tibor navbati — noutbukda yonma-yon, telefonda ustma-ust */}
+      <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+        <Block title="Tushum dinamikasi" subtitle={chartRangeLabel(data.chart, period)}>
+          <RevenueChart points={data.chart} currency={data.currency} />
+        </Block>
         <AttentionBlock
           overdue={data.overdue}
           lowStock={data.inventory.lowStock}
           currency={data.currency}
         />
-        <InventoryBlock inventory={data.inventory} currency={data.currency} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3 2xl:grid-cols-4">
-        <Block title="So'nggi 14 kun savdosi" className="lg:col-span-2 2xl:col-span-3">
-          <RevenueChart points={data.chart} currency={data.currency} />
-        </Block>
+      {/* §14.3 — bugun/ertaga to'lov va kassa qoldig'i */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <DuePaymentsBlock payments={data.duePayments} />
+        {showCash && <CashBlock accounts={data.cashAccounts ?? []} />}
+      </div>
+
+      {/* §14.4 — ombor va so'nggi amallar */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <InventoryBlock inventory={data.inventory} currency={data.currency} />
         <ActivityBlock activity={data.recentActivity} />
       </div>
     </>
   );
 }
 
+/**
+ * Grafik ustidagi oraliq matni — `chart[]` ning haqiqiy birinchi/oxirgi kuni.
+ * "Bugun"/"Shu hafta" davrlarida backend bir xil 7 kunlik trendni qaytaradi
+ * (bitta kunlik grafik "dinamika" sifatida ma'nosiz), shuning uchun bu ikki
+ * holatda oraliq yoniga izoh qo'shiladi — aks holda davr chipini almashtirganda
+ * sarlavha o'zgarmagandek ko'rinadi.
+ */
+function chartRangeLabel(
+  points: DashboardDto['chart'],
+  period: DashboardPeriod,
+): string | undefined {
+  if (points.length === 0) return undefined;
+  const first = points[0]?.date;
+  const last = points[points.length - 1]?.date;
+  if (!first || !last) return undefined;
+  const range = first === last ? formatDate(first) : `${formatDate(first)} — ${formatDate(last)}`;
+  return period === 'month' ? range : `${range} (so'nggi 7 kun)`;
+}
+
 // ───────────────────────────── §14.3 bloklari ─────────────────────────────
 
-function SalesBlock({ sales, currency }: { sales: DashboardSalesDto; currency: Currency }) {
+/**
+ * Kompakt KPI plitasi (dizayn kanvasi — "Boshqaruv paneli").
+ *
+ * Katta blok o'rniga kichik karta: yorliq, tabular raqam, bitta qisqa
+ * qator. `delta` — davr o'zgarishi (`MetricDelta`) yoki oddiy izoh matni.
+ */
+function KpiTile({
+  label,
+  value,
+  delta,
+  tone,
+}: {
+  label: string;
+  value: string;
+  delta?: ReactNode;
+  tone?: 'danger';
+}) {
   return (
-    <Block title="Bugungi savdo">
-      <p className="m-0 text-3xl font-semibold tracking-tight">
-        {formatMoneyWithCurrency(sales.revenue, currency)}
-      </p>
-      <dl className="m-0 flex flex-col gap-1 text-sm">
-        <Row label="Savdolar soni" value={String(sales.count)} />
-        {/* `PERMISSIONS.md` P7 — `SELLER` da `profit: null`, qator umuman chiqmaydi */}
-        {sales.profit !== null && (
-          <Row label="Foyda" value={formatMoneyWithCurrency(sales.profit, currency)} />
-        )}
-      </dl>
-    </Block>
+    <Card className="flex flex-col gap-1.5 p-3 md:p-4">
+      <span className="text-[10px] font-semibold tracking-[0.06em] text-text-tertiary uppercase md:text-[11px]">
+        {label}
+      </span>
+      <span
+        className={`tabular text-xl font-semibold tracking-tight md:text-2xl ${tone === 'danger' ? 'text-danger' : 'text-text-primary'}`}
+      >
+        {value}
+      </span>
+      {delta}
+    </Card>
   );
 }
 
@@ -202,7 +315,7 @@ function CashBlock({ accounts }: { accounts: DashboardCashAccountDto[] }) {
         {accounts.map((account) => (
           <Row
             key={account.id}
-            label={account.name}
+            label={`${account.name} · ${CASH_ACCOUNT_KIND_LABEL[account.kind] ?? account.kind}`}
             value={formatMoneyWithCurrency(account.balance, account.currency)}
           />
         ))}
@@ -278,27 +391,29 @@ function AttentionBlock({
 
   return (
     <Block title="E'tibor talab qiladi" href="/reports/debts" linkLabel="Qarzdorlar">
-      {overdue.customersCount > 0 && (
-        <>
-          <p className="m-0 text-2xl font-semibold text-danger">
-            {formatMoneyWithCurrency(overdue.totalAmount, currency)}
-          </p>
-          <p className="m-0 text-sm text-text-secondary">
-            {overdue.customersCount} ta mijoz kechikkan
-          </p>
-        </>
-      )}
-
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
         {items.slice(0, ATTENTION_LIMIT).map((item) => (
-          <li key={item.key} className="flex items-center justify-between gap-2">
-            <Link href={item.href} className="min-w-0 truncate text-sm font-medium text-link">
-              {item.title}
+          <li key={item.key}>
+            <Link
+              href={item.href}
+              className={`flex items-center gap-3 rounded-lg border border-border-default bg-surface-raised p-3 ${
+                item.tone === 'danger' ? 'border-l-3 border-l-danger' : 'border-l-3 border-l-warning'
+              }`}
+            >
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text-primary">
+                {item.title}
+              </span>
+              <span className="flex shrink-0 flex-col items-end gap-0.5">
+                {item.amount && (
+                  <span
+                    className={`tabular text-sm font-semibold ${item.tone === 'danger' ? 'text-danger' : 'text-warning'}`}
+                  >
+                    {item.amount}
+                  </span>
+                )}
+                <Badge tone={item.tone}>{item.badge}</Badge>
+              </span>
             </Link>
-            <span className="flex shrink-0 items-center gap-2 text-sm">
-              {item.amount}
-              <Badge tone={item.tone}>{item.badge}</Badge>
-            </span>
           </li>
         ))}
       </ul>
@@ -375,12 +490,14 @@ function ActivityBlock({ activity }: { activity: DashboardActivityDto[] }) {
  */
 function Block({
   title,
+  subtitle,
   href,
   linkLabel,
   className = '',
   children,
 }: {
   title: string;
+  subtitle?: string;
   href?: string;
   linkLabel?: string;
   className?: string;
@@ -388,8 +505,11 @@ function Block({
 }) {
   return (
     <Card className={`flex flex-col gap-3 ${className}`}>
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="m-0 text-sm font-semibold text-text-secondary">{title}</h2>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-col gap-0.5">
+          <h2 className="m-0 text-sm font-semibold text-text-secondary">{title}</h2>
+          {subtitle && <p className="m-0 text-xs text-text-tertiary">{subtitle}</p>}
+        </div>
         {href && linkLabel && (
           <Link href={href} className="text-sm text-link">
             {linkLabel}
@@ -419,18 +539,22 @@ function Row({ label, value }: { label: string; value: string }) {
 function DashboardSkeleton() {
   return (
     <div className="flex flex-col gap-4" role="status" aria-label="Yuklanmoqda">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <Skeleton className="h-36" />
-        <Skeleton className="h-36" />
-        <Skeleton className="h-36" />
+      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 md:gap-4">
+        <Skeleton className="h-20" />
+        <Skeleton className="h-20" />
+        <Skeleton className="h-20" />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+        <Skeleton className="h-52" />
+        <Skeleton className="h-52" />
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <Skeleton className="h-44" />
         <Skeleton className="h-44" />
       </div>
-      <div className="grid gap-4 lg:grid-cols-3 2xl:grid-cols-4">
-        <Skeleton className="h-52 lg:col-span-2 2xl:col-span-3" />
-        <Skeleton className="h-52" />
+      <div className="grid gap-4 md:grid-cols-2">
+        <Skeleton className="h-44" />
+        <Skeleton className="h-44" />
       </div>
     </div>
   );

@@ -117,7 +117,7 @@ const ACTOR = { id: 'user-1', shopId: SHOP_ID, role: UserRole.SHOP_ADMIN } as ne
 
 function get(options: Options = {}) {
   const { service } = makeService(options);
-  return runWithShopScope(SHOP_ID, () => service.get(ACTOR));
+  return runWithShopScope(SHOP_ID, () => service.get(ACTOR, { period: 'today' }));
 }
 
 beforeEach(() => {
@@ -138,7 +138,7 @@ describe('DashboardService — muddati o‘tgan qarz', () => {
     });
 
     expect(data.overdue.customersCount).toBe(1);
-    expect(data.overdue.totalAmount).toBe('1000000');
+    expect(data.overdue.totalAmount.value).toBe('1000000');
     expect(data.overdue.top[0]?.daysOverdue).toBe(10);
     expect(data.overdue.top[0]?.amount).toBe('1000000');
   });
@@ -160,7 +160,7 @@ describe('DashboardService — muddati o‘tgan qarz', () => {
       ],
     });
 
-    expect(data.overdue.totalAmount).toBe('1000000');
+    expect(data.overdue.totalAmount.value).toBe('1000000');
   });
 
   it('USD qarzni do‘kon kursi bilan so‘mga o‘giradi', async () => {
@@ -175,7 +175,7 @@ describe('DashboardService — muddati o‘tgan qarz', () => {
 
     // 100 × 12 500 = 1 250 000; so'm shkalasida kasr yo'q (§1.10)
     expect(data.overdue.top[0]?.amount).toBe('1250000');
-    expect(data.overdue.totalAmount).toBe('1250000');
+    expect(data.overdue.totalAmount.value).toBe('1250000');
   });
 
   it('kurs yo‘q bo‘lsa yiqilmaydi va pul o‘ylab topmaydi', async () => {
@@ -190,7 +190,7 @@ describe('DashboardService — muddati o‘tgan qarz', () => {
     });
 
     expect(data.overdue.customersCount).toBe(1);
-    expect(data.overdue.totalAmount).toBe('0');
+    expect(data.overdue.totalAmount.value).toBe('0');
   });
 
   it('to‘langan qatorni hisobga olmaydi', async () => {
@@ -210,7 +210,7 @@ describe('DashboardService — muddati o‘tgan qarz', () => {
     });
 
     expect(data.overdue.customersCount).toBe(0);
-    expect(data.overdue.totalAmount).toBe('0');
+    expect(data.overdue.totalAmount.value).toBe('0');
     expect(data.overdue.top).toEqual([]);
   });
 
@@ -245,7 +245,7 @@ describe('DashboardService — muddati o‘tgan qarz', () => {
 
     expect(data.overdue.customersCount).toBe(7);
     expect(data.overdue.top).toHaveLength(5);
-    expect(data.overdue.totalAmount).toBe('700000');
+    expect(data.overdue.totalAmount.value).toBe('700000');
   });
 
   it('avval ko‘proq kechikkani, keyin kattaroq summasi turadi', async () => {
@@ -353,13 +353,13 @@ describe('DashboardService — mavjud bloklar buzilmadi', () => {
 
     expect(data.duePayments).toEqual([]);
     expect(data.overdue.customersCount).toBe(0);
-    expect(data.overdue.totalAmount).toBe('0');
+    expect(data.overdue.totalAmount.value).toBe('0');
     expect(data.currency).toBe('UZS');
   });
 
   it('faqat FAOL shartnomalarni so‘raydi', async () => {
     const { service, prisma } = makeService();
-    await runWithShopScope(SHOP_ID, () => service.get(ACTOR));
+    await runWithShopScope(SHOP_ID, () => service.get(ACTOR, { period: 'today' }));
 
     expect(prisma.installmentContract.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { status: ContractStatus.ACTIVE } }),
